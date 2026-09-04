@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, Alert } from 'react-native';
 import { FVEModal } from '@/components/common/FVEModal';
 import { FVEInput } from '@/components/common/FVEInput';
@@ -20,47 +20,47 @@ export function PlanFormModal({
   plan,
 }: PlanFormModalProps) {
   const [loading, setLoading] = useState(false);
-  const [name, setName] = useState('');
-  const [price, setPrice] = useState('');
-  const [durationDays, setDurationDays] = useState('30');
+  const nameRef = useRef('');
+  const priceRef = useRef('');
+  const durationDaysRef = useRef('30');
   const [durationType, setDurationType] = useState('MONTHLY');
-  const [visitLimit, setVisitLimit] = useState('');
-  const [features, setFeatures] = useState('');
+  const visitLimitRef = useRef('');
+  const featuresRef = useRef('');
 
   useEffect(() => {
     if (plan) {
-      setName(plan.name || '');
-      setPrice(plan.price ? String(plan.price) : '');
-      setDurationDays(plan.duration_days ? String(plan.duration_days) : '30');
+      nameRef.current = plan.name || '';
+      priceRef.current = plan.price ? String(plan.price) : '';
+      durationDaysRef.current = plan.duration_days ? String(plan.duration_days) : '30';
       setDurationType(plan.duration_type || 'MONTHLY');
-      setVisitLimit(plan.visit_day_limit ? String(plan.visit_day_limit) : '');
-      setFeatures(Array.isArray(plan.features) ? plan.features.join(', ') : '');
+      visitLimitRef.current = plan.visit_day_limit ? String(plan.visit_day_limit) : '';
+      featuresRef.current = Array.isArray(plan.features) ? plan.features.join(', ') : '';
     } else {
-      setName('');
-      setPrice('');
-      setDurationDays('30');
+      nameRef.current = '';
+      priceRef.current = '';
+      durationDaysRef.current = '30';
       setDurationType('MONTHLY');
-      setVisitLimit('');
-      setFeatures('');
+      visitLimitRef.current = '';
+      featuresRef.current = '';
     }
   }, [plan, visible]);
 
   const handleSave = async () => {
-    if (!name.trim()) return Alert.alert('Error', 'Plan name is required');
-    if (!price || isNaN(Number(price))) return Alert.alert('Error', 'Valid plan price is required');
+    if (!nameRef.current.trim()) return Alert.alert('Error', 'Plan name is required');
+    if (!priceRef.current || isNaN(Number(priceRef.current))) return Alert.alert('Error', 'Valid plan price is required');
 
     setLoading(true);
     try {
-      const featuresArray = features
-        ? features.split(',').map(f => f.trim()).filter(Boolean)
+      const featuresArray = featuresRef.current
+        ? featuresRef.current.split(',').map(f => f.trim()).filter(Boolean)
         : [];
 
       const payload = {
-        name: name.trim(),
-        price: Number(price),
-        duration_days: parseInt(durationDays, 10) || 30,
+        name: nameRef.current.trim(),
+        price: Number(priceRef.current),
+        duration_days: parseInt(durationDaysRef.current, 10) || 30,
         duration_type: durationType,
-        visit_day_limit: visitLimit ? parseInt(visitLimit, 10) : null,
+        visit_day_limit: visitLimitRef.current ? parseInt(visitLimitRef.current, 10) : null,
         features: JSON.stringify(featuresArray),
         active: true,
       };
@@ -100,39 +100,39 @@ export function PlanFormModal({
       <View style={styles.form}>
         <FVEInput
           label="PLAN NAME *"
-          value={name}
-          onChangeText={setName}
+          defaultValue={nameRef.current}
+          onChangeText={(t) => { nameRef.current = t; }}
           placeholder="e.g. Gold Monthly, Annual Elite"
         />
 
         <FVEInput
           label="PRICE (INR) *"
-          value={price}
-          onChangeText={setPrice}
+          defaultValue={priceRef.current}
+          onChangeText={(t) => { priceRef.current = t; }}
           placeholder="e.g. 2500"
           keyboardType="numeric"
         />
 
         <FVEInput
           label="VALIDITY DURATION (DAYS) *"
-          value={durationDays}
-          onChangeText={setDurationDays}
+          defaultValue={durationDaysRef.current}
+          onChangeText={(t) => { durationDaysRef.current = t; }}
           placeholder="e.g. 30, 90, 365"
           keyboardType="numeric"
         />
 
         <FVEInput
           label="MAX USABLE VISIT DAYS (OPTIONAL)"
-          value={visitLimit}
-          onChangeText={setVisitLimit}
+          defaultValue={visitLimitRef.current}
+          onChangeText={(t) => { visitLimitRef.current = t; }}
           placeholder="Leave blank for unlimited visits"
           keyboardType="numeric"
         />
 
         <FVEInput
           label="PLAN FEATURES (COMMA-SEPARATED)"
-          value={features}
-          onChangeText={setFeatures}
+          defaultValue={featuresRef.current}
+          onChangeText={(t) => { featuresRef.current = t; }}
           placeholder="Gym Access, Steam Bath, Locker, Trainer"
           multiline
         />

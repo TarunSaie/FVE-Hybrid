@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Alert, TouchableOpacity, ScrollView } from 'react-native';
 import { FVEModal } from '@/components/common/FVEModal';
 import { FVEInput } from '@/components/common/FVEInput';
@@ -30,10 +30,10 @@ export function PaymentFormModal({
   const [plans, setPlans] = useState<MembershipPlan[]>([]);
   const [selectedMemberId, setSelectedMemberId] = useState<string>(preselectedMemberId || '');
   const [selectedPlanId, setSelectedPlanId] = useState<string>('');
-  const [amount, setAmount] = useState<string>('');
+  const amountRef = useRef('');
   const [paymentMethod, setPaymentMethod] = useState<string>('UPI');
-  const [transactionRef, setTransactionRef] = useState<string>('');
-  const [notes, setNotes] = useState<string>('');
+  const transactionRefInput = useRef('');
+  const notesRef = useRef('');
 
   useEffect(() => {
     if (visible) {
@@ -54,7 +54,7 @@ export function PaymentFormModal({
 
   const handlePlanSelect = (plan: MembershipPlan) => {
     setSelectedPlanId(plan.id);
-    setAmount(String(plan.price));
+    amountRef.current = String(plan.price);
   };
 
   const handleSubmit = async () => {
@@ -62,7 +62,7 @@ export function PaymentFormModal({
       Alert.alert('Error', 'Please select a member');
       return;
     }
-    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+    if (!amountRef.current || isNaN(Number(amountRef.current)) || Number(amountRef.current) <= 0) {
       Alert.alert('Error', 'Please enter a valid payment amount');
       return;
     }
@@ -121,19 +121,19 @@ export function PaymentFormModal({
       const { error: payError } = await supabase.from('payments').insert({
         member_id: selectedMemberId,
         membership_id: membershipId,
-        amount: String(amount),
+        amount: String(amountRef.current),
         payment_method: paymentMethod,
-        transaction_reference: transactionRef.trim() || null,
+        transaction_reference: transactionRefInput.current.trim() || null,
         received_by: user?.id || null,
         payment_date: today,
         receipt_number: receiptNumber,
-        notes: notes.trim() || null,
+        notes: notesRef.current.trim() || null,
         created_at: new Date().toISOString(),
       });
 
       if (payError) throw payError;
 
-      Alert.alert('Success', `Payment of ${formatCurrency(amount)} recorded successfully! (Receipt #${receiptNumber})`);
+      Alert.alert('Success', `Payment of ${formatCurrency(amountRef.current)} recorded successfully! (Receipt #${receiptNumber})`);
       onSaved();
       onClose();
     } catch (err: unknown) {
@@ -204,8 +204,8 @@ export function PaymentFormModal({
         {/* Amount */}
         <FVEInput
           label="AMOUNT (INR) *"
-          value={amount}
-          onChangeText={setAmount}
+          defaultValue={amountRef.current}
+          onChangeText={(t) => { amountRef.current = t; }}
           placeholder="e.g. 1500"
           keyboardType="numeric"
         />
@@ -242,16 +242,16 @@ export function PaymentFormModal({
         {/* Transaction Reference */}
         <FVEInput
           label="TRANSACTION REFERENCE (OPTIONAL)"
-          value={transactionRef}
-          onChangeText={setTransactionRef}
+          defaultValue={transactionRefInput.current}
+          onChangeText={(t) => { transactionRefInput.current = t; }}
           placeholder="UPI ref, check no, or card tx ID"
         />
 
         {/* Notes */}
         <FVEInput
           label="NOTES"
-          value={notes}
-          onChangeText={setNotes}
+          defaultValue={notesRef.current}
+          onChangeText={(t) => { notesRef.current = t; }}
           placeholder="Additional remarks"
           multiline
         />

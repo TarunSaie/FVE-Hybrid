@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Alert, TouchableOpacity } from 'react-native';
 import { FVEModal } from '@/components/common/FVEModal';
 import { FVEInput } from '@/components/common/FVEInput';
@@ -23,41 +23,41 @@ export function StaffFormModal({
   staff,
 }: StaffFormModalProps) {
   const [loading, setLoading] = useState(false);
-  const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
+  const fullNameRef = useRef('');
+  const emailRef = useRef('');
+  const phoneRef = useRef('');
   const [role, setRole] = useState<UserRole>('RECEPTIONIST');
 
   useEffect(() => {
     if (staff) {
-      setFullName(staff.full_name || '');
-      setEmail(staff.email || '');
-      setPhone(staff.phone || '');
+      fullNameRef.current = staff.full_name || '';
+      emailRef.current = staff.email || '';
+      phoneRef.current = staff.phone || '';
       setRole((staff.role as UserRole) || 'RECEPTIONIST');
     } else {
-      setFullName('');
-      setEmail('');
-      setPhone('');
+      fullNameRef.current = '';
+      emailRef.current = '';
+      phoneRef.current = '';
       setRole('RECEPTIONIST');
     }
   }, [staff, visible]);
 
   const handleSave = async () => {
-    if (!fullName.trim()) return Alert.alert('Error', 'Full name is required');
+    if (!fullNameRef.current.trim()) return Alert.alert('Error', 'Full name is required');
 
     setLoading(true);
     try {
-      const username = email.trim()
-        ? email.trim().toLowerCase().split('@')[0]
-        : fullName.trim().toLowerCase().replace(/\s+/g, '.');
+      const username = emailRef.current.trim()
+        ? emailRef.current.trim().toLowerCase().split('@')[0]
+        : fullNameRef.current.trim().toLowerCase().replace(/\s+/g, '.');
 
       if (staff) {
         const { error } = await supabase
           .from('user_profiles')
           .update({
-            full_name: fullName.trim(),
-            email: email.trim().toLowerCase() || null,
-            phone: phone.trim() || null,
+            full_name: fullNameRef.current.trim(),
+            email: emailRef.current.trim().toLowerCase() || null,
+            phone: phoneRef.current.trim() || null,
             role,
             username,
           })
@@ -67,9 +67,9 @@ export function StaffFormModal({
         const { error } = await supabase
           .from('user_profiles')
           .insert({
-            full_name: fullName.trim(),
-            email: email.trim().toLowerCase() || null,
-            phone: phone.trim() || null,
+            full_name: fullNameRef.current.trim(),
+            email: emailRef.current.trim().toLowerCase() || null,
+            phone: phoneRef.current.trim() || null,
             role,
             username,
             created_at: new Date().toISOString(),
@@ -96,15 +96,15 @@ export function StaffFormModal({
       <View style={styles.form}>
         <FVEInput
           label="STAFF MEMBER NAME *"
-          value={fullName}
-          onChangeText={setFullName}
+          defaultValue={fullNameRef.current}
+          onChangeText={(t) => { fullNameRef.current = t; }}
           placeholder="e.g. Alex Trainer"
         />
 
         <FVEInput
           label="EMAIL ADDRESS"
-          value={email}
-          onChangeText={setEmail}
+          defaultValue={emailRef.current}
+          onChangeText={(t) => { emailRef.current = t; }}
           placeholder="alex@fitverse.com"
           keyboardType="email-address"
           autoCapitalize="none"
@@ -112,8 +112,8 @@ export function StaffFormModal({
 
         <FVEInput
           label="PHONE NUMBER"
-          value={phone}
-          onChangeText={setPhone}
+          defaultValue={phoneRef.current}
+          onChangeText={(t) => { phoneRef.current = t; }}
           placeholder="Contact number"
           keyboardType="phone-pad"
         />

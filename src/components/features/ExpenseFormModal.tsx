@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Alert, TouchableOpacity, ScrollView } from 'react-native';
 import { Calendar } from 'lucide-react-native';
 import { FVEModal } from '@/components/common/FVEModal';
@@ -29,27 +29,27 @@ export function ExpenseFormModal({
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [category, setCategory] = useState<string>('Rent');
-  const [amount, setAmount] = useState('');
-  const [description, setDescription] = useState('');
+  const amountRef = useRef('');
+  const descriptionRef = useRef('');
   const [expenseDate, setExpenseDate] = useState(() => getLocalDateStr());
   const [showDatePicker, setShowDatePicker] = useState(false);
 
   useEffect(() => {
     if (expense) {
       setCategory(expense.category || 'Rent');
-      setAmount(expense.amount ? String(expense.amount) : '');
-      setDescription(expense.description || '');
+      amountRef.current = expense.amount ? String(expense.amount) : '';
+      descriptionRef.current = expense.description || '';
       setExpenseDate(expense.expense_date || getLocalDateStr());
     } else {
       setCategory('Rent');
-      setAmount('');
-      setDescription('');
+      amountRef.current = '';
+      descriptionRef.current = '';
       setExpenseDate(getLocalDateStr());
     }
   }, [expense, visible]);
 
   const handleSave = async () => {
-    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+    if (!amountRef.current || isNaN(Number(amountRef.current)) || Number(amountRef.current) <= 0) {
       return Alert.alert('Error', 'Please enter a valid expense amount');
     }
 
@@ -60,8 +60,8 @@ export function ExpenseFormModal({
           .from('expenses')
           .update({
             category,
-            amount: String(amount),
-            description: description.trim() || null,
+            amount: String(amountRef.current),
+            description: descriptionRef.current.trim() || null,
             expense_date: expenseDate,
           })
           .eq('id', expense.id);
@@ -71,8 +71,8 @@ export function ExpenseFormModal({
           .from('expenses')
           .insert({
             category,
-            amount: String(amount),
-            description: description.trim() || null,
+            amount: String(amountRef.current),
+            description: descriptionRef.current.trim() || null,
             expense_date: expenseDate,
             created_by: user?.id || null,
             created_at: new Date().toISOString(),
@@ -120,8 +120,8 @@ export function ExpenseFormModal({
 
         <FVEInput
           label="AMOUNT (INR) *"
-          value={amount}
-          onChangeText={setAmount}
+          defaultValue={amountRef.current}
+          onChangeText={(t) => { amountRef.current = t; }}
           placeholder="e.g. 5000"
           keyboardType="numeric"
         />
@@ -146,8 +146,8 @@ export function ExpenseFormModal({
 
         <FVEInput
           label="DESCRIPTION / NOTES"
-          value={description}
-          onChangeText={setDescription}
+          defaultValue={descriptionRef.current}
+          onChangeText={(t) => { descriptionRef.current = t; }}
           placeholder="Details of the payment or bill"
           multiline
         />

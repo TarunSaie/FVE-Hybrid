@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -46,21 +46,21 @@ export function MemberFormModal({
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
 
-  // Form states
-  const [fullName, setFullName] = useState('');
-  const [memberId, setMemberId] = useState('');
-  const [mobile, setMobile] = useState('');
-  const [email, setEmail] = useState('');
+  // Form refs — uncontrolled to prevent re-render-driven focus loss
+  const fullNameRef = useRef('');
+  const memberIdRef = useRef('');
+  const mobileRef = useRef('');
+  const emailRef = useRef('');
   const [dateOfBirth, setDateOfBirth] = useState('');
-  const [age, setAge] = useState('');
+  const ageRef = useRef('');
   const [gender, setGender] = useState<string>('Male');
   const [joiningDate, setJoiningDate] = useState(getLocalDateStr());
-  const [height, setHeight] = useState('');
-  const [weight, setWeight] = useState('');
+  const heightRef = useRef('');
+  const weightRef = useRef('');
   const [bloodGroup, setBloodGroup] = useState('');
   const [address, setAddress] = useState('');
-  const [emergencyContact, setEmergencyContact] = useState('');
-  const [notes, setNotes] = useState('');
+  const emergencyContactRef = useRef('');
+  const notesRef = useRef('');
   const [profilePhoto, setProfilePhoto] = useState('');
 
   // Date picker modals
@@ -71,36 +71,36 @@ export function MemberFormModal({
 
   useEffect(() => {
     if (member) {
-      setFullName(member.full_name || '');
-      setMemberId(member.member_id || '');
-      setMobile(member.mobile || '');
-      setEmail(member.email || '');
+      fullNameRef.current = member.full_name || '';
+      memberIdRef.current = member.member_id || '';
+      mobileRef.current = member.mobile || '';
+      emailRef.current = member.email || '';
       setDateOfBirth(member.date_of_birth || '');
-      setAge(member.age ? String(member.age) : '');
+      ageRef.current = member.age ? String(member.age) : '';
       setGender(member.gender || 'Male');
       setJoiningDate(member.joining_date || getLocalDateStr());
-      setHeight(member.height || '');
-      setWeight(member.weight || '');
+      heightRef.current = member.height || '';
+      weightRef.current = member.weight || '';
       setBloodGroup(member.blood_group || '');
       setAddress(member.address || '');
-      setEmergencyContact(member.emergency_contact || '');
-      setNotes(member.notes || '');
+      emergencyContactRef.current = member.emergency_contact || '';
+      notesRef.current = member.notes || '';
       setProfilePhoto(member.profile_photo || '');
     } else {
-      setFullName('');
-      setMemberId('');
-      setMobile('');
-      setEmail('');
+      fullNameRef.current = '';
+      memberIdRef.current = '';
+      mobileRef.current = '';
+      emailRef.current = '';
       setDateOfBirth('');
-      setAge('');
+      ageRef.current = '';
       setGender('Male');
       setJoiningDate(getLocalDateStr());
-      setHeight('');
-      setWeight('');
+      heightRef.current = '';
+      weightRef.current = '';
       setBloodGroup('');
       setAddress('');
-      setEmergencyContact('');
-      setNotes('');
+      emergencyContactRef.current = '';
+      notesRef.current = '';
       setProfilePhoto('');
     }
     setErrors({});
@@ -187,32 +187,32 @@ export function MemberFormModal({
     setDateOfBirth(dateStr);
     const computed = calculateAge(dateStr);
     if (computed !== null && computed >= 0) {
-      setAge(String(computed));
+      ageRef.current = String(computed);
     }
   };
 
   const validate = () => {
     const errs: Record<string, string> = {};
-    if (!fullName.trim() || fullName.trim().length < 2) {
+    if (!fullNameRef.current.trim() || fullNameRef.current.trim().length < 2) {
       errs.fullName = 'Full name must be at least 2 characters';
     }
-    const cleanMobile = mobile.replace(/\D/g, '');
+    const cleanMobile = mobileRef.current.replace(/\D/g, '');
     if (!cleanMobile || cleanMobile.length < 10) {
       errs.mobile = 'Enter a valid 10-digit mobile number';
     }
     if (!gender) {
       errs.gender = 'Please select a gender';
     }
-    if (!address.trim()) {
+    if (!address.trim() && !notesRef.current) {
       errs.address = 'Residential address is required';
     }
     if (!joiningDate.trim()) {
       errs.joiningDate = 'Joining date is required (YYYY-MM-DD)';
     }
-    if (height && (isNaN(Number(height)) || Number(height) < 50 || Number(height) > 300)) {
+    if (heightRef.current && (isNaN(Number(heightRef.current)) || Number(heightRef.current) < 50 || Number(heightRef.current) > 300)) {
       errs.height = 'Height must be between 50 and 300 cm';
     }
-    if (weight && (isNaN(Number(weight)) || Number(weight) < 10 || Number(weight) > 500)) {
+    if (weightRef.current && (isNaN(Number(weightRef.current)) || Number(weightRef.current) < 10 || Number(weightRef.current) > 500)) {
       errs.weight = 'Weight must be between 10 and 500 kg';
     }
 
@@ -230,23 +230,23 @@ export function MemberFormModal({
     try {
       const calculatedAge = dateOfBirth.trim()
         ? calculateAge(dateOfBirth.trim())
-        : (age ? parseInt(age, 10) : null);
+        : (ageRef.current ? parseInt(ageRef.current, 10) : null);
 
       const payload = {
-        full_name: fullName.trim(),
-        member_id: memberId.trim() || null,
-        mobile: mobile.trim() || null,
-        email: email.trim().toLowerCase() || null,
+        full_name: fullNameRef.current.trim(),
+        member_id: memberIdRef.current.trim() || null,
+        mobile: mobileRef.current.trim() || null,
+        email: emailRef.current.trim().toLowerCase() || null,
         date_of_birth: dateOfBirth.trim() || null,
         age: calculatedAge ?? null,
         gender,
         joining_date: joiningDate.trim() || getLocalDateStr(),
-        height: height.trim() || null,
-        weight: weight.trim() || null,
+        height: heightRef.current.trim() || null,
+        weight: weightRef.current.trim() || null,
         blood_group: bloodGroup.trim() || null,
         address: address.trim(),
-        emergency_contact: emergencyContact.trim() || null,
-        notes: notes.trim() || null,
+        emergency_contact: emergencyContactRef.current.trim() || null,
+        notes: notesRef.current.trim() || null,
         profile_photo: profilePhoto.trim() || null,
         updated_at: new Date().toISOString(),
       };
@@ -259,7 +259,7 @@ export function MemberFormModal({
 
         if (error) throw error;
         haptics.success();
-        Alert.alert('Success', `${fullName} updated successfully!`);
+        Alert.alert('Success', `${fullNameRef.current} updated successfully!`);
       } else {
         const randomQR = `FVE-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
         const { error } = await supabase.from('members').insert({
@@ -271,7 +271,7 @@ export function MemberFormModal({
 
         if (error) throw error;
         haptics.success();
-        Alert.alert('Success', `${fullName} registered to FitVerse Elite!`);
+        Alert.alert('Success', `${fullNameRef.current} registered to FitVerse Elite!`);
       }
 
       onSaved();
@@ -284,7 +284,7 @@ export function MemberFormModal({
     }
   };
 
-  const computedAge = dateOfBirth ? calculateAge(dateOfBirth) : (age ? parseInt(age, 10) : null);
+  const computedAge = dateOfBirth ? calculateAge(dateOfBirth) : (ageRef.current ? parseInt(ageRef.current, 10) : null);
 
   return (
     <>
@@ -303,7 +303,7 @@ export function MemberFormModal({
               ) : (
                 <View style={styles.avatarPlaceholder}>
                   <Text style={styles.avatarInitial}>
-                    {fullName.trim().charAt(0).toUpperCase() || 'F'}
+                    {fullNameRef.current.trim().charAt(0).toUpperCase() || 'F'}
                   </Text>
                 </View>
               )}
@@ -364,8 +364,8 @@ export function MemberFormModal({
 
           <FVEInput
             label="FULL NAME *"
-            value={fullName}
-            onChangeText={setFullName}
+            defaultValue={fullNameRef.current}
+            onChangeText={(t) => { fullNameRef.current = t; }}
             placeholder="e.g. Marcus Vance"
             error={errors.fullName}
           />
@@ -374,8 +374,8 @@ export function MemberFormModal({
             <View style={styles.flex1}>
               <FVEInput
                 label="MEMBER ID (OPTIONAL)"
-                value={memberId}
-                onChangeText={setMemberId}
+                defaultValue={memberIdRef.current}
+                onChangeText={(t) => { memberIdRef.current = t; }}
                 placeholder="e.g. FVE-101"
               />
             </View>
@@ -400,8 +400,8 @@ export function MemberFormModal({
 
           <FVEInput
             label="MOBILE NUMBER *"
-            value={mobile}
-            onChangeText={setMobile}
+            defaultValue={mobileRef.current}
+            onChangeText={(t) => { mobileRef.current = t; }}
             placeholder="+91 98765 43210"
             keyboardType="phone-pad"
             error={errors.mobile}
@@ -409,8 +409,8 @@ export function MemberFormModal({
 
           <FVEInput
             label="EMAIL ADDRESS"
-            value={email}
-            onChangeText={setEmail}
+            defaultValue={emailRef.current}
+            onChangeText={(t) => { emailRef.current = t; }}
             placeholder="marcus@example.com"
             keyboardType="email-address"
             autoCapitalize="none"
@@ -443,8 +443,8 @@ export function MemberFormModal({
             <View style={[styles.flex1, { marginLeft: 10, flex: 0.8 }]}>
               <FVEInput
                 label="AGE"
-                value={age}
-                onChangeText={setAge}
+                defaultValue={ageRef.current}
+                onChangeText={(t) => { ageRef.current = t; }}
                 placeholder="e.g. 28"
                 keyboardType="number-pad"
               />
@@ -491,8 +491,8 @@ export function MemberFormModal({
             <View style={styles.flex1}>
               <FVEInput
                 label="HEIGHT (CM)"
-                value={height}
-                onChangeText={setHeight}
+                defaultValue={heightRef.current}
+                onChangeText={(t) => { heightRef.current = t; }}
                 placeholder="178"
                 keyboardType="number-pad"
                 error={errors.height}
@@ -501,8 +501,8 @@ export function MemberFormModal({
             <View style={[styles.flex1, { marginLeft: 10 }]}>
               <FVEInput
                 label="WEIGHT (KG)"
-                value={weight}
-                onChangeText={setWeight}
+                defaultValue={weightRef.current}
+                onChangeText={(t) => { weightRef.current = t; }}
                 placeholder="75.5"
                 keyboardType="numeric"
                 error={errors.weight}
@@ -553,16 +553,16 @@ export function MemberFormModal({
 
           <FVEInput
             label="EMERGENCY CONTACT PHONE"
-            value={emergencyContact}
-            onChangeText={setEmergencyContact}
+            defaultValue={emergencyContactRef.current}
+            onChangeText={(t) => { emergencyContactRef.current = t; }}
             placeholder="+91 98765 00000"
             keyboardType="phone-pad"
           />
 
           <FVEInput
             label="TRAINER / MEDICAL NOTES"
-            value={notes}
-            onChangeText={setNotes}
+            defaultValue={notesRef.current}
+            onChangeText={(t) => { notesRef.current = t; }}
             placeholder="Fitness goals, health conditions, or personal training notes..."
             multiline
             numberOfLines={3}

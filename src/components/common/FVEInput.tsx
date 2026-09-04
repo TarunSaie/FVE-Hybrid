@@ -65,6 +65,11 @@ export const FVEInput = forwardRef<TextInput, FVEInputProps>(function FVEInput(
           editable={editable}
           placeholderTextColor={colors.textSubtle}
           selectionColor={colors.gold}
+          // Disable OS autofill grouping — prevents multi-field highlight when
+          // sibling inputs are visible in the same form container.
+          textContentType="none"
+          importantForAutofill="no"
+          autoComplete="off"
           onFocus={(e) => {
             setInternalFocused(true);
             onFocus?.(e);

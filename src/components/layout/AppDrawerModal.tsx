@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,11 +8,12 @@ import {
   TouchableOpacity,
   ScrollView,
   Image,
-  SafeAreaView,
   Platform,
   BackHandler,
+  Animated,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation, useNavigationState } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   LayoutDashboard,
@@ -62,6 +63,25 @@ const ALL_NAV_ITEMS = [
 export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
   const navigation = useNavigation<NavigationProp>();
   const { user, logout } = useAuth();
+  const insets = useSafeAreaInsets();
+  const slideAnim = useRef(new Animated.Value(-320)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        useNativeDriver: true,
+        speed: 22,
+        bounciness: 0,
+      }).start();
+    } else {
+      Animated.timing(slideAnim, {
+        toValue: -320,
+        duration: 220,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [visible]);
 
   useEffect(() => {
     if (!visible) return;
@@ -112,7 +132,7 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
     <Modal
       visible={visible}
       transparent
-      animationType="fade"
+      animationType="none"
       onRequestClose={onClose}
       statusBarTranslucent
     >
@@ -120,8 +140,16 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
         {/* Backdrop tap dismiss */}
         <Pressable style={styles.backdropTap} onPress={onClose} />
 
-        {/* Drawer Container */}
-        <SafeAreaView style={styles.drawerContainer}>
+        {/* Drawer Container — slides in from left */}
+        <Animated.View
+          style={[
+            styles.drawerContainer,
+            {
+              paddingTop: Platform.OS === 'android' ? (insets.top) : insets.top,
+              transform: [{ translateX: slideAnim }],
+            },
+          ]}
+        >
           <View style={styles.drawerContent}>
             {/* Header: Logo + Close */}
             <View style={styles.header}>
@@ -178,18 +206,21 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
                 const IconComponent = item.icon;
 
                 return (
-                  <TouchableOpacity
+                  <Pressable
                     key={item.screen}
                     onPress={() => handleNavigate(item.screen)}
-                    style={styles.navItem}
-                    activeOpacity={0.7}
+                    style={({ pressed }) => [
+                      styles.navItem,
+                      pressed && styles.navItemPressed,
+                    ]}
+                    android_ripple={{ color: 'rgba(239,161,0,0.12)', borderless: false }}
                   >
                     <View style={styles.navIconBox}>
                       <IconComponent size={18} color={colors.gold} />
                     </View>
                     <Text style={styles.navLabel}>{item.label}</Text>
                     <ChevronRight size={16} color="rgba(255,255,255,0.2)" />
-                  </TouchableOpacity>
+                  </Pressable>
                 );
               })}
             </ScrollView>
@@ -207,7 +238,7 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
               <Text style={styles.footerTagline}>DISCIPLINE · STRENGTH · TRANSFORMATION</Text>
             </View>
           </View>
-        </SafeAreaView>
+        </Animated.View>
       </View>
     </Modal>
   );
@@ -227,16 +258,16 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
   drawerContainer: {
-    width: '82%',
-    maxWidth: 320,
+    width: 300,
+    maxWidth: '82%',
     backgroundColor: '#0D0F12',
     borderRightWidth: 1.2,
     borderRightColor: 'rgba(239, 161, 0, 0.3)',
     shadowColor: '#000',
-    shadowOffset: { width: 6, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 16,
-    elevation: 20,
+    shadowOffset: { width: 8, height: 0 },
+    shadowOpacity: 0.9,
+    shadowRadius: 20,
+    elevation: 24,
     height: '100%',
   },
   drawerContent: {
@@ -339,6 +370,10 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginBottom: 4,
     backgroundColor: 'transparent',
+    overflow: 'hidden',
+  },
+  navItemPressed: {
+    backgroundColor: 'rgba(239,161,0,0.08)',
   },
   navIconBox: {
     width: 32,
