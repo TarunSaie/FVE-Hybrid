@@ -1,5 +1,6 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Payment } from '@/types';
 import { formatCurrency } from '@/utils/format';
 import { formatDate } from '@/utils/date';
@@ -315,18 +316,50 @@ export function generateReceiptHtml(data: ReceiptData): string {
 export async function sharePdfReceipt(receiptData: ReceiptData): Promise<void> {
   const html = generateReceiptHtml(receiptData);
 
-  // Generate official PDF file
-  const { uri } = await Print.printToFileAsync({
+  // 1. Generate official PDF file in print cache
+  const { uri: tempUri, base64 } = await Print.printToFileAsync({
     html,
-    base64: false,
+    base64: true,
   });
+
+  // 2. Prepare destination in app cacheDirectory with a clean file name
+  const safeReceiptNo = (receiptData.receiptNumber || 'Receipt').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const targetDir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+  let shareUri = tempUri;
+
+  if (targetDir) {
+    const targetUri = `${targetDir}FVE_Receipt_${safeReceiptNo}.pdf`;
+    try {
+      const existing = await FileSystem.getInfoAsync(targetUri);
+      if (existing.exists) {
+        await FileSystem.deleteAsync(targetUri, { idempotent: true });
+      }
+      await FileSystem.copyAsync({
+        from: tempUri,
+        to: targetUri,
+      });
+      shareUri = targetUri;
+    } catch (copyErr) {
+      console.warn('[receiptPdf] copyAsync failed, trying base64 write fallback:', copyErr);
+      if (base64) {
+        try {
+          await FileSystem.writeAsStringAsync(targetUri, base64, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          shareUri = targetUri;
+        } catch (writeErr) {
+          console.error('[receiptPdf] base64 write fallback failed:', writeErr);
+        }
+      }
+    }
+  }
 
   const isAvailable = await Sharing.isAvailableAsync();
   if (!isAvailable) {
     throw new Error('Sharing is not available on this device');
   }
 
-  await Sharing.shareAsync(uri, {
+  await Sharing.shareAsync(shareUri, {
     UTI: '.pdf',
     mimeType: 'application/pdf',
     dialogTitle: `Share Receipt #${receiptData.receiptNumber} PDF to WhatsApp`,
