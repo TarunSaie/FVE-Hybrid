@@ -5,6 +5,7 @@ import { Payment } from '@/types';
 import { formatCurrency } from '@/utils/format';
 import { formatDate } from '@/utils/date';
 import { APP_NAME, TAGLINE, CHIRVEX_WEBSITE } from '@/constants/branding';
+import { GYM_LOGO_BASE64 } from '@/constants/logoBase64';
 
 export interface ReceiptData {
   receiptNumber: string;
@@ -87,10 +88,23 @@ export function generateReceiptHtml(data: ReceiptData): string {
     .header {
       display: flex;
       justify-content: space-between;
-      align-items: flex-start;
+      align-items: center;
       border-bottom: 1.5px solid rgba(239, 161, 0, 0.25);
       padding-bottom: 24px;
       margin-bottom: 28px;
+    }
+    .brand-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .brand-logo {
+      width: 60px;
+      height: 60px;
+      border-radius: 12px;
+      border: 1.5px solid rgba(239, 161, 0, 0.4);
+      background: #0A0D12;
+      object-fit: cover;
     }
     .brand-title {
       font-size: 28px;
@@ -233,9 +247,12 @@ export function generateReceiptHtml(data: ReceiptData): string {
 <body>
   <div class="receipt-card">
     <div class="header">
-      <div>
-        <div class="brand-title">${APP_NAME}</div>
-        <div class="brand-tagline">${TAGLINE}</div>
+      <div class="brand-left">
+        <img class="brand-logo" src="${GYM_LOGO_BASE64}" alt="FitVerse Elite" />
+        <div>
+          <div class="brand-title">${APP_NAME}</div>
+          <div class="brand-tagline">${TAGLINE}</div>
+        </div>
       </div>
       <div class="invoice-title-block">
         <div class="invoice-title">PAYMENT RECEIPT</div>

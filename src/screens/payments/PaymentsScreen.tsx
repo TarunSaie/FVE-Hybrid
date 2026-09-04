@@ -49,6 +49,20 @@ export function PaymentsScreen() {
   const { data: payments, isLoading, refetch } = useQuery({
     queryKey: ['mobile-payments', debouncedSearch, methodFilter],
     queryFn: async () => {
+      const term = debouncedSearch.trim();
+      let memberIds: string[] = [];
+
+      if (term) {
+        const { data: matchedMembers } = await supabase
+          .from('members')
+          .select('id')
+          .or(`full_name.ilike.%${term}%,member_id.ilike.%${term}%,mobile.ilike.%${term}%`);
+
+        if (matchedMembers && matchedMembers.length > 0) {
+          memberIds = matchedMembers.map((m) => m.id);
+        }
+      }
+
       let q = supabase
         .from('payments')
         .select('*, members(full_name, mobile, member_id, profile_photo), memberships(id, start_date, expiry_date, membership_plans(name))')
@@ -58,10 +72,16 @@ export function PaymentsScreen() {
         q = q.eq('payment_method', methodFilter);
       }
 
-      if (debouncedSearch.trim()) {
-        q = q.or(
-          `receipt_number.ilike.%${debouncedSearch.trim()}%,members.full_name.ilike.%${debouncedSearch.trim()}%,members.member_id.ilike.%${debouncedSearch.trim()}%`
-        );
+      if (term) {
+        if (memberIds.length > 0) {
+          q = q.or(
+            `receipt_number.ilike.%${term}%,transaction_reference.ilike.%${term}%,member_id.in.(${memberIds.join(',')})`
+          );
+        } else {
+          q = q.or(
+            `receipt_number.ilike.%${term}%,transaction_reference.ilike.%${term}%`
+          );
+        }
       }
 
       const { data, error } = await q;

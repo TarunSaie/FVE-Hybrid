@@ -11,9 +11,11 @@ import {
 } from 'react-native';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import QRCode from 'react-native-qrcode-svg';
-import { Share2, ArrowLeft, CheckCircle2, FileText, Printer } from 'lucide-react-native';
+import { Share2, ArrowLeft, CheckCircle2, FileText, Printer, Sparkles } from 'lucide-react-native';
+import * as Clipboard from 'expo-clipboard';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEButton } from '@/components/common/FVEButton';
+import { FVEModal } from '@/components/common/FVEModal';
 import { haptics } from '@/utils/haptics';
 import { Payment } from '@/types';
 import { colors } from '@/constants/colors';
@@ -50,6 +52,9 @@ export function PaymentReceiptScreen() {
   const dateStr = formatDate(payment.payment_date || payment.created_at);
 
   const [pdfGenerating, setPdfGenerating] = useState(false);
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+
+  const whatsAppReceiptText = `*FitVerse Elite Official Receipt*\nReceipt No: #${receiptNo}\nMember: ${memberName}${memberId ? ` (${memberId})` : ''}\nPlan: ${planName}\nAmount Paid: ${formatCurrency(payment.amount)}\nPayment Method: ${payment.payment_method}\nDate: ${dateStr}\n\n*DISCIPLINE • STRENGTH • TRANSFORMATION*\nFitVerse Elite Gym Management\nPowered by Chirvex (https://chirvex.in/)`;
 
   const handleSharePdf = async () => {
     if (!payment) return;
@@ -61,6 +66,33 @@ export function PaymentReceiptScreen() {
     } catch (err: unknown) {
       haptics.error();
       Alert.alert('Error', (err as Error).message || 'Failed to generate receipt PDF');
+    } finally {
+      setPdfGenerating(false);
+    }
+  };
+
+  const handleShareBoth = async () => {
+    if (!payment) return;
+    setShowWhatsAppModal(false);
+    haptics.medium();
+    setPdfGenerating(true);
+    try {
+      // 1. Copy formatted text to clipboard
+      await Clipboard.setStringAsync(whatsAppReceiptText);
+
+      // 2. Generate and open PDF sharing
+      const receiptData = buildReceiptDataFromPayment(payment);
+      await sharePdfReceipt(receiptData);
+
+      // 3. User feedback
+      Alert.alert(
+        'Receipt Ready to Share',
+        '✓ Receipt summary text copied to your clipboard!\n\nYou can paste it alongside the attached PDF invoice in WhatsApp.',
+        [{ text: 'OK' }]
+      );
+    } catch (err: unknown) {
+      haptics.error();
+      Alert.alert('Error', (err as Error).message || 'Failed to share receipt');
     } finally {
       setPdfGenerating(false);
     }
@@ -79,12 +111,10 @@ export function PaymentReceiptScreen() {
   };
 
   const handleWhatsApp = () => {
-    const text = `*FitVerse Elite Official Receipt*\nReceipt No: #${receiptNo}\nMember: ${memberName}${memberId ? ` (${memberId})` : ''}\nPlan: ${planName}\nAmount Paid: ${formatCurrency(payment.amount)}\nPayment Method: ${payment.payment_method}\nDate: ${dateStr}\n\n*DISCIPLINE • STRENGTH • TRANSFORMATION*\nFitVerse Elite Gym Management\nPowered by Chirvex (https://chirvex.in/)`;
-
     if (memberMobile) {
-      openWhatsAppLink(memberMobile, text);
+      openWhatsAppLink(memberMobile, whatsAppReceiptText);
     } else {
-      openWhatsAppLink('91', text);
+      openWhatsAppLink('91', whatsAppReceiptText);
     }
   };
 
@@ -221,25 +251,16 @@ export function PaymentReceiptScreen() {
         {/* Action Buttons */}
         <View style={styles.actionButtonGroup}>
           <FVEButton
-            title="SEND RECEIPT PDF TO WHATSAPP"
-            onPress={handleSharePdf}
+            title="SHARE TO WHATSAPP"
+            onPress={() => {
+              haptics.medium();
+              setShowWhatsAppModal(true);
+            }}
             loading={pdfGenerating}
             variant="gold"
             size="lg"
-            icon={<FileText size={18} color="#050505" />}
+            icon={<Share2 size={18} color="#050505" />}
             style={styles.actionButton}
-          />
-
-          <FVEButton
-            title="SEND WHATSAPP TEXT MESSAGE"
-            onPress={() => {
-              haptics.medium();
-              handleWhatsApp();
-            }}
-            variant="outline"
-            size="md"
-            icon={<Share2 size={16} color="#25D366" />}
-            style={{ marginTop: 10 }}
           />
 
           <FVEButton
@@ -248,10 +269,82 @@ export function PaymentReceiptScreen() {
             variant="ghost"
             size="md"
             icon={<Printer size={16} color={colors.gold} />}
-            style={{ marginTop: 6 }}
+            style={{ marginTop: 8 }}
           />
         </View>
       </ScrollView>
+
+      {/* Unified WhatsApp Sharing Modal */}
+      <FVEModal
+        visible={showWhatsAppModal}
+        onClose={() => setShowWhatsAppModal(false)}
+        title="SHARE TO WHATSAPP"
+        subtitle={`Member: ${memberName}${memberMobile ? ` (${memberMobile})` : ''}`}
+      >
+        <View style={styles.modalOptionList}>
+          {/* Option 1: Send Both (Recommended) */}
+          <TouchableOpacity
+            style={[styles.modalOptionCard, styles.modalOptionCardHighlight]}
+            activeOpacity={0.7}
+            onPress={handleShareBoth}
+          >
+            <View style={[styles.modalOptionIconBox, { backgroundColor: 'rgba(239, 161, 0, 0.15)', borderColor: colors.gold }]}>
+              <Sparkles size={20} color={colors.gold} />
+            </View>
+            <View style={styles.modalOptionTextContainer}>
+              <View style={styles.modalOptionTitleRow}>
+                <Text style={[styles.modalOptionTitle, { color: colors.gold }]}>Send Both (PDF & Text)</Text>
+                <View style={styles.recommendedBadge}>
+                  <Text style={styles.recommendedBadgeText}>BEST</Text>
+                </View>
+              </View>
+              <Text style={styles.modalOptionDesc}>
+                Copies receipt message to clipboard & attaches official branded PDF invoice in WhatsApp.
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* Option 2: Send PDF Document Only */}
+          <TouchableOpacity
+            style={styles.modalOptionCard}
+            activeOpacity={0.7}
+            onPress={() => {
+              setShowWhatsAppModal(false);
+              handleSharePdf();
+            }}
+          >
+            <View style={[styles.modalOptionIconBox, { backgroundColor: 'rgba(239, 161, 0, 0.08)', borderColor: 'rgba(239, 161, 0, 0.3)' }]}>
+              <FileText size={20} color={colors.gold} />
+            </View>
+            <View style={styles.modalOptionTextContainer}>
+              <Text style={styles.modalOptionTitle}>Send PDF Document</Text>
+              <Text style={styles.modalOptionDesc}>
+                Official invoice PDF with gym logo, QR code, and full validity breakdown.
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* Option 3: Send WhatsApp Text Message Only */}
+          <TouchableOpacity
+            style={styles.modalOptionCard}
+            activeOpacity={0.7}
+            onPress={() => {
+              setShowWhatsAppModal(false);
+              handleWhatsApp();
+            }}
+          >
+            <View style={[styles.modalOptionIconBox, { backgroundColor: 'rgba(37, 211, 102, 0.12)', borderColor: 'rgba(37, 211, 102, 0.3)' }]}>
+              <Share2 size={20} color="#25D366" />
+            </View>
+            <View style={styles.modalOptionTextContainer}>
+              <Text style={styles.modalOptionTitle}>Send WhatsApp Text Only</Text>
+              <Text style={styles.modalOptionDesc}>
+                Opens chat directly with {memberMobile || 'member'} and pre-fills payment receipt text.
+              </Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      </FVEModal>
     </View>
   );
 }
@@ -415,5 +508,68 @@ const styles = StyleSheet.create({
   actionButtonGroup: {
     marginTop: 8,
     marginBottom: 20,
+  },
+  modalOptionList: {
+    gap: 12,
+    paddingVertical: 6,
+  },
+  modalOptionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0E1117',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 14,
+    padding: 16,
+    gap: 14,
+  },
+  modalOptionCardHighlight: {
+    borderColor: 'rgba(239, 161, 0, 0.45)',
+    backgroundColor: 'rgba(239, 161, 0, 0.04)',
+  },
+  modalOptionIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalOptionTextContainer: {
+    flex: 1,
+  },
+  modalOptionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  modalOptionTitle: {
+    color: '#FFFFFF',
+    fontSize: typography.sizes.sm,
+    fontFamily: typography.fonts.orbitron,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  recommendedBadge: {
+    backgroundColor: 'rgba(239, 161, 0, 0.2)',
+    borderWidth: 1,
+    borderColor: colors.gold,
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  recommendedBadgeText: {
+    color: colors.gold,
+    fontSize: 9,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  modalOptionDesc: {
+    color: colors.textSecondary,
+    fontSize: 11,
+    fontFamily: typography.fonts.inter,
+    lineHeight: 15,
   },
 });
