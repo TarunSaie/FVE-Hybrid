@@ -10,9 +10,8 @@ import {
   TouchableOpacity,
   Platform,
   StatusBar,
-  ScrollView,
-  KeyboardAvoidingView,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Mail, Lock, Eye, EyeOff, ShieldCheck, ArrowRight } from 'lucide-react-native';
@@ -24,8 +23,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { haptics } from '@/utils/haptics';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Isolated uncontrolled input — NO `value` prop, so parent re-renders never
-// touch the TextInput's native state. Focus is 100% owned by the OS.
+// Isolated uncontrolled input — NO `value` prop.
+// Typing never triggers a parent re-render; focus is 100% owned by the OS.
 // ─────────────────────────────────────────────────────────────────────────────
 interface NativeFieldProps {
   label: string;
@@ -96,8 +95,7 @@ const NativeField = memo(function NativeField({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Eye toggle — self-contained so its state never reaches the parent form.
-// Uses setNativeProps to flip secureTextEntry without any React re-render.
+// Self-contained eye toggle — uses setNativeProps so no parent re-render
 // ─────────────────────────────────────────────────────────────────────────────
 interface EyeButtonProps {
   passwordRef: React.RefObject<TextInput | null>;
@@ -110,7 +108,6 @@ const EyeButton = memo(function EyeButton({ passwordRef }: EyeButtonProps) {
     haptics.selection();
     setVisible((prev) => {
       const next = !prev;
-      // setNativeProps bypasses React reconciliation — no parent re-render
       (passwordRef.current as any)?.setNativeProps({ secureTextEntry: !next });
       return next;
     });
@@ -139,7 +136,7 @@ export function LoginScreen() {
   const insets = useSafeAreaInsets();
   const { login } = useAuth();
 
-  // Values stored in refs — no state, so typing never triggers a parent re-render
+  // Values in refs — typing never triggers a parent re-render
   const emailVal = useRef('');
   const passwordVal = useRef('');
   const [loading, setLoading] = useState(false);
@@ -147,17 +144,9 @@ export function LoginScreen() {
   const emailRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
 
-  const handleEmailChange = useCallback((t: string) => {
-    emailVal.current = t;
-  }, []);
-
-  const handlePasswordChange = useCallback((t: string) => {
-    passwordVal.current = t;
-  }, []);
-
-  const focusPassword = useCallback(() => {
-    passwordRef.current?.focus();
-  }, []);
+  const handleEmailChange = useCallback((t: string) => { emailVal.current = t; }, []);
+  const handlePasswordChange = useCallback((t: string) => { passwordVal.current = t; }, []);
+  const focusPassword = useCallback(() => { passwordRef.current?.focus(); }, []);
 
   const handleLogin = useCallback(async () => {
     Keyboard.dismiss();
@@ -220,114 +209,114 @@ export function LoginScreen() {
         pointerEvents="none"
       />
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.kav}
-        keyboardVerticalOffset={0}
+      {/*
+        KeyboardAwareScrollView automatically scrolls the focused input
+        into view when the keyboard appears — no manual measurement needed.
+      */}
+      <KeyboardAwareScrollView
+        style={styles.scroll}
+        contentContainerStyle={[
+          styles.scrollContent,
+          {
+            paddingTop: Math.max(insets.top + 16, 28),
+            paddingBottom: Math.max(insets.bottom + 32, 40),
+          },
+        ]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        bounces
+        enableOnAndroid
+        extraScrollHeight={Platform.OS === 'ios' ? 24 : 80}
+        keyboardOpeningTime={0}
       >
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={[
-            styles.scrollContent,
-            {
-              paddingTop: Math.max(insets.top + 16, 28),
-              paddingBottom: Math.max(insets.bottom + 32, 40),
-            },
-          ]}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="none"
-          showsVerticalScrollIndicator={false}
-          bounces
-        >
-          {/* ── Brand Hero ── */}
-          <View style={styles.hero}>
-            <View style={styles.logoWrap}>
-              <Image
-                source={require('@/../assets/logo.png')}
-                style={styles.logo}
-                resizeMode="contain"
-              />
-              <View style={styles.logoRing} />
-            </View>
-            <Text style={styles.brandTitle}>FITVERSE ELITE</Text>
-            <Text style={styles.brandTagline}>DISCIPLINE · STRENGTH · TRANSFORMATION</Text>
-            <View style={styles.welcomeWrap}>
-              <Text style={styles.welcomeHeading}>Sign In</Text>
-              <Text style={styles.welcomeSub}>
-                Access your gym operational control center
-              </Text>
-            </View>
+        {/* ── Brand Hero ── */}
+        <View style={styles.hero}>
+          <View style={styles.logoWrap}>
+            <Image
+              source={require('@/../assets/logo.png')}
+              style={styles.logo}
+              resizeMode="contain"
+            />
+            <View style={styles.logoRing} />
           </View>
-
-          {/* ── Form Card ── */}
-          <View style={styles.card}>
-            <NativeField
-              label="EMAIL ADDRESS"
-              placeholder="name@fitverse.com"
-              icon={<Mail size={18} color={colors.gold} />}
-              onChangeText={handleEmailChange}
-              keyboardType="email-address"
-              returnKeyType="next"
-              onSubmitEditing={focusPassword}
-              blurOnSubmit={false}
-              inputRef={emailRef}
-            />
-
-            <NativeField
-              label="PASSWORD"
-              placeholder="Enter password"
-              icon={<Lock size={18} color={colors.gold} />}
-              onChangeText={handlePasswordChange}
-              secureTextEntry
-              returnKeyType="go"
-              onSubmitEditing={handleLogin}
-              blurOnSubmit
-              inputRef={passwordRef}
-              rightElement={<EyeButton passwordRef={passwordRef} />}
-            />
-
-            {/* Assistance Row */}
-            <View style={styles.assistRow}>
-              <View style={styles.securityPill}>
-                <ShieldCheck size={13} color={colors.gold} />
-                <Text style={styles.securityPillText}>Encrypted Session</Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => {
-                  haptics.light();
-                  Alert.alert(
-                    'Account Assistance',
-                    'Contact your gym administrator to reset your login credentials.'
-                  );
-                }}
-                activeOpacity={0.7}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Text style={styles.needHelp}>Need Help?</Text>
-              </TouchableOpacity>
-            </View>
-
-            <FVEButton
-              title="ENTER FITVERSE"
-              onPress={handleLogin}
-              loading={loading}
-              variant="gold"
-              size="lg"
-              icon={<ArrowRight size={18} color="#050505" strokeWidth={2.5} />}
-              iconPosition="right"
-              style={styles.submitBtn}
-            />
-          </View>
-
-          {/* ── Footer ── */}
-          <View style={styles.footer}>
-            <Text style={styles.footerBrand}>FitVerse Elite Mobile OS</Text>
-            <Text style={styles.footerCredit}>
-              Engineered for Gym Owners & Staff · Powered by Chirvex
+          <Text style={styles.brandTitle}>FITVERSE ELITE</Text>
+          <Text style={styles.brandTagline}>DISCIPLINE · STRENGTH · TRANSFORMATION</Text>
+          <View style={styles.welcomeWrap}>
+            <Text style={styles.welcomeHeading}>Sign In</Text>
+            <Text style={styles.welcomeSub}>
+              Access your gym operational control center
             </Text>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </View>
+
+        {/* ── Form Card ── */}
+        <View style={styles.card}>
+          <NativeField
+            label="EMAIL ADDRESS"
+            placeholder="name@fitverse.com"
+            icon={<Mail size={18} color={colors.gold} />}
+            onChangeText={handleEmailChange}
+            keyboardType="email-address"
+            returnKeyType="next"
+            onSubmitEditing={focusPassword}
+            blurOnSubmit={false}
+            inputRef={emailRef}
+          />
+
+          <NativeField
+            label="PASSWORD"
+            placeholder="Enter password"
+            icon={<Lock size={18} color={colors.gold} />}
+            onChangeText={handlePasswordChange}
+            secureTextEntry
+            returnKeyType="go"
+            onSubmitEditing={handleLogin}
+            blurOnSubmit
+            inputRef={passwordRef}
+            rightElement={<EyeButton passwordRef={passwordRef} />}
+          />
+
+          {/* Assistance Row */}
+          <View style={styles.assistRow}>
+            <View style={styles.securityPill}>
+              <ShieldCheck size={13} color={colors.gold} />
+              <Text style={styles.securityPillText}>Encrypted Session</Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => {
+                haptics.light();
+                Alert.alert(
+                  'Account Assistance',
+                  'Contact your gym administrator to reset your login credentials.'
+                );
+              }}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.needHelp}>Need Help?</Text>
+            </TouchableOpacity>
+          </View>
+
+          <FVEButton
+            title="ENTER FITVERSE"
+            onPress={handleLogin}
+            loading={loading}
+            variant="gold"
+            size="lg"
+            icon={<ArrowRight size={18} color="#050505" strokeWidth={2.5} />}
+            iconPosition="right"
+            style={styles.submitBtn}
+          />
+        </View>
+
+        {/* ── Footer ── */}
+        <View style={styles.footer}>
+          <Text style={styles.footerBrand}>FitVerse Elite Mobile OS</Text>
+          <Text style={styles.footerCredit}>
+            Engineered for Gym Owners & Staff · Powered by Chirvex
+          </Text>
+        </View>
+      </KeyboardAwareScrollView>
     </View>
   );
 }
@@ -344,16 +333,12 @@ const styles = StyleSheet.create({
     right: 0,
     height: 320,
   },
-  kav: {
-    flex: 1,
-  },
   scroll: {
     flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 20,
-    alignItems: 'center',
     justifyContent: 'center',
   },
   // ── Hero ──
@@ -421,6 +406,7 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 420,
+    alignSelf: 'center',
     backgroundColor: '#0D1015',
     borderRadius: 20,
     borderWidth: 1,
