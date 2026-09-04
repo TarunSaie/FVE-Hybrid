@@ -8,13 +8,15 @@
     "userInterfaceStyle": "dark",
     "backgroundColor": "#050505",
     "splash": {
-      "image": "./assets/icon.png",
+      "image": "./assets/splash-icon.png",
       "backgroundColor": "#050505",
       "resizeMode": "contain"
     },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.fitverse.elite",
+      "userInterfaceStyle": "dark",
+      "backgroundColor": "#050505",
       "infoPlist": {
         "NSCameraUsageDescription": "FitVerse Elite uses the camera to scan member QR codes for gym attendance check-in."
       }
@@ -22,15 +24,25 @@
     "android": {
       "package": "com.fitverse.elite",
       "backgroundColor": "#050505",
+      "userInterfaceStyle": "dark",
       "softwareKeyboardLayoutMode": "resize",
+      "androidStatusBar": {
+        "backgroundColor": "#050505",
+        "barStyle": "light-content",
+        "translucent": true
+      },
+      "androidNavigationBar": {
+        "backgroundColor": "#050505",
+        "barStyle": "light-content"
+      },
       "splash": {
-        "image": "./assets/icon.png",
+        "image": "./assets/splash-icon.png",
         "backgroundColor": "#050505",
         "resizeMode": "contain"
       },
       "adaptiveIcon": {
         "backgroundColor": "#050505",
-        "foregroundImage": "./assets/icon.png"
+        "foregroundImage": "./assets/android-icon-foreground.png"
       },
       "permissions": [
         "CAMERA"
@@ -49,9 +61,13 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#050505",
-          "image": "./assets/icon.png",
-          "imageWidth": 180,
-          "resizeMode": "contain"
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "dark": {
+            "backgroundColor": "#050505",
+            "image": "./assets/splash-icon.png"
+          }
         }
       ]
     ]

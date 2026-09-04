@@ -1,4 +1,5 @@
 import React from 'react';
+import { View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
@@ -24,7 +25,7 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import { RootNavigator } from '@/navigation/RootNavigator';
 import { FVELoading } from '@/components/common/FVELoading';
 
-// Prevent native splash screen from auto-hiding before fonts and assets are ready
+// Keep native splash screen visible until fonts or our initial dark UI is ready
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const queryClient = new QueryClient({
@@ -55,12 +56,19 @@ export default function App() {
     }
   }, [fontsLoaded]);
 
+  // While fonts are loading, display our luxury animated dark-gold splash screen
+  // instead of a blank white screen!
   if (!fontsLoaded) {
-    return null;
+    return (
+      <View style={{ flex: 1, backgroundColor: '#050505' }}>
+        <StatusBar style="light" />
+        <FVELoading message="INITIALIZING FITVERSE ELITE" />
+      </View>
+    );
   }
 
   return (
-    <SafeAreaProvider>
+    <SafeAreaProvider style={{ flex: 1, backgroundColor: '#050505' }}>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <NavigationContainer
