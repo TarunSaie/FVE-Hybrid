@@ -87,6 +87,11 @@ export function FVECard({
           onPress={handlePress}
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
+          android_ripple={{
+            color: variant === 'blue' ? 'rgba(56, 189, 248, 0.12)' : 'rgba(239, 161, 0, 0.12)',
+            borderless: false,
+          }}
+          style={{ borderRadius: 18, overflow: 'hidden' }}
         >
           {cardContent}
         </Pressable>

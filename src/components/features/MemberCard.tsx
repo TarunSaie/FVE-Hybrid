@@ -53,6 +53,7 @@ export function MemberCard({ member, onPress }: MemberCardProps) {
         onPress={handlePress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
+        android_ripple={{ color: 'rgba(239, 161, 0, 0.12)', borderless: false }}
         style={styles.card}
       >
         <View style={styles.contentRow}>

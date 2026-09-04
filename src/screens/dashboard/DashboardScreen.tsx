@@ -378,7 +378,10 @@ export function DashboardScreen() {
         {/* Primary Bento Hero: Month Revenue (or Total Strength) */}
         {isFinancialVisible ? (
           <TouchableOpacity
-            onPress={() => navigation.navigate('Reports')}
+            onPress={() => {
+              haptics.light();
+              navigation.navigate('Reports');
+            }}
             activeOpacity={0.9}
             style={styles.bentoHeroCard}
           >
@@ -447,7 +450,10 @@ export function DashboardScreen() {
         <View style={styles.bentoRow}>
           {/* Today Check-ins */}
           <TouchableOpacity
-            onPress={() => navigation.navigate('MainTabs', { screen: 'Attendance' })}
+            onPress={() => {
+              haptics.light();
+              navigation.navigate('MainTabs', { screen: 'Attendance' });
+            }}
             style={[styles.bentoCard, styles.bentoCardBlue]}
             activeOpacity={0.85}
           >
@@ -466,7 +472,10 @@ export function DashboardScreen() {
 
           {/* Expiring Soon */}
           <TouchableOpacity
-            onPress={() => navigation.navigate('MainTabs', { screen: 'Members' })}
+            onPress={() => {
+              haptics.light();
+              navigation.navigate('MainTabs', { screen: 'Members' });
+            }}
             style={[styles.bentoCard, styles.bentoCardAmber]}
             activeOpacity={0.85}
           >

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   Modal,
   View,
@@ -9,6 +9,8 @@ import {
   SafeAreaView,
   Pressable,
   BackHandler,
+  Animated,
+  PanResponder,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { X } from 'lucide-react-native';
@@ -31,10 +33,18 @@ export function FVEModal({
   children,
   subtitle,
 }: FVEModalProps) {
+  const translateY = useRef(new Animated.Value(0)).current;
+
   const handleClose = () => {
     haptics.light();
     onClose();
   };
+
+  useEffect(() => {
+    if (visible) {
+      translateY.setValue(0);
+    }
+  }, [visible, translateY]);
 
   useEffect(() => {
     if (!visible) return;
@@ -44,6 +54,37 @@ export function FVEModal({
     });
     return () => backSub.remove();
   }, [visible]);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 5,
+      onPanResponderMove: (_, gestureState) => {
+        if (gestureState.dy > 0) {
+          translateY.setValue(gestureState.dy);
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dy > 90 || gestureState.vy > 0.65) {
+          haptics.light();
+          Animated.timing(translateY, {
+            toValue: 600,
+            duration: 180,
+            useNativeDriver: true,
+          }).start(() => {
+            translateY.setValue(0);
+            onClose();
+          });
+        } else {
+          Animated.spring(translateY, {
+            toValue: 0,
+            useNativeDriver: true,
+            bounciness: 4,
+          }).start();
+        }
+      },
+    })
+  ).current;
 
   return (
     <Modal
@@ -58,14 +99,14 @@ export function FVEModal({
         <Pressable style={styles.backdropTap} onPress={handleClose} />
 
         <SafeAreaView pointerEvents="box-none" style={styles.safeArea}>
-          <View style={styles.sheet}>
-            {/* Native Sheet Grab Handle */}
-            <View style={styles.handleContainer}>
+          <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]}>
+            {/* Native Sheet Grab Handle with Drag Gesture */}
+            <View {...panResponder.panHandlers} style={styles.handleContainer}>
               <View style={styles.sheetHandle} />
             </View>
 
             {/* Header */}
-            <View style={styles.header}>
+            <View {...panResponder.panHandlers} style={styles.header}>
               <View style={styles.headerTextContainer}>
                 <Text numberOfLines={1} style={styles.title}>
                   {title}
@@ -101,7 +142,7 @@ export function FVEModal({
             >
               {children}
             </KeyboardAwareScrollView>
-          </View>
+          </Animated.View>
         </SafeAreaView>
       </View>
     </Modal>

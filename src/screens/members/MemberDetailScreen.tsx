@@ -37,6 +37,8 @@ import { FVEBadge } from '@/components/common/FVEBadge';
 import { FVEButton } from '@/components/common/FVEButton';
 import { MemberFormModal } from '@/components/features/MemberFormModal';
 import { PaymentFormModal } from '@/components/features/PaymentFormModal';
+import { AttendanceCalendarModal } from '@/components/features/AttendanceCalendarModal';
+import { WorkoutPlanModal } from '@/components/features/WorkoutPlanModal';
 import { Member, Membership, Payment, Attendance, WorkoutPlan } from '@/types';
 import { supabase } from '@/api/supabase';
 import { colors } from '@/constants/colors';
@@ -57,6 +59,8 @@ export function MemberDetailScreen() {
 
   const [showEditModal, setShowEditModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showCalendarModal, setShowCalendarModal] = useState(false);
+  const [showWorkoutModal, setShowWorkoutModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   // Fetch Member Details
@@ -533,7 +537,19 @@ export function MemberDetailScreen() {
 
         {/* Attendance History */}
         <View style={styles.sectionCard}>
-          <Text style={styles.cardHeaderTitle}>RECENT ATTENDANCE</Text>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.cardHeaderTitle}>RECENT ATTENDANCE</Text>
+            <TouchableOpacity
+              onPress={() => {
+                haptics.light();
+                setShowCalendarModal(true);
+              }}
+              style={styles.newPayLink}
+            >
+              <Calendar size={13} color={colors.gold} />
+              <Text style={styles.newPayLinkText}>View Calendar</Text>
+            </TouchableOpacity>
+          </View>
           {(!attendanceLogs || attendanceLogs.length === 0) ? (
             <Text style={styles.emptyText}>No check-ins recorded yet.</Text>
           ) : (
@@ -557,7 +573,19 @@ export function MemberDetailScreen() {
 
         {/* Workout Plans */}
         <View style={styles.sectionCard}>
-          <Text style={styles.cardHeaderTitle}>ASSIGNED WORKOUT PLANS</Text>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.cardHeaderTitle}>ASSIGNED WORKOUT PLANS</Text>
+            <TouchableOpacity
+              onPress={() => {
+                haptics.light();
+                setShowWorkoutModal(true);
+              }}
+              style={styles.newPayLink}
+            >
+              <Dumbbell size={13} color={colors.gold} />
+              <Text style={styles.newPayLinkText}>+ Assign Plan</Text>
+            </TouchableOpacity>
+          </View>
           {(!workouts || workouts.length === 0) ? (
             <Text style={styles.emptyText}>No workout plans assigned yet.</Text>
           ) : (
@@ -609,6 +637,30 @@ export function MemberDetailScreen() {
         }}
         preselectedMemberId={memberId}
       />
+
+      {/* Attendance Calendar Modal */}
+      {member && (
+        <AttendanceCalendarModal
+          visible={showCalendarModal}
+          onClose={() => setShowCalendarModal(false)}
+          member={member}
+          membershipStartDate={activeMembership?.start_date}
+          membershipExpiryDate={activeMembership?.expiry_date}
+        />
+      )}
+
+      {/* Workout Plan Modal */}
+      {member && (
+        <WorkoutPlanModal
+          visible={showWorkoutModal}
+          onClose={() => setShowWorkoutModal(false)}
+          onSaved={() => {
+            qc.invalidateQueries({ queryKey: ['member-workouts', memberId] });
+          }}
+          memberId={member.id}
+          memberName={member.full_name}
+        />
+      )}
     </View>
   );
 }

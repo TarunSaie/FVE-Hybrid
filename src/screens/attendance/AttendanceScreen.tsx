@@ -27,6 +27,7 @@ import { FVEButton } from '@/components/common/FVEButton';
 import { AttendanceItem } from '@/components/features/AttendanceItem';
 import { FVEEmptyState } from '@/components/common/FVEEmptyState';
 import { FVEModal } from '@/components/common/FVEModal';
+import { AttendanceCalendarModal } from '@/components/features/AttendanceCalendarModal';
 import { Attendance, Member } from '@/types';
 import { supabase } from '@/api/supabase';
 import { colors } from '@/constants/colors';
@@ -49,6 +50,11 @@ export function AttendanceScreen() {
   const [methodFilter, setMethodFilter] = useState<'ALL' | 'QR' | 'MANUAL'>('ALL');
   const [showManualModal, setShowManualModal] = useState(false);
   const [manualLoading, setManualLoading] = useState(false);
+  const [selectedMemberForCalendar, setSelectedMemberForCalendar] = useState<{
+    id: string;
+    full_name: string;
+    member_id?: string | null;
+  } | null>(null);
 
   const handlePrevDay = () => {
     haptics.light();
@@ -269,7 +275,21 @@ export function AttendanceScreen() {
       <FlatList
         data={logs || []}
         keyExtractor={item => item.id}
-        renderItem={({ item }) => <AttendanceItem item={item} />}
+        renderItem={({ item }) => (
+          <AttendanceItem
+            item={item}
+            onPress={() => {
+              if (item.members) {
+                haptics.light();
+                setSelectedMemberForCalendar({
+                  id: item.member_id,
+                  full_name: item.members.full_name || 'Member',
+                  member_id: item.members.member_id,
+                });
+              }
+            }}
+          />
+        )}
         contentContainerStyle={styles.listContent}
         keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
@@ -320,6 +340,15 @@ export function AttendanceScreen() {
           ))}
         </View>
       </FVEModal>
+
+      {/* Interactive Monthly Attendance Calendar Modal */}
+      {selectedMemberForCalendar && (
+        <AttendanceCalendarModal
+          visible={!!selectedMemberForCalendar}
+          onClose={() => setSelectedMemberForCalendar(null)}
+          member={selectedMemberForCalendar}
+        />
+      )}
     </View>
   );
 }

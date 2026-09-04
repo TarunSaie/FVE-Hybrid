@@ -90,6 +90,7 @@ export function FVEButton({
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
           disabled={!isInteractive}
+          android_ripple={{ color: 'rgba(0, 0, 0, 0.25)', borderless: false }}
           style={[styles.base, disabled && styles.disabled]}
         >
           <LinearGradient
@@ -144,6 +145,7 @@ export function FVEButton({
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
           disabled={!isInteractive}
+          android_ripple={{ color: 'rgba(255, 255, 255, 0.25)', borderless: false }}
           style={[styles.base, disabled && styles.disabled]}
         >
           <LinearGradient
@@ -201,6 +203,10 @@ export function FVEButton({
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         disabled={!isInteractive}
+        android_ripple={{
+          color: variant === 'danger' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(239, 161, 0, 0.18)',
+          borderless: false,
+        }}
         style={[
           styles.base,
           styles.outlineBase,
