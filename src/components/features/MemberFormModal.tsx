@@ -58,7 +58,7 @@ export function MemberFormModal({
   const heightRef = useRef('');
   const weightRef = useRef('');
   const [bloodGroup, setBloodGroup] = useState('');
-  const [address, setAddress] = useState('');
+  const addressRef = useRef('');
   const emergencyContactRef = useRef('');
   const notesRef = useRef('');
   const [profilePhoto, setProfilePhoto] = useState('');
@@ -82,7 +82,7 @@ export function MemberFormModal({
       heightRef.current = member.height || '';
       weightRef.current = member.weight || '';
       setBloodGroup(member.blood_group || '');
-      setAddress(member.address || '');
+      addressRef.current = member.address || '';
       emergencyContactRef.current = member.emergency_contact || '';
       notesRef.current = member.notes || '';
       setProfilePhoto(member.profile_photo || '');
@@ -98,7 +98,7 @@ export function MemberFormModal({
       heightRef.current = '';
       weightRef.current = '';
       setBloodGroup('');
-      setAddress('');
+      addressRef.current = '';
       emergencyContactRef.current = '';
       notesRef.current = '';
       setProfilePhoto('');
@@ -203,7 +203,7 @@ export function MemberFormModal({
     if (!gender) {
       errs.gender = 'Please select a gender';
     }
-    if (!address.trim() && !notesRef.current) {
+    if (!addressRef.current.trim() && !notesRef.current) {
       errs.address = 'Residential address is required';
     }
     if (!joiningDate.trim()) {
@@ -244,7 +244,7 @@ export function MemberFormModal({
         height: heightRef.current.trim() || null,
         weight: weightRef.current.trim() || null,
         blood_group: bloodGroup.trim() || null,
-        address: address.trim(),
+        address: addressRef.current.trim(),
         emergency_contact: emergencyContactRef.current.trim() || null,
         notes: notesRef.current.trim() || null,
         profile_photo: profilePhoto.trim() || null,
@@ -542,8 +542,8 @@ export function MemberFormModal({
 
           <FVEInput
             label="RESIDENTIAL ADDRESS *"
-            value={address}
-            onChangeText={setAddress}
+            defaultValue={addressRef.current}
+            onChangeText={(t) => { addressRef.current = t; }}
             placeholder="Complete street, apartment or locality..."
             multiline
             numberOfLines={3}

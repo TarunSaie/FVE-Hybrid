@@ -1,23 +1,20 @@
-import React, { useState, useEffect, forwardRef } from 'react';
+import React, { forwardRef } from 'react';
 import {
-  KeyboardAvoidingView,
-  ScrollView,
-  Platform,
   StyleSheet,
   ViewStyle,
   StyleProp,
-  ScrollViewProps,
-  Keyboard,
+  Platform,
 } from 'react-native';
+import { KeyboardAwareScrollView, KeyboardAwareScrollViewProps } from 'react-native-keyboard-aware-scroll-view';
 
-export interface FVEKeyboardAwareContainerProps extends ScrollViewProps {
+export interface FVEKeyboardAwareContainerProps extends KeyboardAwareScrollViewProps {
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   contentContainerStyle?: StyleProp<ViewStyle>;
   extraScrollHeight?: number;
 }
 
-export const FVEKeyboardAwareContainer = forwardRef<ScrollView, FVEKeyboardAwareContainerProps>(
+export const FVEKeyboardAwareContainer = forwardRef<KeyboardAwareScrollView, FVEKeyboardAwareContainerProps>(
   function FVEKeyboardAwareContainer(
     {
       children,
@@ -30,55 +27,25 @@ export const FVEKeyboardAwareContainer = forwardRef<ScrollView, FVEKeyboardAware
     },
     ref
   ) {
-    const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
-
-    useEffect(() => {
-      const showSub = Keyboard.addListener(
-        Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-        () => setIsKeyboardVisible(true)
-      );
-      const hideSub = Keyboard.addListener(
-        Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-        () => setIsKeyboardVisible(false)
-      );
-      return () => {
-        showSub.remove();
-        hideSub.remove();
-      };
-    }, []);
-
-    // On iOS, KeyboardAvoidingView (behavior="padding") dynamically adjusts its height.
-    // On Android, softwareKeyboardLayoutMode="resize" shrinks the window.
-    // Provide calibrated bottom clearance so inputs can be freely scrolled above the keyboard.
-    const dynamicBottomPadding = isKeyboardVisible
-      ? (Platform.OS === 'ios' ? 40 : 120)
-      : extraScrollHeight;
-
     return (
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      <KeyboardAwareScrollView
+        ref={ref}
         style={[styles.container, style]}
+        contentContainerStyle={[styles.content, contentContainerStyle]}
+        keyboardShouldPersistTaps={keyboardShouldPersistTaps}
+        keyboardDismissMode={keyboardDismissMode}
+        showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
+        bounces={true}
+        enableOnAndroid={true}
+        enableAutomaticScroll={true}
+        extraScrollHeight={Platform.OS === 'ios' ? 24 : extraScrollHeight}
+        keyboardOpeningTime={0}
+        enableResetScrollToCoords={false}
+        {...rest}
       >
-        <ScrollView
-          ref={ref}
-          style={styles.scroll}
-          contentContainerStyle={[
-            styles.content,
-            contentContainerStyle,
-            { paddingBottom: dynamicBottomPadding },
-          ]}
-          keyboardShouldPersistTaps={keyboardShouldPersistTaps}
-          keyboardDismissMode={keyboardDismissMode}
-          showsVerticalScrollIndicator={false}
-          scrollEventThrottle={16}
-          bounces={true}
-          alwaysBounceVertical={true}
-          overScrollMode="always"
-          {...rest}
-        >
-          {children}
-        </ScrollView>
-      </KeyboardAvoidingView>
+        {children}
+      </KeyboardAwareScrollView>
     );
   }
 );
@@ -87,9 +54,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#050505',
-  },
-  scroll: {
-    flex: 1,
   },
   content: {
     flexGrow: 1,

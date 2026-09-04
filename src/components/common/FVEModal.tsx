@@ -1,18 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import {
   Modal,
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
-  KeyboardAvoidingView,
   Platform,
-  ScrollView,
   SafeAreaView,
   Pressable,
-  Keyboard,
   BackHandler,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { X } from 'lucide-react-native';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
@@ -33,23 +31,6 @@ export function FVEModal({
   children,
   subtitle,
 }: FVEModalProps) {
-  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
-
-  useEffect(() => {
-    const showSub = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-      () => setIsKeyboardVisible(true)
-    );
-    const hideSub = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-      () => setIsKeyboardVisible(false)
-    );
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
-
   const handleClose = () => {
     haptics.light();
     onClose();
@@ -72,20 +53,12 @@ export function FVEModal({
       onRequestClose={handleClose}
       statusBarTranslucent
     >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.backdrop}
-      >
+      <View style={styles.backdrop}>
         {/* Backdrop tap to dismiss */}
         <Pressable style={styles.backdropTap} onPress={handleClose} />
 
         <SafeAreaView pointerEvents="box-none" style={styles.safeArea}>
-          <View
-            style={[
-              styles.sheet,
-              isKeyboardVisible && styles.sheetKeyboardActive,
-            ]}
-          >
+          <View style={styles.sheet}>
             {/* Native Sheet Grab Handle */}
             <View style={styles.handleContainer}>
               <View style={styles.sheetHandle} />
@@ -113,26 +86,24 @@ export function FVEModal({
               </TouchableOpacity>
             </View>
 
-            {/* Content Scroll View - Flex: 1 with generous bottom padding when keyboard is open */}
-            <ScrollView
+            {/* Native Keyboard-Aware Scrollable Sheet Body */}
+            <KeyboardAwareScrollView
               style={styles.body}
-              contentContainerStyle={[
-                styles.bodyContent,
-                { paddingBottom: isKeyboardVisible ? 240 : 45 },
-              ]}
+              contentContainerStyle={styles.bodyContent}
               keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="on-drag"
-              nestedScrollEnabled={true}
-              showsVerticalScrollIndicator={true}
+              showsVerticalScrollIndicator={false}
               bounces={true}
-              overScrollMode="always"
-              scrollEventThrottle={16}
+              enableOnAndroid={true}
+              enableAutomaticScroll={true}
+              extraScrollHeight={Platform.OS === 'ios' ? 24 : 70}
+              keyboardOpeningTime={0}
+              enableResetScrollToCoords={false}
             >
               {children}
-            </ScrollView>
+            </KeyboardAwareScrollView>
           </View>
         </SafeAreaView>
-      </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }
@@ -168,9 +139,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.6,
     shadowRadius: 16,
     elevation: 24,
-  },
-  sheetKeyboardActive: {
-    maxHeight: '98%',
   },
   handleContainer: {
     alignItems: 'center',
@@ -221,7 +189,6 @@ const styles = StyleSheet.create({
   },
   bodyContent: {
     padding: 22,
-    paddingBottom: 45,
+    paddingBottom: 48,
   },
 });
-

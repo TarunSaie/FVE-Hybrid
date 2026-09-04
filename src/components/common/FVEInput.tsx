@@ -65,11 +65,15 @@ export const FVEInput = forwardRef<TextInput, FVEInputProps>(function FVEInput(
           editable={editable}
           placeholderTextColor={colors.textSubtle}
           selectionColor={colors.gold}
+          cursorColor={colors.gold}
           // Disable OS autofill grouping — prevents multi-field highlight when
           // sibling inputs are visible in the same form container.
           textContentType="none"
           importantForAutofill="no"
           autoComplete="off"
+          autoCorrect={false}
+          spellCheck={false}
+          selectTextOnFocus={false}
           onFocus={(e) => {
             setInternalFocused(true);
             onFocus?.(e);
@@ -155,6 +159,7 @@ const styles = StyleSheet.create({
     fontFamily: typography.fonts.inter,
     paddingVertical: 12,
     minHeight: 48,
+    outlineStyle: 'none' as any,
   },
   errorText: {
     color: colors.error,

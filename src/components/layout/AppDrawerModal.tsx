@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Platform,
   BackHandler,
   Animated,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useNavigationState } from '@react-navigation/native';
@@ -30,6 +31,7 @@ import {
   X,
   ChevronRight,
   QrCode,
+  Sparkles,
 } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { colors } from '@/constants/colors';
@@ -46,112 +48,210 @@ interface AppDrawerModalProps {
   onClose: () => void;
 }
 
-const ALL_NAV_ITEMS = [
-  { screen: 'Dashboard', icon: LayoutDashboard, label: 'Dashboard', route: '/' },
-  { screen: 'Members', icon: Users, label: 'Members', route: '/members' },
-  { screen: 'MembershipPlans', icon: Award, label: 'Membership Plans', route: '/plans' },
-  { screen: 'Payments', icon: CreditCard, label: 'Payments', route: '/payments' },
-  { screen: 'Attendance', icon: UserCheck, label: 'Attendance', route: '/attendance' },
-  { screen: 'QRScanner', icon: QrCode, label: 'QR Scanner Kiosk', route: '/scanner' },
-  { screen: 'Reports', icon: BarChart3, label: 'Reports & Analytics', route: '/reports' },
-  { screen: 'Expenses', icon: DollarSign, label: 'Gym Expenses', route: '/expenses' },
-  { screen: 'Staff', icon: ClipboardList, label: 'Staff Directory', route: '/staff' },
-  { screen: 'Notifications', icon: Bell, label: 'Notifications', route: '/notifications' },
-  { screen: 'Settings', icon: Settings, label: 'Settings & Profile', route: '/settings' },
-] as const;
+interface NavItemDef {
+  screen: string;
+  icon: any;
+  label: string;
+  route: string;
+}
+
+interface NavSection {
+  title: string;
+  items: NavItemDef[];
+}
+
+const NAV_SECTIONS: NavSection[] = [
+  {
+    title: 'CORE OPERATIONS',
+    items: [
+      { screen: 'Dashboard', icon: LayoutDashboard, label: 'Dashboard', route: '/' },
+      { screen: 'Members', icon: Users, label: 'Members', route: '/members' },
+      { screen: 'Attendance', icon: UserCheck, label: 'Attendance', route: '/attendance' },
+      { screen: 'QRScanner', icon: QrCode, label: 'QR Scanner Kiosk', route: '/scanner' },
+    ],
+  },
+  {
+    title: 'FINANCE & PLANS',
+    items: [
+      { screen: 'Payments', icon: CreditCard, label: 'Payments', route: '/payments' },
+      { screen: 'MembershipPlans', icon: Award, label: 'Membership Plans', route: '/plans' },
+      { screen: 'Expenses', icon: DollarSign, label: 'Gym Expenses', route: '/expenses' },
+    ],
+  },
+  {
+    title: 'MANAGEMENT',
+    items: [
+      { screen: 'Staff', icon: ClipboardList, label: 'Staff Directory', route: '/staff' },
+      { screen: 'Reports', icon: BarChart3, label: 'Reports & Analytics', route: '/reports' },
+    ],
+  },
+  {
+    title: 'PREFERENCES',
+    items: [
+      { screen: 'Notifications', icon: Bell, label: 'Notifications', route: '/notifications' },
+      { screen: 'Settings', icon: Settings, label: 'Settings & Profile', route: '/settings' },
+    ],
+  },
+];
 
 export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
   const navigation = useNavigation<NavigationProp>();
   const { user, logout } = useAuth();
   const insets = useSafeAreaInsets();
+
+  // Internal rendered state allows smooth slide-out and backdrop fade before unmounting
+  const [rendered, setRendered] = useState(visible);
   const slideAnim = useRef(new Animated.Value(-320)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  // Track active screen for highlighting
+  const activeRouteName = useNavigationState(state => {
+    if (!state || !state.routes || state.routes.length === 0) return 'Dashboard';
+    const current = state.routes[state.index];
+    if (current.name === 'MainTabs') {
+      const tabState = current.state;
+      if (tabState && tabState.routes && tabState.routes.length > 0) {
+        const tabIndex = typeof tabState.index === 'number' ? tabState.index : 0;
+        return tabState.routes[tabIndex]?.name || 'Dashboard';
+      }
+      return 'Dashboard';
+    }
+    return current.name;
+  });
+
+  const closeWithAnimation = useCallback((afterClose?: () => void) => {
+    Animated.parallel([
+      Animated.timing(slideAnim, {
+        toValue: -320,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setRendered(false);
+      onClose();
+      afterClose?.();
+    });
+  }, [slideAnim, fadeAnim, onClose]);
 
   useEffect(() => {
     if (visible) {
-      Animated.spring(slideAnim, {
-        toValue: 0,
-        useNativeDriver: true,
-        speed: 22,
-        bounciness: 0,
-      }).start();
-    } else {
-      Animated.timing(slideAnim, {
-        toValue: -320,
-        duration: 220,
-        useNativeDriver: true,
-      }).start();
+      setRendered(true);
+      Animated.parallel([
+        Animated.spring(slideAnim, {
+          toValue: 0,
+          useNativeDriver: true,
+          speed: 20,
+          bounciness: 0,
+        }),
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else if (rendered) {
+      closeWithAnimation();
     }
   }, [visible]);
 
   useEffect(() => {
-    if (!visible) return;
+    if (!rendered) return;
     const backSub = BackHandler.addEventListener('hardwareBackPress', () => {
-      onClose();
+      closeWithAnimation();
       return true;
     });
     return () => backSub.remove();
-  }, [visible, onClose]);
+  }, [rendered, closeWithAnimation]);
 
   const handleNavigate = (screenName: string) => {
     haptics.selection();
-    onClose();
-
-    // Map screen to navigation call
-    if (screenName === 'Dashboard') {
-      navigation.navigate('MainTabs', { screen: 'Dashboard' });
-    } else if (screenName === 'Members') {
-      navigation.navigate('MainTabs', { screen: 'Members' });
-    } else if (screenName === 'Attendance') {
-      navigation.navigate('MainTabs', { screen: 'Attendance' });
-    } else if (screenName === 'Payments') {
-      navigation.navigate('MainTabs', { screen: 'Payments' });
-    } else if (screenName === 'Settings') {
-      navigation.navigate('MainTabs', { screen: 'Settings' });
-    } else if (screenName === 'MembershipPlans') {
-      navigation.navigate('MembershipPlans');
-    } else if (screenName === 'Expenses') {
-      navigation.navigate('Expenses');
-    } else if (screenName === 'Reports') {
-      navigation.navigate('Reports');
-    } else if (screenName === 'Staff') {
-      navigation.navigate('Staff');
-    } else if (screenName === 'Notifications') {
-      navigation.navigate('Notifications');
-    } else if (screenName === 'QRScanner') {
-      navigation.navigate('QRScanner');
-    }
+    closeWithAnimation(() => {
+      if (screenName === 'Dashboard') {
+        navigation.navigate('MainTabs', { screen: 'Dashboard' });
+      } else if (screenName === 'Members') {
+        navigation.navigate('MainTabs', { screen: 'Members' });
+      } else if (screenName === 'Attendance') {
+        navigation.navigate('MainTabs', { screen: 'Attendance' });
+      } else if (screenName === 'Payments') {
+        navigation.navigate('MainTabs', { screen: 'Payments' });
+      } else if (screenName === 'Settings') {
+        navigation.navigate('MainTabs', { screen: 'Settings' });
+      } else if (screenName === 'MembershipPlans') {
+        navigation.navigate('MembershipPlans');
+      } else if (screenName === 'Expenses') {
+        navigation.navigate('Expenses');
+      } else if (screenName === 'Reports') {
+        navigation.navigate('Reports');
+      } else if (screenName === 'Staff') {
+        navigation.navigate('Staff');
+      } else if (screenName === 'Notifications') {
+        navigation.navigate('Notifications');
+      } else if (screenName === 'QRScanner') {
+        navigation.navigate('QRScanner');
+      }
+    });
   };
 
-  const handleLogout = async () => {
-    haptics.heavy();
-    onClose();
-    await logout();
+  const handleLogoutConfirm = () => {
+    haptics.warning();
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out of FitVerse Elite?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: () => {
+            closeWithAnimation(async () => {
+              await logout();
+            });
+          },
+        },
+      ]
+    );
   };
+
+  if (!rendered) return null;
 
   return (
     <Modal
-      visible={visible}
+      visible={rendered}
       transparent
       animationType="none"
-      onRequestClose={onClose}
+      onRequestClose={() => closeWithAnimation()}
       statusBarTranslucent
     >
       <View style={styles.overlay}>
-        {/* Backdrop tap dismiss */}
-        <Pressable style={styles.backdropTap} onPress={onClose} />
+        {/* Backdrop with animated opacity */}
+        <Animated.View
+          style={[
+            styles.backdrop,
+            {
+              opacity: fadeAnim,
+            },
+          ]}
+        >
+          <Pressable style={styles.backdropTap} onPress={() => closeWithAnimation()} />
+        </Animated.View>
 
-        {/* Drawer Container — slides in from left */}
+        {/* Drawer Container — smoothly slides in and out */}
         <Animated.View
           style={[
             styles.drawerContainer,
             {
-              paddingTop: Platform.OS === 'android' ? (insets.top) : insets.top,
+              paddingTop: insets.top + (Platform.OS === 'android' ? 6 : 2),
               transform: [{ translateX: slideAnim }],
             },
           ]}
         >
           <View style={styles.drawerContent}>
-            {/* Header: Logo + Close */}
+            {/* Header: Logo + Brand + Close */}
             <View style={styles.header}>
               <View style={styles.logoRow}>
                 <Image
@@ -161,23 +261,28 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
                 />
                 <View>
                   <Text style={styles.brandTitle}>FITVERSE</Text>
-                  <Text style={styles.brandSubtitle}>ELITE</Text>
+                  <Text style={styles.brandSubtitle}>ELITE MOBILE</Text>
                 </View>
               </View>
               <TouchableOpacity
                 onPress={() => {
                   haptics.light();
-                  onClose();
+                  closeWithAnimation();
                 }}
                 style={styles.closeBtn}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                activeOpacity={0.7}
               >
                 <X size={20} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
 
-            {/* User Profile Card */}
-            <View style={styles.userSection}>
+            {/* Interactive User Profile Card */}
+            <TouchableOpacity
+              onPress={() => handleNavigate('Settings')}
+              style={styles.userSection}
+              activeOpacity={0.8}
+            >
               <View style={styles.avatarCircle}>
                 <Text style={styles.avatarText}>
                   {user?.full_name?.charAt(0) || user?.username?.charAt(0) || 'U'}
@@ -187,52 +292,95 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
                 <Text numberOfLines={1} style={styles.userName}>
                   {user?.full_name || user?.username}
                 </Text>
-                <FVEBadge role={user?.role} size="sm" style={{ marginTop: 2 }} />
+                <View style={styles.userRoleRow}>
+                  <FVEBadge role={user?.role} size="sm" />
+                </View>
               </View>
-            </View>
+              <ChevronRight size={16} color={colors.textMuted} />
+            </TouchableOpacity>
 
-            {/* Navigation List */}
+            {/* Structured Categorical Navigation List */}
             <ScrollView
               style={styles.scrollList}
               contentContainerStyle={styles.scrollListContent}
               showsVerticalScrollIndicator={false}
             >
-              <Text style={styles.sectionTitle}>ALL MODULES & FEATURES</Text>
+              {NAV_SECTIONS.map((section, idx) => {
+                const accessibleItems = section.items.filter(item =>
+                  canAccessRoute(user?.role, item.route)
+                );
 
-              {ALL_NAV_ITEMS.map((item) => {
-                const canAccess = canAccessRoute(user?.role, item.route);
-                if (!canAccess) return null;
-
-                const IconComponent = item.icon;
+                if (accessibleItems.length === 0) return null;
 
                 return (
-                  <Pressable
-                    key={item.screen}
-                    onPress={() => handleNavigate(item.screen)}
-                    style={({ pressed }) => [
-                      styles.navItem,
-                      pressed && styles.navItemPressed,
-                    ]}
-                    android_ripple={{ color: 'rgba(239,161,0,0.12)', borderless: false }}
-                  >
-                    <View style={styles.navIconBox}>
-                      <IconComponent size={18} color={colors.gold} />
-                    </View>
-                    <Text style={styles.navLabel}>{item.label}</Text>
-                    <ChevronRight size={16} color="rgba(255,255,255,0.2)" />
-                  </Pressable>
+                  <View key={section.title} style={idx > 0 ? styles.sectionGroup : undefined}>
+                    <Text style={styles.sectionTitle}>{section.title}</Text>
+
+                    {accessibleItems.map((item) => {
+                      const isActive = activeRouteName === item.screen;
+                      const IconComponent = item.icon;
+
+                      return (
+                        <Pressable
+                          key={item.screen}
+                          onPress={() => handleNavigate(item.screen)}
+                          style={({ pressed }) => [
+                            styles.navItem,
+                            isActive && styles.navItemActive,
+                            pressed && styles.navItemPressed,
+                          ]}
+                          android_ripple={{
+                            color: 'rgba(239, 161, 0, 0.15)',
+                            borderless: false,
+                          }}
+                        >
+                          <View
+                            style={[
+                              styles.navIconBox,
+                              isActive && styles.navIconBoxActive,
+                            ]}
+                          >
+                            <IconComponent
+                              size={18}
+                              color={isActive ? colors.gold : colors.textSecondary}
+                            />
+                          </View>
+
+                          <Text
+                            style={[
+                              styles.navLabel,
+                              isActive && styles.navLabelActive,
+                            ]}
+                          >
+                            {item.label}
+                          </Text>
+
+                          {isActive ? (
+                            <View style={styles.activePill}>
+                              <Sparkles size={11} color={colors.gold} />
+                              <Text style={styles.activePillText}>ACTIVE</Text>
+                            </View>
+                          ) : (
+                            <ChevronRight size={16} color="rgba(255,255,255,0.2)" />
+                          )}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
                 );
               })}
             </ScrollView>
 
-            {/* Footer Sign Out */}
-            <View style={styles.footer}>
+            {/* Footer Sign Out + Tagline with Safe Area Insets */}
+            <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
               <TouchableOpacity
-                onPress={handleLogout}
+                onPress={handleLogoutConfirm}
                 style={styles.logoutBtn}
                 activeOpacity={0.7}
               >
-                <LogOut size={18} color={colors.error} />
+                <View style={styles.logoutIconBox}>
+                  <LogOut size={16} color={colors.error} />
+                </View>
                 <Text style={styles.logoutText}>Sign Out</Text>
               </TouchableOpacity>
               <Text style={styles.footerTagline}>DISCIPLINE · STRENGTH · TRANSFORMATION</Text>
@@ -247,15 +395,18 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
     flexDirection: 'row',
   },
-  backdropTap: {
+  backdrop: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+  },
+  backdropTap: {
+    flex: 1,
   },
   drawerContainer: {
     width: 300,
@@ -345,52 +496,88 @@ const styles = StyleSheet.create({
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '700',
   },
+  userRoleRow: {
+    marginTop: 3,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   scrollList: {
     flex: 1,
   },
   scrollListContent: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 12,
+  },
+  sectionGroup: {
+    marginTop: 14,
   },
   sectionTitle: {
     color: colors.textMuted,
     fontSize: 10,
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '700',
-    letterSpacing: 1,
+    letterSpacing: 1.2,
     textTransform: 'uppercase',
-    marginBottom: 10,
+    marginBottom: 6,
     marginLeft: 6,
   },
   navItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 11,
+    paddingVertical: 10,
     paddingHorizontal: 12,
-    borderRadius: 10,
+    borderRadius: 12,
     marginBottom: 4,
     backgroundColor: 'transparent',
     overflow: 'hidden',
   },
+  navItemActive: {
+    backgroundColor: 'rgba(239, 161, 0, 0.12)',
+    borderLeftWidth: 3,
+    borderLeftColor: colors.gold,
+  },
   navItemPressed: {
-    backgroundColor: 'rgba(239,161,0,0.08)',
+    backgroundColor: 'rgba(239, 161, 0, 0.08)',
   },
   navIconBox: {
     width: 32,
     height: 32,
     borderRadius: 8,
-    backgroundColor: 'rgba(239, 161, 0, 0.1)',
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
   },
+  navIconBoxActive: {
+    backgroundColor: 'rgba(239, 161, 0, 0.22)',
+  },
   navLabel: {
     flex: 1,
-    color: colors.textPrimary,
+    color: colors.textSecondary,
     fontSize: typography.sizes.base,
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '600',
     letterSpacing: 0.4,
+  },
+  navLabelActive: {
+    color: colors.gold,
+    fontWeight: '700',
+  },
+  activePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(239, 161, 0, 0.16)',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  activePillText: {
+    color: colors.gold,
+    fontSize: 9,
+    fontFamily: typography.fonts.orbitron,
+    fontWeight: '700',
+    letterSpacing: 0.8,
   },
   footer: {
     padding: 16,
@@ -402,15 +589,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 8,
-    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.2)',
+  },
+  logoutIconBox: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   logoutText: {
     color: colors.error,
     fontSize: typography.sizes.base,
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '700',
+    letterSpacing: 0.5,
   },
   footerTagline: {
     color: 'rgba(239, 161, 0, 0.35)',
