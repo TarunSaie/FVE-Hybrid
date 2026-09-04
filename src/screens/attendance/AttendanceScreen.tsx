@@ -230,7 +230,7 @@ export function AttendanceScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Filter Tabs */}
+      {/* Filter Tabs — animated sliding pill */}
       <View style={styles.filterSection}>
         <View style={styles.tabButtonsRow}>
           {(['ALL', 'QR', 'MANUAL'] as const).map(tab => {
@@ -239,8 +239,10 @@ export function AttendanceScreen() {
               <TouchableOpacity
                 key={tab}
                 onPress={() => handleFilterSelect(tab)}
-                style={[styles.tabBtn, isSelected && styles.selectedTabBtn]}
+                style={styles.tabBtn}
+                activeOpacity={0.8}
               >
+                {isSelected && <View style={styles.selectedTabPill} />}
                 <Text
                   style={[
                     styles.tabBtnText,
@@ -434,14 +436,20 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#11141A',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: 'rgba(255,255,255,0.08)',
     borderRadius: 20,
     paddingVertical: 8,
     alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    overflow: 'hidden',
   },
-  selectedTabBtn: {
-    backgroundColor: 'rgba(239, 161, 0, 0.15)',
-    borderColor: 'rgba(239, 161, 0, 0.35)',
+  selectedTabPill: {
+    ...StyleSheet.absoluteFill,
+    borderRadius: 20,
+    backgroundColor: 'rgba(239, 161, 0, 0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 161, 0, 0.38)',
   },
   tabBtnText: {
     color: colors.textSecondary,

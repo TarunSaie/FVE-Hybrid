@@ -1,5 +1,5 @@
-import React from 'react';
-import { StyleSheet, Platform, View } from 'react-native';
+import React, { useRef, useCallback } from 'react';
+import { StyleSheet, Platform, View, Pressable, Animated } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
@@ -18,19 +18,90 @@ import { MainTabParamList } from './types';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
+// ─── Animated Tab Button ──────────────────────────────────────────────────────
+// Wraps each tab item with a spring bounce animation and Android ripple.
+// The pill indicator lives inside tabBarIcon so it appears behind the icon.
+interface TabButtonProps {
+  children: React.ReactNode;
+  onPress?: (...args: any[]) => void;
+  onLongPress?: ((...args: any[]) => void) | null;
+  style?: any;
+  accessibilityState?: { selected?: boolean };
+}
+
+function AnimatedTabButton({
+  children,
+  onPress,
+  onLongPress,
+  style,
+  accessibilityState,
+}: TabButtonProps) {
+  const scale = useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = useCallback(() => {
+    Animated.spring(scale, {
+      toValue: 0.82,
+      useNativeDriver: true,
+      speed: 50,
+      bounciness: 2,
+    }).start();
+  }, [scale]);
+
+  const handlePressOut = useCallback(() => {
+    Animated.spring(scale, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 22,
+      bounciness: 10,
+    }).start();
+  }, [scale]);
+
+  const handlePress = useCallback(() => {
+    haptics.selection();
+    onPress?.();
+  }, [onPress]);
+
+  return (
+    <Pressable
+      onPress={handlePress}
+      onLongPress={onLongPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      style={[style, styles.tabButton]}
+      android_ripple={{ color: 'rgba(239,161,0,0.12)', borderless: true, radius: 32 }}
+      accessibilityState={accessibilityState}
+    >
+      <Animated.View style={{ transform: [{ scale }] }}>
+        {children}
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+// ─── Tab Icon with Pill Indicator ────────────────────────────────────────────
+interface TabIconProps {
+  icon: React.ReactNode;
+  focused: boolean;
+}
+
+function TabIcon({ icon, focused }: TabIconProps) {
+  return (
+    <View style={styles.iconWrap}>
+      {focused && <View style={styles.activePill} />}
+      {icon}
+    </View>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function AppTabs() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const role = user?.role;
 
-  const bottomInset = Math.max(insets.bottom, Platform.OS === 'ios' ? 12 : 8);
-  const tabBarHeight = 54 + bottomInset;
-
-  const tabPressListener = {
-    tabPress: () => {
-      haptics.selection();
-    },
-  };
+  const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 16 : 12);
+  const tabBarHeight = 58 + bottomInset;
 
   return (
     <Tab.Navigator
@@ -45,25 +116,28 @@ export function AppTabs() {
         ],
         tabBarBackground: () =>
           Platform.OS === 'ios' ? (
-            <BlurView tint="dark" intensity={85} style={StyleSheet.absoluteFill} />
+            <BlurView tint="dark" intensity={90} style={StyleSheet.absoluteFill} />
           ) : (
             <View style={[StyleSheet.absoluteFill, styles.androidBackground]} />
           ),
         tabBarActiveTintColor: colors.gold,
-        tabBarInactiveTintColor: '#8A92A6',
+        tabBarInactiveTintColor: 'rgba(138, 146, 166, 0.7)',
         tabBarLabelStyle: styles.tabLabel,
         tabBarItemStyle: styles.tabItem,
+        tabBarButton: (props) => <AnimatedTabButton {...props} />,
       }}
     >
       {canAccessTab(role, 'Dashboard') && (
         <Tab.Screen
           name="Dashboard"
           component={DashboardScreen}
-          listeners={tabPressListener}
           options={{
             tabBarLabel: 'Home',
             tabBarIcon: ({ color, focused }) => (
-              <Home size={23} color={color} strokeWidth={focused ? 2.4 : 1.7} />
+              <TabIcon
+                focused={focused}
+                icon={<Home size={22} color={color} strokeWidth={focused ? 2.5 : 1.6} />}
+              />
             ),
           }}
         />
@@ -73,11 +147,13 @@ export function AppTabs() {
         <Tab.Screen
           name="Members"
           component={MembersScreen}
-          listeners={tabPressListener}
           options={{
             tabBarLabel: 'Members',
             tabBarIcon: ({ color, focused }) => (
-              <Users size={23} color={color} strokeWidth={focused ? 2.4 : 1.7} />
+              <TabIcon
+                focused={focused}
+                icon={<Users size={22} color={color} strokeWidth={focused ? 2.5 : 1.6} />}
+              />
             ),
           }}
         />
@@ -87,11 +163,13 @@ export function AppTabs() {
         <Tab.Screen
           name="Attendance"
           component={AttendanceScreen}
-          listeners={tabPressListener}
           options={{
             tabBarLabel: 'Attendance',
             tabBarIcon: ({ color, focused }) => (
-              <UserCheck size={23} color={color} strokeWidth={focused ? 2.4 : 1.7} />
+              <TabIcon
+                focused={focused}
+                icon={<UserCheck size={22} color={color} strokeWidth={focused ? 2.5 : 1.6} />}
+              />
             ),
           }}
         />
@@ -101,11 +179,13 @@ export function AppTabs() {
         <Tab.Screen
           name="Payments"
           component={PaymentsScreen}
-          listeners={tabPressListener}
           options={{
             tabBarLabel: 'Payments',
             tabBarIcon: ({ color, focused }) => (
-              <CreditCard size={23} color={color} strokeWidth={focused ? 2.4 : 1.7} />
+              <TabIcon
+                focused={focused}
+                icon={<CreditCard size={22} color={color} strokeWidth={focused ? 2.5 : 1.6} />}
+              />
             ),
           }}
         />
@@ -115,11 +195,13 @@ export function AppTabs() {
         <Tab.Screen
           name="Settings"
           component={SettingsScreen}
-          listeners={tabPressListener}
           options={{
             tabBarLabel: 'More',
             tabBarIcon: ({ color, focused }) => (
-              <Settings size={23} color={color} strokeWidth={focused ? 2.4 : 1.7} />
+              <TabIcon
+                focused={focused}
+                icon={<Settings size={22} color={color} strokeWidth={focused ? 2.5 : 1.6} />}
+              />
             ),
           }}
         />
@@ -130,33 +212,56 @@ export function AppTabs() {
 
 const styles = StyleSheet.create({
   tabBar: {
-    backgroundColor: Platform.OS === 'ios' ? 'transparent' : '#0B0D12',
+    backgroundColor: Platform.OS === 'ios' ? 'transparent' : '#0A0C10',
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(255, 255, 255, 0.12)',
-    paddingTop: 6,
+    borderTopColor: 'rgba(255,255,255,0.1)',
+    paddingTop: 4,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 16,
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 20,
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
   },
   androidBackground: {
-    backgroundColor: '#0B0D12',
+    backgroundColor: '#0A0C10',
+  },
+  tabButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   tabItem: {
-    paddingVertical: 3,
+    paddingVertical: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
   tabLabel: {
     fontFamily: typography.fonts.inter,
     fontWeight: '600',
-    fontSize: 10.5,
-    letterSpacing: 0.3,
-    marginTop: 3,
+    fontSize: 10,
+    letterSpacing: 0.2,
+    marginTop: 2,
+  },
+  // ── Icon + pill ──
+  iconWrap: {
+    width: 52,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  activePill: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 16,
+    backgroundColor: 'rgba(239,161,0,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(239,161,0,0.22)',
   },
 });

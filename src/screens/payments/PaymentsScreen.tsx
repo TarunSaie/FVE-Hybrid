@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -35,12 +35,19 @@ export function PaymentsScreen() {
   const qc = useQueryClient();
 
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [methodFilter, setMethodFilter] = useState('');
+
+  // Debounce search 400ms
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 400);
+    return () => clearTimeout(t);
+  }, [search]);
   const [showPayModal, setShowPayModal] = useState(false);
 
   // Query Payments with Joined Members
   const { data: payments, isLoading, refetch } = useQuery({
-    queryKey: ['mobile-payments', search, methodFilter],
+    queryKey: ['mobile-payments', debouncedSearch, methodFilter],
     queryFn: async () => {
       let q = supabase
         .from('payments')
@@ -51,9 +58,9 @@ export function PaymentsScreen() {
         q = q.eq('payment_method', methodFilter);
       }
 
-      if (search.trim()) {
+      if (debouncedSearch.trim()) {
         q = q.or(
-          `receipt_number.ilike.%${search.trim()}%,members.full_name.ilike.%${search.trim()}%,members.member_id.ilike.%${search.trim()}%`
+          `receipt_number.ilike.%${debouncedSearch.trim()}%,members.full_name.ilike.%${debouncedSearch.trim()}%,members.member_id.ilike.%${debouncedSearch.trim()}%`
         );
       }
 

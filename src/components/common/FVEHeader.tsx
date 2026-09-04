@@ -5,10 +5,10 @@ import {
   StyleSheet,
   TouchableOpacity,
   Image,
-  SafeAreaView,
   Platform,
   StatusBar,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery } from '@tanstack/react-query';
@@ -45,6 +45,8 @@ export function FVEHeader({
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { user } = useAuth();
   const [drawerVisible, setDrawerVisible] = useState(false);
+  const insets = useSafeAreaInsets();
+  const topPad = Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : insets.top;
 
   const { data: fetchedUnreadCount } = useQuery({
     queryKey: ['unread-notifications-count', user?.id],
@@ -75,7 +77,7 @@ export function FVEHeader({
 
   return (
     <>
-      <SafeAreaView style={styles.safeArea}>
+      <View style={[styles.headerWrap, { paddingTop: topPad }]}>
         <View style={styles.container}>
           {/* Left: Back button OR Drawer Menu + Logo */}
           <View style={styles.leftContainer}>
@@ -153,7 +155,7 @@ export function FVEHeader({
             )}
           </View>
         </View>
-      </SafeAreaView>
+      </View>
 
       {/* Slide-out Full App Navigation Drawer */}
       <AppDrawerModal
@@ -165,11 +167,10 @@ export function FVEHeader({
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  headerWrap: {
     backgroundColor: '#080A0D',
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+    borderBottomColor: 'rgba(255,255,255,0.08)',
   },
   container: {
     height: 56,

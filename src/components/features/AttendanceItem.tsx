@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet, Image } from 'react-native';
+import React, { useRef } from 'react';
+import { View, Text, StyleSheet, Image, Pressable, Animated } from 'react-native';
 import { Clock, QrCode, UserCheck } from 'lucide-react-native';
 import { Attendance } from '@/types';
 import { colors } from '@/constants/colors';
@@ -7,15 +7,20 @@ import { typography } from '@/constants/typography';
 
 interface AttendanceItemProps {
   item: Attendance & { members?: { full_name?: string; profile_photo?: string | null; member_id?: string | null } };
+  onPress?: () => void;
 }
 
-export function AttendanceItem({ item }: AttendanceItemProps) {
+export function AttendanceItem({ item, onPress }: AttendanceItemProps) {
   const memberName = item.members?.full_name || 'Member';
   const memberId = item.members?.member_id;
   const photo = item.members?.profile_photo;
   const initial = memberName.charAt(0).toUpperCase();
 
   const isQR = item.check_in_method === 'QR';
+  const scale = useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = () => Animated.spring(scale, { toValue: 0.975, useNativeDriver: true, speed: 35, bounciness: 4 }).start();
+  const handlePressOut = () => Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 35, bounciness: 4 }).start();
 
   // Format check_in_time
   const formatTime = (timeStr?: string | null) => {
@@ -35,7 +40,14 @@ export function AttendanceItem({ item }: AttendanceItemProps) {
   };
 
   return (
-    <View style={styles.container}>
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        style={styles.container}
+        android_ripple={{ color: 'rgba(239,161,0,0.08)', borderless: false }}
+      >
       <View style={styles.leftRow}>
         {photo ? (
           <Image source={{ uri: photo }} style={styles.avatar} />
@@ -91,7 +103,8 @@ export function AttendanceItem({ item }: AttendanceItemProps) {
           {isQR ? 'QR SCAN' : 'MANUAL'}
         </Text>
       </View>
-    </View>
+      </Pressable>
+    </Animated.View>
   );
 }
 

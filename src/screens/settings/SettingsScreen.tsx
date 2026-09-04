@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -42,12 +42,12 @@ export function SettingsScreen() {
   const navigation = useNavigation<NavigationProp>();
   const { user, login, logout, clearStaffProfile } = useAuth();
 
-  const [fullName, setFullName] = useState(user?.full_name || '');
-  const [phone, setPhone] = useState(user?.phone || '');
+  // Form values stored in refs — no re-render on each keystroke
+  const fullNameRef = useRef(user?.full_name || '');
+  const phoneRef = useRef(user?.phone || '');
+  const newPasswordRef = useRef('');
+  const confirmPasswordRef = useRef('');
   const [profileLoading, setProfileLoading] = useState(false);
-
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordLoading, setPasswordLoading] = useState(false);
 
   const handleSaveProfile = async () => {
@@ -57,8 +57,8 @@ export function SettingsScreen() {
       const { error } = await supabase
         .from('user_profiles')
         .update({
-          full_name: fullName.trim(),
-          phone: phone.trim() || null,
+          full_name: fullNameRef.current.trim(),
+          phone: phoneRef.current.trim() || null,
         })
         .eq('id', user.id);
 
@@ -66,8 +66,8 @@ export function SettingsScreen() {
 
       login({
         ...user,
-        full_name: fullName.trim(),
-        phone: phone.trim() || null,
+        full_name: fullNameRef.current.trim(),
+        phone: phoneRef.current.trim() || null,
       });
 
       haptics.success();
@@ -81,28 +81,28 @@ export function SettingsScreen() {
   };
 
   const handleUpdatePassword = async () => {
-    if (!newPassword) {
+    if (!newPasswordRef.current) {
       haptics.warning();
       return Alert.alert('Error', 'Please enter a new password');
     }
-    if (newPassword.length < 6) {
+    if (newPasswordRef.current.length < 6) {
       haptics.warning();
       return Alert.alert('Error', 'Password must be at least 6 characters');
     }
-    if (newPassword !== confirmPassword) {
+    if (newPasswordRef.current !== confirmPasswordRef.current) {
       haptics.warning();
       return Alert.alert('Error', 'Passwords do not match');
     }
 
     setPasswordLoading(true);
     try {
-      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      const { error } = await supabase.auth.updateUser({ password: newPasswordRef.current });
       if (error) throw error;
 
       haptics.success();
       Alert.alert('Success', 'Password updated successfully!');
-      setNewPassword('');
-      setConfirmPassword('');
+      newPasswordRef.current = '';
+      confirmPasswordRef.current = '';
     } catch (err: unknown) {
       haptics.error();
       Alert.alert('Error', (err as Error).message || 'Failed to update password');
@@ -231,14 +231,14 @@ export function SettingsScreen() {
           <Text style={styles.sectionHeader}>PROFILE INFORMATION</Text>
           <FVEInput
             label="FULL NAME"
-            value={fullName}
-            onChangeText={setFullName}
+            defaultValue={fullNameRef.current}
+            onChangeText={(t) => { fullNameRef.current = t; }}
             placeholder="Your full name"
           />
           <FVEInput
             label="PHONE NUMBER"
-            value={phone}
-            onChangeText={setPhone}
+            defaultValue={phoneRef.current}
+            onChangeText={(t) => { phoneRef.current = t; }}
             placeholder="Your phone number"
             keyboardType="phone-pad"
           />
@@ -257,15 +257,15 @@ export function SettingsScreen() {
             <Text style={styles.sectionHeader}>SECURITY & PASSWORD</Text>
             <FVEInput
               label="NEW PASSWORD"
-              value={newPassword}
-              onChangeText={setNewPassword}
+              defaultValue=""
+              onChangeText={(t) => { newPasswordRef.current = t; }}
               placeholder="••••••••"
               secureTextEntry
             />
             <FVEInput
               label="CONFIRM PASSWORD"
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
+              defaultValue=""
+              onChangeText={(t) => { confirmPasswordRef.current = t; }}
               placeholder="••••••••"
               secureTextEntry
             />

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import { FVEInput } from '@/components/common/FVEInput';
 import { MemberCard } from '@/components/features/MemberCard';
 import { MemberFormModal } from '@/components/features/MemberFormModal';
 import { FVEEmptyState } from '@/components/common/FVEEmptyState';
+import { SkeletonMemberCard } from '@/components/common/FVESkeleton';
 import { MemberWithMembership } from '@/types';
 import { supabase } from '@/api/supabase';
 import { colors } from '@/constants/colors';
@@ -34,14 +35,22 @@ export function MembersScreen() {
   const qc = useQueryClient();
 
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [genderFilter, setGenderFilter] = useState('ALL');
   const [sortBy, setSortBy] = useState<'name_asc' | 'expiry_asc' | 'join_desc'>('name_asc');
   const [showAddModal, setShowAddModal] = useState(false);
 
+  // Debounce search 400ms
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 400);
+    return () => clearTimeout(t);
+  }, [search]);
+
   // Query members from members_with_membership view (or join with members)
   const { data: members, isLoading, refetch } = useQuery({
-    queryKey: ['mobile-members', search, statusFilter, genderFilter, sortBy],
+    queryKey: ['mobile-members', debouncedSearch, statusFilter, genderFilter, sortBy],
     queryFn: async () => {
       let q = supabase.from('members_with_membership').select('*');
 
@@ -53,7 +62,7 @@ export function MembersScreen() {
         q = q.order('joining_date', { ascending: false });
       }
 
-      if (search.trim()) {
+      if (debouncedSearch.trim()) {
         q = q.or(
           `full_name.ilike.%${search.trim()}%,mobile.ilike.%${search.trim()}%,member_id.ilike.%${search.trim()}%`
         );
@@ -76,7 +85,7 @@ export function MembersScreen() {
         } else {
           fallbackQuery = fallbackQuery.order('full_name', { ascending: true });
         }
-        if (search.trim()) {
+        if (debouncedSearch.trim()) {
           fallbackQuery = fallbackQuery.or(
             `full_name.ilike.%${search.trim()}%,mobile.ilike.%${search.trim()}%,member_id.ilike.%${search.trim()}%`
           );
