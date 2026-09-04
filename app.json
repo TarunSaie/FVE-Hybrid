@@ -69,7 +69,8 @@
             "image": "./assets/splash-icon.png"
           }
         }
-      ]
+      ],
+      "expo-sharing"
     ]
   }
 }

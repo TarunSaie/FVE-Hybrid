@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -7,10 +7,11 @@ import {
   Image,
   TouchableOpacity,
   Share,
+  Alert,
 } from 'react-native';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import QRCode from 'react-native-qrcode-svg';
-import { Share2, ArrowLeft, CheckCircle2 } from 'lucide-react-native';
+import { Share2, ArrowLeft, CheckCircle2, FileText, Printer } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEButton } from '@/components/common/FVEButton';
 import { haptics } from '@/utils/haptics';
@@ -19,6 +20,7 @@ import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { formatCurrency, openWhatsAppLink } from '@/utils/format';
 import { formatDate } from '@/utils/date';
+import { sharePdfReceipt, printPdfReceipt, buildReceiptDataFromPayment } from '@/utils/receiptPdf';
 import { RootStackParamList } from '@/navigation/types';
 
 type RouteProps = RouteProp<RootStackParamList, 'PaymentReceipt'>;
@@ -46,6 +48,35 @@ export function PaymentReceiptScreen() {
   const planName = plan?.name || 'Gym Subscription';
   const receiptNo = payment.receipt_number || 'FVE-N/A';
   const dateStr = formatDate(payment.payment_date || payment.created_at);
+
+  const [pdfGenerating, setPdfGenerating] = useState(false);
+
+  const handleSharePdf = async () => {
+    if (!payment) return;
+    haptics.medium();
+    setPdfGenerating(true);
+    try {
+      const receiptData = buildReceiptDataFromPayment(payment);
+      await sharePdfReceipt(receiptData);
+    } catch (err: unknown) {
+      haptics.error();
+      Alert.alert('Error', (err as Error).message || 'Failed to generate receipt PDF');
+    } finally {
+      setPdfGenerating(false);
+    }
+  };
+
+  const handlePrintPdf = async () => {
+    if (!payment) return;
+    haptics.light();
+    try {
+      const receiptData = buildReceiptDataFromPayment(payment);
+      await printPdfReceipt(receiptData);
+    } catch (err: unknown) {
+      haptics.error();
+      Alert.alert('Error', (err as Error).message || 'Failed to open print dialog');
+    }
+  };
 
   const handleWhatsApp = () => {
     const text = `*FitVerse Elite Official Receipt*\nReceipt No: #${receiptNo}\nMember: ${memberName}${memberId ? ` (${memberId})` : ''}\nPlan: ${planName}\nAmount Paid: ${formatCurrency(payment.amount)}\nPayment Method: ${payment.payment_method}\nDate: ${dateStr}\n\n*DISCIPLINE • STRENGTH • TRANSFORMATION*\nFitVerse Elite Gym Management\nPowered by Chirvex (https://chirvex.in/)`;
@@ -190,23 +221,34 @@ export function PaymentReceiptScreen() {
         {/* Action Buttons */}
         <View style={styles.actionButtonGroup}>
           <FVEButton
-            title="SHARE ON WHATSAPP"
-            onPress={() => {
-              haptics.medium();
-              handleWhatsApp();
-            }}
+            title="SEND RECEIPT PDF TO WHATSAPP"
+            onPress={handleSharePdf}
+            loading={pdfGenerating}
             variant="gold"
             size="lg"
-            icon={<Share2 size={18} color="#050505" />}
+            icon={<FileText size={18} color="#050505" />}
             style={styles.actionButton}
           />
 
           <FVEButton
-            title="MORE SHARING OPTIONS"
-            onPress={handleNativeShare}
+            title="SEND WHATSAPP TEXT MESSAGE"
+            onPress={() => {
+              haptics.medium();
+              handleWhatsApp();
+            }}
             variant="outline"
             size="md"
+            icon={<Share2 size={16} color="#25D366" />}
             style={{ marginTop: 10 }}
+          />
+
+          <FVEButton
+            title="PRINT / SAVE PDF DOCUMENT"
+            onPress={handlePrintPdf}
+            variant="ghost"
+            size="md"
+            icon={<Printer size={16} color={colors.gold} />}
+            style={{ marginTop: 6 }}
           />
         </View>
       </ScrollView>
