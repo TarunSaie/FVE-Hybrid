@@ -26,6 +26,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { haptics } from '@/utils/haptics';
+import { checkAndNotifyBirthdays } from '@/hooks/useBirthdayAlerts';
 
 interface MemberFormModalProps {
   visible: boolean;
@@ -273,6 +274,9 @@ export function MemberFormModal({
         haptics.success();
         Alert.alert('Success', `${fullNameRef.current} registered to FitVerse Elite!`);
       }
+
+      // Check if new/updated member's birthday is today and notify Admins/Owners
+      checkAndNotifyBirthdays().catch(console.error);
 
       onSaved();
       onClose();

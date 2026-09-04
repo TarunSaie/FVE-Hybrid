@@ -18,6 +18,7 @@ import {
   AlertTriangle,
   XCircle,
   Trash2,
+  Cake,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEEmptyState } from '@/components/common/FVEEmptyState';
@@ -98,6 +99,8 @@ export function NotificationsScreen() {
         return <AlertTriangle size={18} color={colors.warning} />;
       case 'ERROR':
         return <XCircle size={18} color={colors.error} />;
+      case 'BIRTHDAY':
+        return <Cake size={18} color={colors.gold} />;
       default:
         return <Info size={18} color={colors.blueLight} />;
     }

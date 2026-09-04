@@ -30,6 +30,7 @@ import {
   Dumbbell,
   PauseCircle,
   PlayCircle,
+  Cake,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEBadge } from '@/components/common/FVEBadge';
@@ -238,6 +239,15 @@ export function MemberDetailScreen() {
     }
   };
 
+  const isBirthdayToday = member?.date_of_birth ? (() => {
+    const parts = member.date_of_birth.split('-');
+    if (parts.length >= 3) {
+      const todayDate = new Date();
+      return (todayDate.getMonth() + 1) === parseInt(parts[1], 10) && todayDate.getDate() === parseInt(parts[2], 10);
+    }
+    return false;
+  })() : false;
+
   return (
     <View style={styles.container}>
       <FVEHeader
@@ -260,6 +270,12 @@ export function MemberDetailScreen() {
               style={styles.editBtn}
             >
               <Edit size={16} color={colors.gold} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleDelete}
+              style={[styles.editBtn, styles.deleteButton]}
+            >
+              <Trash2 size={16} color={colors.error} />
             </TouchableOpacity>
           </View>
         }
@@ -303,6 +319,13 @@ export function MemberDetailScreen() {
                 )}
               </View>
 
+              {isBirthdayToday && (
+                <View style={styles.birthdayBadge}>
+                  <Cake size={13} color={colors.gold} />
+                  <Text style={styles.birthdayBadgeText}>🎂 Birthday Today!</Text>
+                </View>
+              )}
+
               <FVEBadge
                 status={activeMembership?.status || 'NONE'}
                 size="sm"
@@ -339,12 +362,20 @@ export function MemberDetailScreen() {
 
           {/* Quick Info Grid */}
           <View style={styles.infoGrid}>
-            {member?.age && (
+            {member?.date_of_birth ? (
+              <View style={styles.infoItem}>
+                <Text style={styles.infoLabel}>BIRTHDAY</Text>
+                <Text style={styles.infoValue}>
+                  {formatDate(member.date_of_birth)}
+                  {member.age ? ` (${member.age}y)` : ''}
+                </Text>
+              </View>
+            ) : member?.age ? (
               <View style={styles.infoItem}>
                 <Text style={styles.infoLabel}>AGE</Text>
                 <Text style={styles.infoValue}>{member.age} yrs</Text>
               </View>
-            )}
+            ) : null}
             {member?.gender && (
               <View style={styles.infoItem}>
                 <Text style={styles.infoLabel}>GENDER</Text>
@@ -667,6 +698,25 @@ const styles = StyleSheet.create({
   },
   statusBadge: {
     marginTop: 2,
+  },
+  birthdayBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(239, 161, 0, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 161, 0, 0.4)',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    alignSelf: 'flex-start',
+    marginVertical: 4,
+  },
+  birthdayBadgeText: {
+    color: colors.gold,
+    fontSize: 11,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
   },
   joinedText: {
     color: colors.textMuted,

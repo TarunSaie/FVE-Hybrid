@@ -47,6 +47,7 @@ import { formatCurrency, openWhatsAppLink } from '@/utils/format';
 import { getLocalDateStr, getLocalMonthStr, formatDate } from '@/utils/date';
 import { useRenewalAlerts } from '@/hooks/useRenewalAlerts';
 import { useMembershipSync } from '@/hooks/useMembershipSync';
+import { useBirthdayAlerts } from '@/hooks/useBirthdayAlerts';
 import { haptics } from '@/utils/haptics';
 import { RootStackParamList } from '@/navigation/types';
 
@@ -57,9 +58,10 @@ export function DashboardScreen() {
   const { user } = useAuth();
   const qc = useQueryClient();
 
-  // Background renewal and status sync
+  // Background renewal, birthday, and status sync
   useRenewalAlerts();
   useMembershipSync();
+  useBirthdayAlerts();
 
   const [showMemberModal, setShowMemberModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
