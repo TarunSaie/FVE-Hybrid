@@ -1,0 +1,59 @@
+{
+  "expo": {
+    "name": "FitVerse Elite",
+    "slug": "fve-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#050505",
+    "splash": {
+      "image": "./assets/icon.png",
+      "backgroundColor": "#050505",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.fitverse.elite",
+      "infoPlist": {
+        "NSCameraUsageDescription": "FitVerse Elite uses the camera to scan member QR codes for gym attendance check-in."
+      }
+    },
+    "android": {
+      "package": "com.fitverse.elite",
+      "backgroundColor": "#050505",
+      "softwareKeyboardLayoutMode": "resize",
+      "splash": {
+        "image": "./assets/icon.png",
+        "backgroundColor": "#050505",
+        "resizeMode": "contain"
+      },
+      "adaptiveIcon": {
+        "backgroundColor": "#050505",
+        "foregroundImage": "./assets/icon.png"
+      },
+      "permissions": [
+        "CAMERA"
+      ],
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": [
+      "expo-font",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "FitVerse Elite needs access to your camera to scan member QR check-ins."
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#050505",
+          "image": "./assets/icon.png",
+          "imageWidth": 180,
+          "resizeMode": "contain"
+        }
+      ]
+    ]
+  }
+}
