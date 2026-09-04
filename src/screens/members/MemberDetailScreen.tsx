@@ -259,10 +259,12 @@ export function MemberDetailScreen() {
         showBack
         onBack={() => navigation.goBack()}
         rightAction={
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={styles.headerActions}>
             <TouchableOpacity
               onPress={handleNativeShare}
-              style={styles.editBtn}
+              style={styles.headerIconBtn}
+              hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+              activeOpacity={0.7}
             >
               <Share2 size={16} color={colors.gold} />
             </TouchableOpacity>
@@ -271,13 +273,17 @@ export function MemberDetailScreen() {
                 haptics.light();
                 setShowEditModal(true);
               }}
-              style={styles.editBtn}
+              style={styles.headerIconBtn}
+              hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+              activeOpacity={0.7}
             >
               <Edit size={16} color={colors.gold} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleDelete}
-              style={[styles.editBtn, styles.deleteButton]}
+              style={[styles.headerIconBtn, styles.headerDeleteBtn]}
+              hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+              activeOpacity={0.7}
             >
               <Trash2 size={16} color={colors.error} />
             </TouchableOpacity>
@@ -674,12 +680,24 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 50,
   },
-  editBtn: {
-    padding: 6,
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerIconBtn: {
+    width: 34,
+    height: 34,
     borderRadius: 8,
-    backgroundColor: colors.goldMuted,
+    backgroundColor: 'rgba(239, 161, 0, 0.1)',
     borderWidth: 1,
-    borderColor: colors.goldBorder,
+    borderColor: 'rgba(239, 161, 0, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerDeleteBtn: {
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderColor: 'rgba(239, 68, 68, 0.3)',
   },
   profileCard: {
     backgroundColor: '#0F1216',
