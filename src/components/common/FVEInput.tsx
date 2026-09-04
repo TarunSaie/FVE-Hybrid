@@ -1,4 +1,4 @@
-import React, { useState, forwardRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, forwardRef } from 'react';
 import {
   View,
   TextInput,
@@ -8,6 +8,9 @@ import {
   ViewStyle,
   StyleProp,
   TouchableOpacity,
+  Pressable,
+  Keyboard,
+  Platform,
 } from 'react-native';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
@@ -21,6 +24,29 @@ export interface FVEInputProps extends TextInputProps {
   containerStyle?: StyleProp<ViewStyle>;
   isFocused?: boolean;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Global Focus Coordinator
+// Guarantees that ONLY ONE FVEInput can EVER have focus styling at any moment.
+// When any input receives focus, all other inputs are immediately notified and
+// their focus outlines are cleared, eliminating sticky/multi-field focus bugs.
+// ─────────────────────────────────────────────────────────────────────────────
+type FocusListener = (activeId: string | null) => void;
+const focusListeners = new Set<FocusListener>();
+let activeInputId: string | null = null;
+
+function broadcastFocus(id: string | null) {
+  activeInputId = id;
+  focusListeners.forEach((listener) => listener(id));
+}
+
+// Clear focus outline when soft keyboard closes
+Keyboard.addListener(
+  Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+  () => {
+    broadcastFocus(null);
+  }
+);
 
 export const FVEInput = forwardRef<TextInput, FVEInputProps>(function FVEInput(
   {
@@ -39,14 +65,51 @@ export const FVEInput = forwardRef<TextInput, FVEInputProps>(function FVEInput(
   },
   ref
 ) {
+  const inputId = useRef(`fve_input_${Math.random().toString(36).substring(2, 9)}`).current;
+  const internalRef = useRef<TextInput | null>(null);
   const [internalFocused, setInternalFocused] = useState(false);
+
+  // Subscribe to global focus coordinator
+  useEffect(() => {
+    const listener: FocusListener = (currentActiveId) => {
+      setInternalFocused(currentActiveId === inputId);
+    };
+    focusListeners.add(listener);
+    return () => {
+      focusListeners.delete(listener);
+      if (activeInputId === inputId) {
+        activeInputId = null;
+      }
+    };
+  }, [inputId]);
+
+  // Combine forwarded ref and internal ref
+  const setCombinedRef = useCallback(
+    (node: TextInput | null) => {
+      internalRef.current = node;
+      if (typeof ref === 'function') {
+        ref(node);
+      } else if (ref) {
+        (ref as React.MutableRefObject<TextInput | null>).current = node;
+      }
+    },
+    [ref]
+  );
+
   const isInputFocused = controlledFocused !== undefined ? controlledFocused : internalFocused;
+
+  const handleContainerPress = () => {
+    if (editable) {
+      internalRef.current?.focus();
+    }
+  };
 
   return (
     <View style={[styles.wrapper, containerStyle]}>
       {label && <Text style={styles.label}>{label}</Text>}
 
-      <View
+      <Pressable
+        onPress={handleContainerPress}
         style={[
           styles.inputContainer,
           isInputFocused && styles.focusedContainer,
@@ -61,13 +124,12 @@ export const FVEInput = forwardRef<TextInput, FVEInputProps>(function FVEInput(
         )}
 
         <TextInput
-          ref={ref}
+          ref={setCombinedRef}
           editable={editable}
           placeholderTextColor={colors.textSubtle}
           selectionColor={colors.gold}
           cursorColor={colors.gold}
-          // Disable OS autofill grouping — prevents multi-field highlight when
-          // sibling inputs are visible in the same form container.
+          // Disable OS autofill grouping — prevents multi-field highlight
           textContentType="none"
           importantForAutofill="no"
           autoComplete="off"
@@ -75,11 +137,13 @@ export const FVEInput = forwardRef<TextInput, FVEInputProps>(function FVEInput(
           spellCheck={false}
           selectTextOnFocus={false}
           onFocus={(e) => {
-            setInternalFocused(true);
+            broadcastFocus(inputId);
             onFocus?.(e);
           }}
           onBlur={(e) => {
-            setInternalFocused(false);
+            if (activeInputId === inputId) {
+              broadcastFocus(null);
+            }
             onBlur?.(e);
           }}
           style={[styles.input, style]}
@@ -96,7 +160,7 @@ export const FVEInput = forwardRef<TextInput, FVEInputProps>(function FVEInput(
             {rightIcon}
           </TouchableOpacity>
         )}
-      </View>
+      </Pressable>
 
       {!!error && <Text style={styles.errorText}>{error}</Text>}
     </View>
