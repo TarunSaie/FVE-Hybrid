@@ -10,8 +10,9 @@ import {
   TouchableOpacity,
   Platform,
   StatusBar,
+  ScrollView,
+  KeyboardAvoidingView,
 } from 'react-native';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Mail, Lock, Eye, EyeOff, ShieldCheck, ArrowRight } from 'lucide-react-native';
@@ -209,26 +210,23 @@ export function LoginScreen() {
         pointerEvents="none"
       />
 
-      {/*
-        KeyboardAwareScrollView automatically scrolls the focused input
-        into view when the keyboard appears — no manual measurement needed.
-      */}
-      <KeyboardAwareScrollView
-        style={styles.scroll}
-        contentContainerStyle={[
-          styles.scrollContent,
-          {
-            paddingTop: Math.max(insets.top + 16, 28),
-            paddingBottom: Math.max(insets.bottom + 32, 40),
-          },
-        ]}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-        bounces
-        enableOnAndroid
-        extraScrollHeight={Platform.OS === 'ios' ? 24 : 80}
-        keyboardOpeningTime={0}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardContainer}
       >
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[
+            styles.scrollContent,
+            {
+              paddingTop: Math.max(insets.top + 16, 28),
+              paddingBottom: Math.max(insets.bottom + 32, 40),
+            },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          bounces
+        >
         {/* ── Brand Hero ── */}
         <View style={styles.hero}>
           <View style={styles.logoWrap}>
@@ -316,7 +314,8 @@ export function LoginScreen() {
             Engineered for Gym Owners & Staff · Powered by Chirvex
           </Text>
         </View>
-      </KeyboardAwareScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -325,6 +324,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#050505',
+  },
+  keyboardContainer: {
+    flex: 1,
   },
   aura: {
     position: 'absolute',
@@ -339,7 +341,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 20,
-    justifyContent: 'center',
   },
   // ── Hero ──
   hero: {
@@ -464,7 +465,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.fonts.inter,
     paddingRight: 14,
     paddingVertical: 0,
-    outlineStyle: 'none' as any,
   },
   textInputRight: {
     paddingRight: 48,

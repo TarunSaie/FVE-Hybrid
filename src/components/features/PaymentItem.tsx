@@ -6,8 +6,9 @@ import {
   Pressable,
   TouchableOpacity,
   Animated,
+  Image,
 } from 'react-native';
-import { CreditCard, ChevronRight, Share2 } from 'lucide-react-native';
+import { ChevronRight, Share2 } from 'lucide-react-native';
 import { Payment } from '@/types';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
@@ -21,12 +22,33 @@ interface PaymentItemProps {
   onShareWhatsApp?: () => void;
 }
 
+function MemberAvatar({ name, avatarUrl }: { name: string; avatarUrl?: string | null }) {
+  const initial = name.trim().charAt(0).toUpperCase();
+
+  if (avatarUrl) {
+    return (
+      <Image
+        source={{ uri: avatarUrl }}
+        style={styles.avatarImage}
+        resizeMode="cover"
+      />
+    );
+  }
+
+  return (
+    <View style={styles.avatarFallback}>
+      <Text style={styles.avatarInitial}>{initial}</Text>
+    </View>
+  );
+}
+
 export function PaymentItem({
   payment,
   onPress,
   onShareWhatsApp,
 }: PaymentItemProps) {
   const memberName = payment.members?.full_name || 'Member';
+  const avatarUrl = payment.members?.profile_photo;
   const scale = useRef(new Animated.Value(1)).current;
 
   const handlePressIn = () => {
@@ -62,8 +84,8 @@ export function PaymentItem({
         style={styles.card}
       >
         <View style={styles.contentRow}>
-          <View style={styles.iconBox}>
-            <CreditCard size={20} color={colors.gold} />
+          <View style={styles.avatarContainer}>
+            <MemberAvatar name={memberName} avatarUrl={avatarUrl} />
           </View>
 
           <View style={styles.info}>
@@ -132,16 +154,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  iconBox: {
+  avatarContainer: {
+    marginRight: 12,
+  },
+  avatarImage: {
     width: 44,
     height: 44,
-    borderRadius: 14,
-    backgroundColor: 'rgba(239, 161, 0, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.25)',
+    borderRadius: 22,
+    borderWidth: 2,
+    borderColor: 'rgba(239, 161, 0, 0.35)',
+  },
+  avatarFallback: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(239, 161, 0, 0.14)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(239, 161, 0, 0.30)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+  },
+  avatarInitial: {
+    color: colors.gold,
+    fontSize: 18,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+    lineHeight: 22,
   },
   info: {
     flex: 1,
@@ -213,3 +251,4 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
 });
+

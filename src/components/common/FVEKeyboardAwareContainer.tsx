@@ -4,17 +4,19 @@ import {
   ViewStyle,
   StyleProp,
   Platform,
+  ScrollView,
+  KeyboardAvoidingView,
+  ScrollViewProps,
 } from 'react-native';
-import { KeyboardAwareScrollView, KeyboardAwareScrollViewProps } from 'react-native-keyboard-aware-scroll-view';
 
-export interface FVEKeyboardAwareContainerProps extends KeyboardAwareScrollViewProps {
+export interface FVEKeyboardAwareContainerProps extends ScrollViewProps {
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   contentContainerStyle?: StyleProp<ViewStyle>;
   extraScrollHeight?: number;
 }
 
-export const FVEKeyboardAwareContainer = forwardRef<KeyboardAwareScrollView, FVEKeyboardAwareContainerProps>(
+export const FVEKeyboardAwareContainer = forwardRef<ScrollView, FVEKeyboardAwareContainerProps>(
   function FVEKeyboardAwareContainer(
     {
       children,
@@ -28,24 +30,23 @@ export const FVEKeyboardAwareContainer = forwardRef<KeyboardAwareScrollView, FVE
     ref
   ) {
     return (
-      <KeyboardAwareScrollView
-        ref={ref}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={[styles.container, style]}
-        contentContainerStyle={[styles.content, contentContainerStyle]}
-        keyboardShouldPersistTaps={keyboardShouldPersistTaps}
-        keyboardDismissMode={keyboardDismissMode}
-        showsVerticalScrollIndicator={false}
-        scrollEventThrottle={16}
-        bounces={true}
-        enableOnAndroid={true}
-        enableAutomaticScroll={true}
-        extraScrollHeight={Platform.OS === 'ios' ? 24 : extraScrollHeight}
-        keyboardOpeningTime={0}
-        enableResetScrollToCoords={false}
-        {...rest}
       >
-        {children}
-      </KeyboardAwareScrollView>
+        <ScrollView
+          ref={ref}
+          contentContainerStyle={[styles.content, contentContainerStyle]}
+          keyboardShouldPersistTaps={keyboardShouldPersistTaps}
+          keyboardDismissMode={keyboardDismissMode}
+          showsVerticalScrollIndicator={false}
+          scrollEventThrottle={16}
+          bounces={true}
+          {...rest}
+        >
+          {children}
+        </ScrollView>
+      </KeyboardAvoidingView>
     );
   }
 );

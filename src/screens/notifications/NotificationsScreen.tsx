@@ -128,6 +128,10 @@ export function NotificationsScreen() {
         data={notifications || []}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.listContent}
+        initialNumToRender={15}
+        maxToRenderPerBatch={10}
+        windowSize={5}
+        removeClippedSubviews={true}
         refreshControl={
           <RefreshControl
             refreshing={isLoading}

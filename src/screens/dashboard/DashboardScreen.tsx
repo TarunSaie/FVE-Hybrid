@@ -6,6 +6,7 @@ import {
   ScrollView,
   RefreshControl,
   TouchableOpacity,
+  Image,
   Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
@@ -285,12 +286,21 @@ export function DashboardScreen() {
           </View>
 
           <View style={styles.heroRight}>
-            <View style={styles.avatarRing}>
-              <Text style={styles.avatarInitial}>
-                {user?.full_name?.charAt(0) || user?.username?.charAt(0) || 'F'}
-              </Text>
-            </View>
-            <FVEBadge role={user?.role} size="sm" style={{ marginTop: 4 }} />
+            {user?.avatar_url ? (
+              <Image
+                source={{ uri: user.avatar_url }}
+                style={styles.avatarImage}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={styles.avatarRing}>
+                <View style={styles.avatarInnerGlow} />
+                <Text style={styles.avatarInitial}>
+                  {user?.full_name?.charAt(0) || user?.username?.charAt(0) || 'F'}
+                </Text>
+              </View>
+            )}
+            <FVEBadge role={user?.role} size="sm" style={{ marginTop: 6 }} />
           </View>
         </View>
 
@@ -672,32 +682,45 @@ export function DashboardScreen() {
               <Text style={styles.emptyText}>No recent payments recorded.</Text>
             </View>
           ) : (
-            recentPayments.map((p) => (
-              <TouchableOpacity
-                key={p.id}
-                onPress={() => navigation.navigate('PaymentReceipt', { payment: p })}
-                style={styles.recentPayRow}
-                activeOpacity={0.7}
-              >
-                <View style={styles.payIconBox}>
-                  <CreditCard size={16} color={colors.gold} />
-                </View>
+            recentPayments.map((p) => {
+              const memberName = p.members?.full_name || 'Member';
+              const photoUrl = (p.members as { profile_photo?: string | null } | undefined)?.profile_photo;
+              const initial = memberName.trim().charAt(0).toUpperCase();
+              return (
+                <TouchableOpacity
+                  key={p.id}
+                  onPress={() => navigation.navigate('PaymentReceipt', { payment: p })}
+                  style={styles.recentPayRow}
+                  activeOpacity={0.7}
+                >
+                  {photoUrl ? (
+                    <Image
+                      source={{ uri: photoUrl }}
+                      style={styles.payAvatarImage}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={styles.payAvatarFallback}>
+                      <Text style={styles.payAvatarInitial}>{initial}</Text>
+                    </View>
+                  )}
 
-                <View style={styles.payMiddleCol}>
-                  <Text numberOfLines={1} style={styles.payMemberName}>
-                    {p.members?.full_name || 'Member'}
-                  </Text>
-                  <Text style={styles.payMeta}>
-                    #{p.receipt_number || 'N/A'} · {p.payment_method} · {formatDate(p.payment_date || p.created_at)}
-                  </Text>
-                </View>
+                  <View style={styles.payMiddleCol}>
+                    <Text numberOfLines={1} style={styles.payMemberName}>
+                      {memberName}
+                    </Text>
+                    <Text style={styles.payMeta}>
+                      #{p.receipt_number || 'N/A'} · {p.payment_method} · {formatDate(p.payment_date || p.created_at)}
+                    </Text>
+                  </View>
 
-                <View style={styles.payRightCol}>
-                  <Text style={styles.payAmountText}>{formatCurrency(p.amount)}</Text>
-                  <Text style={styles.payStatusSuccess}>PAID</Text>
-                </View>
-              </TouchableOpacity>
-            ))
+                  <View style={styles.payRightCol}>
+                    <Text style={styles.payAmountText}>{formatCurrency(p.amount)}</Text>
+                    <Text style={styles.payStatusSuccess}>PAID</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })
           )}
         </View>
 
@@ -802,21 +825,46 @@ const styles = StyleSheet.create({
   heroRight: {
     alignItems: 'center',
   },
+  avatarImage: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    borderWidth: 2,
+    borderColor: colors.gold,
+    shadowColor: colors.gold,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.55,
+    shadowRadius: 8,
+    elevation: 6,
+  },
   avatarRing: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#151920',
-    borderWidth: 1.8,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: '#1A1E28',
+    borderWidth: 2,
     borderColor: colors.gold,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: colors.gold,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.45,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  avatarInnerGlow: {
+    position: 'absolute',
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(239, 161, 0, 0.10)',
   },
   avatarInitial: {
     color: colors.gold,
-    fontSize: typography.sizes.lg,
+    fontSize: 24,
     fontFamily: typography.fonts.orbitron,
     fontWeight: '800',
+    letterSpacing: 1,
   },
   quickActionsScroll: {
     flexDirection: 'row',
@@ -1271,14 +1319,31 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 8,
   },
-  payIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: 'rgba(239, 161, 0, 0.1)',
+  payAvatarImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: 'rgba(239, 161, 0, 0.35)',
+    marginRight: 12,
+  },
+  payAvatarFallback: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(239, 161, 0, 0.14)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(239, 161, 0, 0.28)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
+  },
+  payAvatarInitial: {
+    color: colors.gold,
+    fontSize: 16,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+    lineHeight: 20,
   },
   payMiddleCol: {
     flex: 1,

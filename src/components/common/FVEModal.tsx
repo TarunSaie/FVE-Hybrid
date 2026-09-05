@@ -11,8 +11,8 @@ import {
   BackHandler,
   Animated,
   PanResponder,
+  ScrollView,
 } from 'react-native';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { X } from 'lucide-react-native';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
@@ -127,21 +127,15 @@ export function FVEModal({
               </TouchableOpacity>
             </View>
 
-            {/* Native Keyboard-Aware Scrollable Sheet Body */}
-            <KeyboardAwareScrollView
+            <ScrollView
               style={styles.body}
               contentContainerStyle={styles.bodyContent}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
               bounces={true}
-              enableOnAndroid={true}
-              enableAutomaticScroll={true}
-              extraScrollHeight={Platform.OS === 'ios' ? 24 : 70}
-              keyboardOpeningTime={0}
-              enableResetScrollToCoords={false}
             >
               {children}
-            </KeyboardAwareScrollView>
+            </ScrollView>
           </Animated.View>
         </SafeAreaView>
       </View>

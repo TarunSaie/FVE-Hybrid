@@ -223,7 +223,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.fonts.inter,
     paddingVertical: 12,
     minHeight: 48,
-    outlineStyle: 'none' as any,
   },
   errorText: {
     color: colors.error,
