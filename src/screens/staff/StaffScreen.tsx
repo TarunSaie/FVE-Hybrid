@@ -15,6 +15,7 @@ import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEBadge } from '@/components/common/FVEBadge';
 import { StaffFormModal } from '@/components/features/StaffFormModal';
 import { FVEEmptyState } from '@/components/common/FVEEmptyState';
+import { FVELogoLoader } from '@/components/common/FVELogoLoader';
 import { UserProfile, UserRole } from '@/types';
 import { supabase } from '@/api/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -129,8 +130,11 @@ export function StaffScreen() {
         </View>
       )}
 
-      <FlatList
-        data={staffList || []}
+      {isLoading ? (
+        <FVELogoLoader message="Syncing Staff..." fullScreen />
+      ) : (
+        <FlatList
+          data={staffList || []}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.listContent}
         keyboardDismissMode="on-drag"
@@ -232,6 +236,7 @@ export function StaffScreen() {
           ) : null
         }
       />
+      )}
 
       <StaffFormModal
         visible={showModal}

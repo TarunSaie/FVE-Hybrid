@@ -26,6 +26,7 @@ import { FVEInput } from '@/components/common/FVEInput';
 import { FVEButton } from '@/components/common/FVEButton';
 import { AttendanceItem } from '@/components/features/AttendanceItem';
 import { FVEEmptyState } from '@/components/common/FVEEmptyState';
+import { FVELogoLoader } from '@/components/common/FVELogoLoader';
 import { FVEModal } from '@/components/common/FVEModal';
 import { AttendanceCalendarModal } from '@/components/features/AttendanceCalendarModal';
 import { Attendance, Member } from '@/types';
@@ -272,8 +273,11 @@ export function AttendanceScreen() {
       </View>
 
       {/* Attendance List */}
-      <FlatList
-        data={logs || []}
+      {isLoading ? (
+        <FVELogoLoader message="Syncing Attendance..." fullScreen />
+      ) : (
+        <FlatList
+          data={logs || []}
         keyExtractor={item => item.id}
         renderItem={({ item }) => (
           <AttendanceItem
@@ -317,6 +321,7 @@ export function AttendanceScreen() {
           ) : null
         }
       />
+      )}
 
       {/* Manual Check-in Modal */}
       <FVEModal

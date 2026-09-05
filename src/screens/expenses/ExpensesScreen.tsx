@@ -15,6 +15,7 @@ import { Plus, DollarSign, TrendingDown, Trash2, Edit, Filter } from 'lucide-rea
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { ExpenseFormModal } from '@/components/features/ExpenseFormModal';
 import { FVEEmptyState } from '@/components/common/FVEEmptyState';
+import { FVELogoLoader } from '@/components/common/FVELogoLoader';
 import { Expense, EXPENSE_CATEGORIES } from '@/types';
 import { supabase } from '@/api/supabase';
 import { colors } from '@/constants/colors';
@@ -160,8 +161,11 @@ export function ExpensesScreen() {
       </View>
 
       {/* Expenses List */}
-      <FlatList
-        data={expenses || []}
+      {isLoading ? (
+        <FVELogoLoader message="Syncing Expenses..." fullScreen />
+      ) : (
+        <FlatList
+          data={expenses || []}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.listContent}
         keyboardDismissMode="on-drag"
@@ -233,6 +237,7 @@ export function ExpensesScreen() {
           ) : null
         }
       />
+      )}
 
       <ExpenseFormModal
         visible={showModal}

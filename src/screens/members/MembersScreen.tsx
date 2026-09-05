@@ -17,6 +17,7 @@ import { FVEInput } from '@/components/common/FVEInput';
 import { MemberCard } from '@/components/features/MemberCard';
 import { MemberFormModal } from '@/components/features/MemberFormModal';
 import { FVEEmptyState } from '@/components/common/FVEEmptyState';
+import { FVELogoLoader } from '@/components/common/FVELogoLoader';
 import { SkeletonMemberCard } from '@/components/common/FVESkeleton';
 import { MemberWithMembership } from '@/types';
 import { supabase } from '@/api/supabase';
@@ -202,8 +203,11 @@ export function MembersScreen() {
       </View>
 
       {/* Member List */}
-      <FlatList
-        data={members || []}
+      {isLoading ? (
+        <FVELogoLoader message="Syncing Members..." fullScreen />
+      ) : (
+        <FlatList
+          data={members || []}
         keyExtractor={item => item.id}
         renderItem={({ item }) => (
           <MemberCard
@@ -247,6 +251,7 @@ export function MembersScreen() {
           ) : null
         }
       />
+      )}
 
       {/* Native Floating Action Button (FAB) */}
       <TouchableOpacity

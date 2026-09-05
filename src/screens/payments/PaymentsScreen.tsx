@@ -17,6 +17,7 @@ import { FVEInput } from '@/components/common/FVEInput';
 import { PaymentItem } from '@/components/features/PaymentItem';
 import { PaymentFormModal } from '@/components/features/PaymentFormModal';
 import { FVEEmptyState } from '@/components/common/FVEEmptyState';
+import { FVELogoLoader } from '@/components/common/FVELogoLoader';
 import { Payment, PAYMENT_METHODS } from '@/types';
 import { supabase } from '@/api/supabase';
 import { colors } from '@/constants/colors';
@@ -193,8 +194,11 @@ export function PaymentsScreen() {
       </View>
 
       {/* Payments List */}
-      <FlatList
-        data={payments || []}
+      {isLoading ? (
+        <FVELogoLoader message="Syncing Payments..." fullScreen />
+      ) : (
+        <FlatList
+          data={payments || []}
         keyExtractor={item => item.id}
         renderItem={({ item }) => (
           <PaymentItem
@@ -230,6 +234,7 @@ export function PaymentsScreen() {
           ) : null
         }
       />
+      )}
 
       {/* Native Floating Action Button (FAB) */}
       <TouchableOpacity

@@ -103,6 +103,7 @@ export function AppTabs() {
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
+        lazy: false,
 
         tabBarStyle: [
           styles.tabBar,

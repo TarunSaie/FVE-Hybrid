@@ -40,6 +40,7 @@ import { FVEHeader } from '@/components/common/FVEHeader';
 import { MemberFormModal } from '@/components/features/MemberFormModal';
 import { PaymentFormModal } from '@/components/features/PaymentFormModal';
 import { FVEBadge } from '@/components/common/FVEBadge';
+import { FVELogoLoader } from '@/components/common/FVELogoLoader';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { supabase } from '@/api/supabase';
@@ -248,6 +249,18 @@ export function DashboardScreen() {
   const isFinancialVisible = user?.role === 'OWNER' || user?.role === 'ADMIN';
   const maxAttendance = Math.max(...(weeklyAttendance?.map((w) => w.count) || [1]), 1);
 
+  if (isLoading && !stats) {
+    return (
+      <View style={styles.container}>
+        <FVEHeader
+          onNotificationsPress={() => navigation.navigate('Notifications')}
+          unreadCount={unreadNotifs || 0}
+        />
+        <FVELogoLoader message="Syncing Dashboard..." fullScreen />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <FVEHeader
@@ -294,10 +307,15 @@ export function DashboardScreen() {
               />
             ) : (
               <View style={styles.avatarRing}>
-                <View style={styles.avatarInnerGlow} />
-                <Text style={styles.avatarInitial}>
-                  {user?.full_name?.charAt(0) || user?.username?.charAt(0) || 'F'}
-                </Text>
+                <LinearGradient
+                  colors={['#252C3D', '#121622']}
+                  style={styles.avatarGradient}
+                >
+                  <View style={styles.avatarInnerGlow} />
+                  <Text style={styles.avatarInitial}>
+                    {(user?.full_name?.trim()?.charAt(0) || user?.username?.trim()?.charAt(0) || (user?.role === 'OWNER' ? 'O' : 'F')).toUpperCase()}
+                  </Text>
+                </LinearGradient>
               </View>
             )}
             <FVEBadge role={user?.role} size="sm" style={{ marginTop: 6 }} />
@@ -838,33 +856,43 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   avatarRing: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: '#1A1E28',
-    borderWidth: 2,
-    borderColor: colors.gold,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    padding: 2,
+    backgroundColor: 'rgba(239, 161, 0, 0.40)',
+    shadowColor: colors.gold,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.6,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  avatarGradient: {
+    flex: 1,
+    borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: colors.gold,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.45,
-    shadowRadius: 8,
-    elevation: 6,
+    borderWidth: 1.5,
+    borderColor: colors.gold,
+    overflow: 'hidden',
   },
   avatarInnerGlow: {
     position: 'absolute',
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: 'rgba(239, 161, 0, 0.10)',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(239, 161, 0, 0.16)',
   },
   avatarInitial: {
-    color: colors.gold,
-    fontSize: 24,
+    color: colors.goldBright,
+    fontSize: 26,
     fontFamily: typography.fonts.orbitron,
-    fontWeight: '800',
-    letterSpacing: 1,
+    fontWeight: '900',
+    textAlign: 'center',
+    includeFontPadding: false,
+    textShadowColor: 'rgba(239, 161, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
   },
   quickActionsScroll: {
     flexDirection: 'row',

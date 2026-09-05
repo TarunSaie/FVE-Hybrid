@@ -14,6 +14,7 @@ import { Plus, Award, Edit, Trash2, Check, Clock } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { PlanFormModal } from '@/components/features/PlanFormModal';
 import { FVEEmptyState } from '@/components/common/FVEEmptyState';
+import { FVELogoLoader } from '@/components/common/FVELogoLoader';
 import { MembershipPlan } from '@/types';
 import { supabase } from '@/api/supabase';
 import { colors } from '@/constants/colors';
@@ -102,8 +103,11 @@ export function MembershipPlansScreen() {
         }
       />
 
-      <FlatList
-        data={plans || []}
+      {isLoading ? (
+        <FVELogoLoader message="Syncing Plans..." fullScreen />
+      ) : (
+        <FlatList
+          data={plans || []}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.listContent}
         keyboardDismissMode="on-drag"
@@ -199,6 +203,7 @@ export function MembershipPlansScreen() {
           ) : null
         }
       />
+      )}
 
       <PlanFormModal
         visible={showPlanModal}
