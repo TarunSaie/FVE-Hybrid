@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Shield, User, Phone, Mail, LogIn, Edit, Trash2 } from 'lucide-react-native';
+import { Plus, Shield, User, Phone, Mail, LogIn, Edit, Trash2, Sparkles } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEBadge } from '@/components/common/FVEBadge';
 import { StaffFormModal } from '@/components/features/StaffFormModal';
@@ -154,20 +154,52 @@ export function StaffScreen() {
         renderItem={({ item }) => {
           const isCurrentActive = user?.id === item.id;
           const isOwner = item.role === 'OWNER';
+          const staffInitial = (
+            item.full_name?.trim()?.charAt(0) ||
+            item.username?.trim()?.charAt(0) ||
+            (isOwner ? 'O' : 'S')
+          ).toUpperCase();
 
           return (
-            <View style={[styles.staffCard, isCurrentActive && styles.activeCard]}>
+            <View
+              style={[
+                styles.staffCard,
+                isOwner && styles.ownerCard,
+                isCurrentActive && styles.activeCard,
+              ]}
+            >
               <View style={styles.staffHeader}>
-                <View style={styles.leftCol}>
-                  <Text style={styles.staffName}>
-                    {item.full_name || item.username || 'Staff Profile'}
-                  </Text>
-                  <FVEBadge role={item.role} size="sm" style={{ marginTop: 4 }} />
+                <View style={styles.headerLeftRow}>
+                  <View style={[styles.staffAvatar, isOwner && styles.ownerStaffAvatar]}>
+                    <Text
+                      style={[
+                        styles.staffAvatarText,
+                        isOwner && styles.ownerStaffAvatarText,
+                      ]}
+                    >
+                      {staffInitial}
+                    </Text>
+                  </View>
+
+                  <View style={styles.leftCol}>
+                    <View style={styles.nameRow}>
+                      <Text style={[styles.staffName, isOwner && styles.ownerStaffName]}>
+                        {(item.full_name || item.username || 'Staff Profile').toUpperCase()}
+                      </Text>
+                      {isOwner && (
+                        <View style={styles.ownerBadgePill}>
+                          <Sparkles size={9} color={colors.goldBright} />
+                          <Text style={styles.ownerBadgePillText}>PRIMARY OWNER</Text>
+                        </View>
+                      )}
+                    </View>
+                    <FVEBadge role={item.role} size="sm" style={{ marginTop: 4 }} />
+                  </View>
                 </View>
 
                 {isCurrentActive ? (
                   <View style={styles.activeBadge}>
-                    <Text style={styles.activeBadgeText}>ACTIVE SESSION</Text>
+                    <Text style={styles.activeBadgeText}>ACTIVE</Text>
                   </View>
                 ) : (
                   !isOwner && (
@@ -305,28 +337,106 @@ const styles = StyleSheet.create({
     backgroundColor: '#0F1216',
     borderWidth: 1,
     borderColor: 'rgba(239, 161, 0, 0.22)',
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 14,
     marginBottom: 10,
   },
+  ownerCard: {
+    backgroundColor: '#131722',
+    borderWidth: 1.5,
+    borderColor: 'rgba(239, 161, 0, 0.45)',
+    shadowColor: colors.gold,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
   activeCard: {
     borderColor: colors.gold,
-    backgroundColor: '#141820',
+    backgroundColor: '#161B26',
   },
   staffHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 10,
+  },
+  headerLeftRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 8,
+  },
+  staffAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1.2,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  ownerStaffAvatar: {
+    backgroundColor: 'rgba(239, 161, 0, 0.16)',
+    borderColor: colors.gold,
+    borderWidth: 1.8,
+    shadowColor: colors.gold,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.4,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  staffAvatarText: {
+    color: colors.textPrimary,
+    fontSize: 18,
+    fontFamily: typography.fonts.orbitron,
+    fontWeight: '800',
+    includeFontPadding: false,
+  },
+  ownerStaffAvatarText: {
+    color: colors.goldBright,
+    fontWeight: '900',
   },
   leftCol: {
     flex: 1,
   },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
   staffName: {
     color: colors.textPrimary,
-    fontSize: typography.sizes.base,
+    fontSize: typography.sizes.sm,
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '700',
+  },
+  ownerStaffName: {
+    color: '#FFFFFF',
+    fontFamily: typography.fonts.orbitron,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+  },
+  ownerBadgePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(239, 161, 0, 0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 161, 0, 0.45)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  ownerBadgePillText: {
+    color: colors.goldBright,
+    fontSize: 8.5,
+    fontFamily: typography.fonts.orbitron,
+    fontWeight: '800',
+    letterSpacing: 0.6,
   },
   switchBtn: {
     flexDirection: 'row',

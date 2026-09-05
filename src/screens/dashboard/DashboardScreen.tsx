@@ -280,47 +280,76 @@ export function DashboardScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
-        {/* ── HERO EXECUTIVE STATUS BANNER ── */}
-        <View style={styles.heroBanner}>
-          <View style={styles.heroLeft}>
-            <View style={styles.greetingRow}>
-              <greetingTime.icon size={15} color={colors.gold} />
-              <Text style={styles.greetingTimeText}>{greetingTime.text},</Text>
-            </View>
-            <Text numberOfLines={1} style={styles.heroUserName}>
-              {user?.full_name || user?.username || 'Commander'}
-            </Text>
+        {/* ── HERO EXECUTIVE STATUS BANNER / OWNER CARD ── */}
+        <LinearGradient
+          colors={['#181D2A', '#10141E', '#0B0D13']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.heroBanner}
+        >
+          {/* Top Gold Horizon Hairline */}
+          <LinearGradient
+            colors={['transparent', colors.goldBright, colors.gold, 'transparent']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.heroTopHighlight}
+          />
 
-            {/* Pulsing Operations Beacon */}
-            <View style={styles.statusBeaconRow}>
-              <View style={styles.statusBeaconDot} />
-              <Text style={styles.statusBeaconText}>OPERATIONS LIVE · DESK READY</Text>
-            </View>
-          </View>
-
-          <View style={styles.heroRight}>
-            {user?.avatar_url ? (
-              <Image
-                source={{ uri: user.avatar_url }}
-                style={styles.avatarImage}
-                resizeMode="cover"
-              />
-            ) : (
-              <View style={styles.avatarRing}>
-                <LinearGradient
-                  colors={['#252C3D', '#121622']}
-                  style={styles.avatarGradient}
-                >
-                  <View style={styles.avatarInnerGlow} />
-                  <Text style={styles.avatarInitial}>
-                    {(user?.full_name?.trim()?.charAt(0) || user?.username?.trim()?.charAt(0) || (user?.role === 'OWNER' ? 'O' : 'F')).toUpperCase()}
-                  </Text>
-                </LinearGradient>
+          <View style={styles.heroContentRow}>
+            <View style={styles.heroLeft}>
+              <View style={styles.greetingRow}>
+                <View style={styles.greetingIconPill}>
+                  <greetingTime.icon size={13} color={colors.gold} />
+                  <Text style={styles.greetingTimeText}>{greetingTime.text.toUpperCase()}</Text>
+                </View>
+                {user?.role === 'OWNER' && (
+                  <View style={styles.ownerEliteBadge}>
+                    <Sparkles size={11} color={colors.goldBright} />
+                    <Text style={styles.ownerEliteBadgeText}>EXECUTIVE OWNER</Text>
+                  </View>
+                )}
               </View>
-            )}
-            <FVEBadge role={user?.role} size="sm" style={{ marginTop: 6 }} />
+
+              <Text numberOfLines={1} style={styles.heroUserName}>
+                {(user?.full_name || user?.username || 'Commander').toUpperCase()}
+              </Text>
+
+              {/* Pulsing Operations Beacon */}
+              <View style={styles.statusBeaconRow}>
+                <View style={styles.statusBeaconGlow}>
+                  <View style={styles.statusBeaconDot} />
+                </View>
+                <Text style={styles.statusBeaconText}>HQ OPERATIONS LIVE · COMMAND READY</Text>
+              </View>
+            </View>
+
+            <View style={styles.heroRight}>
+              {user?.avatar_url ? (
+                <View style={styles.avatarWrapper}>
+                  <Image
+                    source={{ uri: user.avatar_url }}
+                    style={styles.avatarImage}
+                    resizeMode="cover"
+                  />
+                  <View style={styles.avatarGoldRim} />
+                </View>
+              ) : (
+                <View style={styles.avatarRing}>
+                  <LinearGradient
+                    colors={['#2A3245', '#161A26', '#0E1018']}
+                    style={styles.avatarGradient}
+                  >
+                    <View style={styles.avatarInnerGlow} />
+                    <Text style={styles.avatarInitial}>
+                      {(user?.full_name?.trim()?.charAt(0) || user?.username?.trim()?.charAt(0) || 'O').toUpperCase()}
+                    </Text>
+                  </LinearGradient>
+                </View>
+              )}
+              <FVEBadge role={user?.role} size="sm" style={{ marginTop: 8 }} />
+            </View>
           </View>
-        </View>
+        </LinearGradient>
 
         {/* ── QUICK ACTIONS BAR (HORIZONTAL PILLS) ── */}
         <ScrollView
@@ -778,98 +807,162 @@ const styles = StyleSheet.create({
     paddingBottom: 110,
   },
   heroBanner: {
+    position: 'relative',
+    borderRadius: 22,
+    padding: 18,
+    marginBottom: 16,
+    borderWidth: 1.5,
+    borderColor: 'rgba(239, 161, 0, 0.35)',
+    shadowColor: colors.gold,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 8,
+    overflow: 'hidden',
+  },
+  heroTopHighlight: {
+    position: 'absolute',
+    top: 0,
+    left: 24,
+    right: 24,
+    height: 2,
+    borderRadius: 1,
+  },
+  heroContentRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#11141A',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: 20,
-    padding: 18,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 6,
   },
   heroLeft: {
     flex: 1,
-    marginRight: 12,
+    marginRight: 14,
   },
   greetingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 4,
+  },
+  greetingIconPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(239, 161, 0, 0.12)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 161, 0, 0.25)',
   },
   greetingTimeText: {
-    color: colors.textSecondary,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhani,
+    color: colors.gold,
+    fontSize: 10,
+    fontFamily: typography.fonts.orbitron,
     fontWeight: '700',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
   },
-  heroUserName: {
-    color: colors.textPrimary,
-    fontSize: typography.sizes.xl,
+  ownerEliteBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(239, 161, 0, 0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 161, 0, 0.45)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  ownerEliteBadgeText: {
+    color: colors.goldBright,
+    fontSize: 9.5,
     fontFamily: typography.fonts.orbitron,
     fontWeight: '800',
-    letterSpacing: 1,
-    marginTop: 2,
+    letterSpacing: 0.8,
+  },
+  heroUserName: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontFamily: typography.fonts.orbitron,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+    marginTop: 4,
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
   },
   statusBeaconRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
     marginTop: 8,
+  },
+  statusBeaconGlow: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: 'rgba(34, 197, 94, 0.20)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   statusBeaconDot: {
     width: 7,
     height: 7,
-    borderRadius: 4,
+    borderRadius: 3.5,
     backgroundColor: colors.success,
-    shadowColor: colors.success,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.9,
-    shadowRadius: 4,
   },
   statusBeaconText: {
     color: colors.success,
     fontSize: 9.5,
     fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
+    fontWeight: '700',
     letterSpacing: 0.8,
   },
   heroRight: {
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarWrapper: {
+    position: 'relative',
+    width: 64,
+    height: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   avatarImage: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+  },
+  avatarGoldRim: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 32,
     borderWidth: 2,
     borderColor: colors.gold,
     shadowColor: colors.gold,
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.55,
+    shadowOpacity: 0.6,
     shadowRadius: 8,
-    elevation: 6,
   },
   avatarRing: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    padding: 2,
-    backgroundColor: 'rgba(239, 161, 0, 0.40)',
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    padding: 2.5,
+    backgroundColor: 'rgba(239, 161, 0, 0.45)',
     shadowColor: colors.gold,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.6,
+    shadowOpacity: 0.65,
     shadowRadius: 10,
     elevation: 8,
   },
   avatarGradient: {
     flex: 1,
-    borderRadius: 28,
+    borderRadius: 29,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
@@ -878,19 +971,19 @@ const styles = StyleSheet.create({
   },
   avatarInnerGlow: {
     position: 'absolute',
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(239, 161, 0, 0.16)',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(239, 161, 0, 0.20)',
   },
   avatarInitial: {
     color: colors.goldBright,
-    fontSize: 26,
+    fontSize: 28,
     fontFamily: typography.fonts.orbitron,
     fontWeight: '900',
     textAlign: 'center',
     includeFontPadding: false,
-    textShadowColor: 'rgba(239, 161, 0, 0.5)',
+    textShadowColor: 'rgba(239, 161, 0, 0.6)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 6,
   },

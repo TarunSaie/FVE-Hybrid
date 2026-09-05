@@ -7,7 +7,9 @@ import {
   TouchableOpacity,
   Alert,
   Linking,
+  Image,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
@@ -22,6 +24,7 @@ import {
   ExternalLink,
   ChevronRight,
   Save,
+  Sparkles,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEInput } from '@/components/common/FVEInput';
@@ -137,18 +140,47 @@ export function SettingsScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* User Card */}
-        <View style={styles.userCard}>
+        <LinearGradient
+          colors={['#181D2A', '#10141E', '#0B0D13']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.userCard}
+        >
           <View style={styles.userAvatar}>
-            <Text style={styles.userInitial}>
-              {user?.full_name?.charAt(0) || user?.username?.charAt(0) || 'U'}
-            </Text>
+            {user?.avatar_url ? (
+              <Image
+                source={{ uri: user.avatar_url }}
+                style={styles.userAvatarImage}
+                resizeMode="cover"
+              />
+            ) : (
+              <LinearGradient
+                colors={['#2A3245', '#161A26', '#0E1018']}
+                style={styles.userAvatarGradient}
+              >
+                <View style={styles.userAvatarGlow} />
+                <Text style={styles.userInitial}>
+                  {(user?.full_name?.trim()?.charAt(0) || user?.username?.trim()?.charAt(0) || (user?.role === 'OWNER' ? 'O' : 'U')).toUpperCase()}
+                </Text>
+              </LinearGradient>
+            )}
           </View>
           <View style={styles.userInfo}>
-            <Text style={styles.userName}>{user?.full_name || user?.username}</Text>
-            <Text style={styles.userEmail}>{user?.email}</Text>
-            <FVEBadge role={user?.role} size="sm" style={{ marginTop: 4 }} />
+            <View style={styles.userNameRow}>
+              <Text numberOfLines={1} style={styles.userName}>
+                {(user?.full_name || user?.username || 'User').toUpperCase()}
+              </Text>
+              {user?.role === 'OWNER' && (
+                <View style={styles.ownerPill}>
+                  <Sparkles size={9} color={colors.goldBright} />
+                  <Text style={styles.ownerPillText}>PRIMARY OWNER</Text>
+                </View>
+              )}
+            </View>
+            <Text style={styles.userEmail}>{user?.email || 'System User'}</Text>
+            <FVEBadge role={user?.role} size="sm" style={{ marginTop: 6 }} />
           </View>
-        </View>
+        </LinearGradient>
 
         {/* Staff Switch Alert Banner */}
         {isStaff && (
@@ -329,49 +361,98 @@ const styles = StyleSheet.create({
   userCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#11141A',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: 18,
+    borderRadius: 20,
     padding: 16,
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
+    borderWidth: 1.5,
+    borderColor: 'rgba(239, 161, 0, 0.35)',
+    shadowColor: colors.gold,
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 3,
+    shadowRadius: 10,
+    elevation: 6,
   },
   userAvatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#191E24',
-    borderWidth: 2,
-    borderColor: colors.gold,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    padding: 2,
+    backgroundColor: 'rgba(239, 161, 0, 0.45)',
+    shadowColor: colors.gold,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    elevation: 5,
     marginRight: 14,
   },
+  userAvatarImage: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+  },
+  userAvatarGradient: {
+    flex: 1,
+    borderRadius: 27,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: colors.gold,
+    overflow: 'hidden',
+  },
+  userAvatarGlow: {
+    position: 'absolute',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(239, 161, 0, 0.18)',
+  },
   userInitial: {
-    color: colors.gold,
-    fontSize: typography.sizes.xl,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
+    color: colors.goldBright,
+    fontSize: 24,
+    fontFamily: typography.fonts.orbitron,
+    fontWeight: '900',
+    textAlign: 'center',
+    includeFontPadding: false,
   },
   userInfo: {
     flex: 1,
   },
+  userNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
   userName: {
-    color: colors.textPrimary,
-    fontSize: typography.sizes.lg,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
+    color: '#FFFFFF',
+    fontSize: typography.sizes.base,
+    fontFamily: typography.fonts.orbitron,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  ownerPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(239, 161, 0, 0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 161, 0, 0.40)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  ownerPillText: {
+    color: colors.goldBright,
+    fontSize: 8.5,
+    fontFamily: typography.fonts.orbitron,
+    fontWeight: '800',
+    letterSpacing: 0.6,
   },
   userEmail: {
     color: colors.textSecondary,
     fontSize: typography.sizes.xs,
     fontFamily: typography.fonts.inter,
-    marginTop: 2,
+    marginTop: 3,
   },
   staffAlertBox: {
     backgroundColor: 'rgba(239, 161, 0, 0.12)',

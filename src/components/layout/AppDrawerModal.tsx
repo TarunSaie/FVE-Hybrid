@@ -13,6 +13,7 @@ import {
   Animated,
   Alert,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useNavigationState } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -283,14 +284,23 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
               style={styles.userSection}
               activeOpacity={0.8}
             >
-              <View style={styles.avatarCircle}>
-                <Text style={styles.avatarText}>
-                  {user?.full_name?.charAt(0) || user?.username?.charAt(0) || 'U'}
-                </Text>
+              <View style={styles.avatarWrapper}>
+                {user?.avatar_url ? (
+                  <Image source={{ uri: user.avatar_url }} style={styles.avatarImg} />
+                ) : (
+                  <LinearGradient
+                    colors={['#2A3245', '#161A26']}
+                    style={styles.avatarGradient}
+                  >
+                    <Text style={styles.avatarText}>
+                      {(user?.full_name?.trim()?.charAt(0) || user?.username?.trim()?.charAt(0) || 'O').toUpperCase()}
+                    </Text>
+                  </LinearGradient>
+                )}
               </View>
               <View style={styles.userInfo}>
                 <Text numberOfLines={1} style={styles.userName}>
-                  {user?.full_name || user?.username}
+                  {(user?.full_name || user?.username || 'User').toUpperCase()}
                 </Text>
                 <View style={styles.userRoleRow}>
                   <FVEBadge role={user?.role} size="sm" />
@@ -473,28 +483,42 @@ const styles = StyleSheet.create({
     backgroundColor: '#111419',
     gap: 12,
   },
-  avatarCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: colors.gold,
+  avatarWrapper: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    padding: 2,
+    backgroundColor: 'rgba(239, 161, 0, 0.4)',
+    borderWidth: 1.5,
+    borderColor: colors.gold,
+  },
+  avatarImg: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+  },
+  avatarGradient: {
+    flex: 1,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
-    color: '#050505',
-    fontSize: typography.sizes.md,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
+    color: colors.goldBright,
+    fontSize: 18,
+    fontFamily: typography.fonts.orbitron,
+    fontWeight: '900',
+    includeFontPadding: false,
   },
   userInfo: {
     flex: 1,
   },
   userName: {
     color: colors.textPrimary,
-    fontSize: typography.sizes.base,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
+    fontSize: typography.sizes.sm,
+    fontFamily: typography.fonts.orbitron,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   userRoleRow: {
     marginTop: 3,
