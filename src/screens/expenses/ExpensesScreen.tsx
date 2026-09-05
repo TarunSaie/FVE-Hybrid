@@ -11,8 +11,9 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, DollarSign, TrendingDown, Trash2, Edit, Filter } from 'lucide-react-native';
+import { Plus, DollarSign, TrendingDown, Trash2, Edit, Filter, Search, X } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
+import { FVEInput } from '@/components/common/FVEInput';
 import { ExpenseFormModal } from '@/components/features/ExpenseFormModal';
 import { FVEEmptyState } from '@/components/common/FVEEmptyState';
 import { FVELogoLoader } from '@/components/common/FVELogoLoader';
@@ -28,8 +29,16 @@ export function ExpensesScreen() {
   const qc = useQueryClient();
 
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
+
+  // Debounce search 400ms
+  React.useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 400);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const currentMonth = getLocalMonthStr();
 
@@ -57,7 +66,16 @@ export function ExpensesScreen() {
     },
   });
 
-  const totalExpenses = (expenses || []).reduce(
+  const filteredExpenses = React.useMemo(() => {
+    const term = debouncedSearch.trim().toLowerCase();
+    if (!term) return expenses || [];
+    return (expenses || []).filter(e =>
+      (e.description || '').toLowerCase().includes(term) ||
+      e.category.toLowerCase().includes(term)
+    );
+  }, [expenses, debouncedSearch]);
+
+  const totalExpenses = filteredExpenses.reduce(
     (sum, e) => sum + Number(e.amount || 0),
     0
   );
@@ -121,6 +139,19 @@ export function ExpensesScreen() {
         <TrendingDown size={28} color={colors.error} />
       </View>
 
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <FVEInput
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Search by category or description..."
+          leftIcon={<Search size={16} color={colors.gold} />}
+          rightIcon={search ? <X size={16} color={colors.textSecondary} /> : undefined}
+          onRightIconPress={() => setSearch('')}
+          containerStyle={{ marginBottom: 0 }}
+        />
+      </View>
+
       {/* Category Filter Chips */}
       <View style={styles.filterSection}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -165,7 +196,7 @@ export function ExpensesScreen() {
         <FVELogoLoader message="Syncing Expenses..." fullScreen />
       ) : (
         <FlatList
-          data={expenses || []}
+          data={filteredExpenses}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.listContent}
         keyboardDismissMode="on-drag"
@@ -296,6 +327,10 @@ const styles = StyleSheet.create({
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '700',
     marginTop: 2,
+  },
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 10,
   },
   filterSection: {
     paddingHorizontal: 16,

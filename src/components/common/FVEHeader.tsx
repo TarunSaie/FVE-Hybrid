@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Bell, Menu } from 'lucide-react-native';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
@@ -44,24 +44,58 @@ export function FVEHeader({
 }: FVEHeaderProps) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { user } = useAuth();
+  const qc = useQueryClient();
   const [drawerVisible, setDrawerVisible] = useState(false);
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : insets.top;
 
+  const isOwnerOrAdmin = Boolean(
+    user?.role && ['OWNER', 'ADMIN'].includes(user.role.toUpperCase())
+  );
+
   const { data: fetchedUnreadCount } = useQuery({
-    queryKey: ['unread-notifications-count', user?.id],
+    queryKey: ['unread-notifications-count', user?.id, isOwnerOrAdmin],
     queryFn: async () => {
       if (!user?.id) return 0;
-      const { count } = await supabase
+      let query = supabase
         .from('notifications')
         .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
         .eq('read', false);
+
+      if (!isOwnerOrAdmin) {
+        query = query.or(`user_id.eq.${user.id},user_id.is.null`);
+      }
+
+      const { count, error } = await query;
+      if (error) {
+        console.warn('[FVEHeader] Error fetching unread count:', error.message);
+        return 0;
+      }
       return count || 0;
     },
     enabled: !!user?.id,
-    refetchInterval: 20000,
+    refetchInterval: 15000,
   });
+
+  // Realtime subscription to keep unread badge updated across screens
+  useEffect(() => {
+    const channel = supabase
+      .channel('header-unread-badge')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'notifications' },
+        () => {
+          qc.invalidateQueries({ queryKey: ['unread-notifications-count'] });
+          qc.invalidateQueries({ queryKey: ['unread-notifications'] });
+          qc.invalidateQueries({ queryKey: ['mobile-notifications'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [qc]);
 
   const finalUnreadCount = unreadCount || fetchedUnreadCount || 0;
 

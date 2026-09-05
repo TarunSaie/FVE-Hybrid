@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useNavigation } from '@react-navigation/native';
+import { useQueryClient } from '@tanstack/react-query';
 import { X, Flashlight, Camera, CheckCircle, AlertTriangle } from 'lucide-react-native';
 import { FVEButton } from '@/components/common/FVEButton';
 import { FVEInput } from '@/components/common/FVEInput';
@@ -24,6 +25,7 @@ import { Member, Membership } from '@/types';
 
 export function QRScannerScreen() {
   const navigation = useNavigation();
+  const qc = useQueryClient();
   const { user } = useAuth();
   const [permission, requestPermission] = useCameraPermissions();
 
@@ -32,6 +34,7 @@ export function QRScannerScreen() {
   const [facing, setFacing] = useState<'back' | 'front'>('back');
   const [manualCode, setManualCode] = useState('');
   const [showManualInput, setShowManualInput] = useState(false);
+  const resetTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Result popup state
   const [scannedResult, setScannedResult] = useState<{
@@ -41,28 +44,76 @@ export function QRScannerScreen() {
     message: string;
   } | null>(null);
 
+  const clearTimer = () => {
+    if (resetTimerRef.current) {
+      clearTimeout(resetTimerRef.current);
+      resetTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => clearTimer();
+  }, []);
+
   const handleBarCodeScanned = async ({ data }: { data: string }) => {
     if (scanned || scannedResult) return;
     setScanned(true);
     await processCheckInCode(data.trim());
   };
 
-  const processCheckInCode = async (qrCode: string) => {
+  const processCheckInCode = async (rawCode: string) => {
+    clearTimer();
+    const cleanCode = rawCode.trim();
+
     try {
-      // 1. Look up member
-      const { data: member, error: memberErr } = await supabase
+      // 1. Look up member: try qr_code first, then member_id (e.g. FVE-01), then id, then mobile
+      let member: Member | null = null;
+
+      const { data: mByQr } = await supabase
         .from('members')
         .select('*')
-        .eq('qr_code', qrCode)
+        .eq('qr_code', cleanCode)
         .maybeSingle();
+      member = mByQr as Member | null;
 
-      if (memberErr || !member) {
+      if (!member) {
+        const { data: mById } = await supabase
+          .from('members')
+          .select('*')
+          .ilike('member_id', cleanCode)
+          .maybeSingle();
+        member = mById as Member | null;
+      }
+
+      if (!member) {
+        const { data: mByUuid } = await supabase
+          .from('members')
+          .select('*')
+          .eq('id', cleanCode)
+          .maybeSingle();
+        member = mByUuid as Member | null;
+      }
+
+      if (!member) {
+        const { data: mByPhone } = await supabase
+          .from('members')
+          .select('*')
+          .eq('mobile', cleanCode)
+          .maybeSingle();
+        member = mByPhone as Member | null;
+      }
+
+      if (!member) {
         haptics.error();
         setScannedResult({
-          member: { full_name: 'Unknown Code', qr_code: qrCode } as Member,
+          member: { full_name: 'Unknown Code', qr_code: cleanCode } as Member,
           status: 'error',
-          message: 'No member found matching this QR code.',
+          message: 'No member found matching this QR code or ID.',
         });
+        resetTimerRef.current = setTimeout(() => {
+          setScannedResult(null);
+          setScanned(false);
+        }, 4000);
         return;
       }
 
@@ -85,6 +136,10 @@ export function QRScannerScreen() {
           status: 'error',
           message: 'Membership is inactive or expired. Please renew.',
         });
+        resetTimerRef.current = setTimeout(() => {
+          setScannedResult(null);
+          setScanned(false);
+        }, 4000);
         return;
       }
 
@@ -98,20 +153,25 @@ export function QRScannerScreen() {
           status: 'error',
           message: 'Plan visit limit reached. Please renew.',
         });
+        resetTimerRef.current = setTimeout(() => {
+          setScannedResult(null);
+          setScanned(false);
+        }, 4000);
         return;
       }
 
       // 4. Record attendance
       const now = new Date();
-      const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+      // check_in_time column is TIMESTAMPTZ — must send a full ISO timestamp
+      const checkInTimestamp = now.toISOString();
 
       const { error: attError } = await supabase.from('attendance').insert({
         member_id: member.id,
         date: today,
-        check_in_time: timeStr,
+        check_in_time: checkInTimestamp,
         marked_by: user?.id || null,
         check_in_method: 'QR',
-        created_at: new Date().toISOString(),
+        created_at: checkInTimestamp,
       });
 
       if (attError) {
@@ -124,6 +184,10 @@ export function QRScannerScreen() {
             status: 'already',
             message: 'Already checked in today!',
           });
+          resetTimerRef.current = setTimeout(() => {
+            setScannedResult(null);
+            setScanned(false);
+          }, 3500);
           return;
         }
         haptics.error();
@@ -135,6 +199,11 @@ export function QRScannerScreen() {
         await consumeVisitDay(activeMs);
       }
 
+      // Invalidate attendance logs so dashboard and attendance lists update
+      qc.invalidateQueries({ queryKey: ['mobile-attendance-log'] });
+      qc.invalidateQueries({ queryKey: ['mobile-recent-attendance'] });
+      qc.invalidateQueries({ queryKey: ['mobile-dashboard-stats'] });
+
       haptics.success();
       setScannedResult({
         member,
@@ -143,8 +212,8 @@ export function QRScannerScreen() {
         message: 'Check-in Verified! Welcome to FitVerse Elite.',
       });
 
-      // Auto-reset after 3 seconds for continuous kiosk flow
-      setTimeout(() => {
+      // Auto-reset after 3.5 seconds for continuous kiosk flow
+      resetTimerRef.current = setTimeout(() => {
         setScannedResult(null);
         setScanned(false);
       }, 3500);
@@ -154,7 +223,17 @@ export function QRScannerScreen() {
         status: 'error',
         message: (err as Error).message || 'Failed to process check-in',
       });
+      resetTimerRef.current = setTimeout(() => {
+        setScannedResult(null);
+        setScanned(false);
+      }, 4000);
     }
+  };
+
+  const handleNextScan = () => {
+    clearTimer();
+    setScannedResult(null);
+    setScanned(false);
   };
 
   if (!permission) {
@@ -317,10 +396,7 @@ export function QRScannerScreen() {
 
             <FVEButton
               title="Next Scan"
-              onPress={() => {
-                setScannedResult(null);
-                setScanned(false);
-              }}
+              onPress={handleNextScan}
               variant="gold"
               size="sm"
               style={{ marginTop: 16 }}

@@ -208,15 +208,28 @@ export function DashboardScreen() {
   });
 
   // Unread notifications
+  const isOwnerOrAdmin = Boolean(
+    user?.role && ['OWNER', 'ADMIN'].includes(user.role.toUpperCase())
+  );
+
   const { data: unreadNotifs } = useQuery({
-    queryKey: ['unread-notifications'],
+    queryKey: ['unread-notifications', user?.id, isOwnerOrAdmin],
     queryFn: async () => {
-      const { count } = await supabase
+      if (!user?.id) return 0;
+      let query = supabase
         .from('notifications')
         .select('*', { count: 'exact', head: true })
         .eq('read', false);
+
+      if (!isOwnerOrAdmin) {
+        query = query.or(`user_id.eq.${user.id},user_id.is.null`);
+      }
+
+      const { count } = await query;
       return count || 0;
     },
+    enabled: !!user?.id,
+    refetchInterval: 15000,
   });
 
   const onRefresh = useCallback(() => {
@@ -226,6 +239,8 @@ export function DashboardScreen() {
     qc.invalidateQueries({ queryKey: ['mobile-recent-payments'] });
     qc.invalidateQueries({ queryKey: ['mobile-weekly-attendance'] });
     qc.invalidateQueries({ queryKey: ['unread-notifications'] });
+    qc.invalidateQueries({ queryKey: ['unread-notifications-count'] });
+    qc.invalidateQueries({ queryKey: ['mobile-notifications'] });
   }, [qc]);
 
   const handleWhatsAppReminder = (

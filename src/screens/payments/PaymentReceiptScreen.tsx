@@ -119,15 +119,13 @@ export function PaymentReceiptScreen() {
   };
 
   const handleNativeShare = async () => {
+    if (!payment) return;
     haptics.medium();
-    const text = `*FitVerse Elite Official Receipt*\nReceipt No: #${receiptNo}\nMember: ${memberName}${memberId ? ` (${memberId})` : ''}\nPlan: ${planName}\nAmount Paid: ${formatCurrency(payment.amount)}\nPayment Method: ${payment.payment_method}\nDate: ${dateStr}\n\n*DISCIPLINE • STRENGTH • TRANSFORMATION*\nFitVerse Elite Gym Management\nPowered by Chirvex (https://chirvex.in/)`;
     try {
-      await Share.share({
-        title: `FitVerse Elite Receipt #${receiptNo}`,
-        message: text,
-      });
+      await Clipboard.setStringAsync(whatsAppReceiptText);
+      await handleSharePdf();
     } catch {
-      // Ignore share sheet cancel
+      // Ignore
     }
   };
 

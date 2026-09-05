@@ -10,8 +10,9 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Shield, User, Phone, Mail, LogIn, Edit, Trash2, Sparkles } from 'lucide-react-native';
+import { Plus, Shield, User, Phone, Mail, LogIn, Edit, Trash2, Sparkles, Search, X } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
+import { FVEInput } from '@/components/common/FVEInput';
 import { FVEBadge } from '@/components/common/FVEBadge';
 import { StaffFormModal } from '@/components/features/StaffFormModal';
 import { FVEEmptyState } from '@/components/common/FVEEmptyState';
@@ -30,6 +31,13 @@ export function StaffScreen() {
 
   const [showModal, setShowModal] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState<UserProfile | null>(null);
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  React.useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const { data: staffList, isLoading, refetch } = useQuery({
     queryKey: ['mobile-staff-list'],
@@ -42,6 +50,16 @@ export function StaffScreen() {
       return (data || []) as UserProfile[];
     },
   });
+
+  const filteredStaff = React.useMemo(() => {
+    const term = debouncedSearch.trim().toLowerCase();
+    if (!term) return staffList || [];
+    return (staffList || []).filter(s =>
+      (s.full_name || '').toLowerCase().includes(term) ||
+      (s.username || '').toLowerCase().includes(term) ||
+      (s.role || '').toLowerCase().includes(term)
+    );
+  }, [staffList, debouncedSearch]);
 
   const onRefresh = useCallback(() => {
     qc.invalidateQueries({ queryKey: ['mobile-staff-list'] });
@@ -130,11 +148,24 @@ export function StaffScreen() {
         </View>
       )}
 
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <FVEInput
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Search by name or role..."
+          leftIcon={<Search size={16} color={colors.gold} />}
+          rightIcon={search ? <X size={16} color={colors.textSecondary} /> : undefined}
+          onRightIconPress={() => setSearch('')}
+          containerStyle={{ marginBottom: 0 }}
+        />
+      </View>
+
       {isLoading ? (
         <FVELogoLoader message="Syncing Staff..." fullScreen />
       ) : (
         <FlatList
-          data={staffList || []}
+          data={filteredStaff}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.listContent}
         keyboardDismissMode="on-drag"
@@ -328,6 +359,11 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '700',
+  },
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+    paddingTop: 4,
   },
   listContent: {
     padding: 16,

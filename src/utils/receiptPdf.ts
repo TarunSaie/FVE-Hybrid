@@ -327,60 +327,81 @@ export function generateReceiptHtml(data: ReceiptData): string {
   `.trim();
 }
 
+let isSharingReceipt = false;
+
 /**
  * Generates the receipt PDF and shares it (allowing user to select WhatsApp to attach PDF).
  */
 export async function sharePdfReceipt(receiptData: ReceiptData): Promise<void> {
-  const html = generateReceiptHtml(receiptData);
+  if (isSharingReceipt) {
+    console.warn('[receiptPdf] A share request is already in progress, ignoring duplicate call');
+    return;
+  }
+  isSharingReceipt = true;
 
-  // 1. Generate official PDF file in print cache
-  const { uri: tempUri, base64 } = await Print.printToFileAsync({
-    html,
-    base64: true,
-  });
+  try {
+    const html = generateReceiptHtml(receiptData);
 
-  // 2. Prepare destination in app cacheDirectory with a clean file name
-  const safeReceiptNo = (receiptData.receiptNumber || 'Receipt').replace(/[^a-zA-Z0-9_-]/g, '_');
-  const targetDir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
-  let shareUri = tempUri;
+    // 1. Generate official PDF file in print cache
+    const { uri: tempUri, base64 } = await Print.printToFileAsync({
+      html,
+      base64: true,
+    });
 
-  if (targetDir) {
-    const targetUri = `${targetDir}FVE_Receipt_${safeReceiptNo}.pdf`;
-    try {
-      const existing = await FileSystem.getInfoAsync(targetUri);
-      if (existing.exists) {
-        await FileSystem.deleteAsync(targetUri, { idempotent: true });
-      }
-      await FileSystem.copyAsync({
-        from: tempUri,
-        to: targetUri,
-      });
-      shareUri = targetUri;
-    } catch (copyErr) {
-      console.warn('[receiptPdf] copyAsync failed, trying base64 write fallback:', copyErr);
-      if (base64) {
-        try {
-          await FileSystem.writeAsStringAsync(targetUri, base64, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          shareUri = targetUri;
-        } catch (writeErr) {
-          console.error('[receiptPdf] base64 write fallback failed:', writeErr);
+    // 2. Prepare destination in app cacheDirectory with a clean file name
+    const safeReceiptNo = (receiptData.receiptNumber || 'Receipt').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const targetDir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+    let shareUri = tempUri;
+
+    if (targetDir) {
+      const targetUri = `${targetDir}FVE_Receipt_${safeReceiptNo}.pdf`;
+      try {
+        const existing = await FileSystem.getInfoAsync(targetUri);
+        if (existing.exists) {
+          await FileSystem.deleteAsync(targetUri, { idempotent: true });
+        }
+        await FileSystem.copyAsync({
+          from: tempUri,
+          to: targetUri,
+        });
+        shareUri = targetUri;
+      } catch (copyErr) {
+        console.warn('[receiptPdf] copyAsync failed, trying base64 write fallback:', copyErr);
+        if (base64) {
+          try {
+            await FileSystem.writeAsStringAsync(targetUri, base64, {
+              encoding: FileSystem.EncodingType.Base64,
+            });
+            shareUri = targetUri;
+          } catch (writeErr) {
+            console.error('[receiptPdf] base64 write fallback failed:', writeErr);
+          }
         }
       }
     }
-  }
 
-  const isAvailable = await Sharing.isAvailableAsync();
-  if (!isAvailable) {
-    throw new Error('Sharing is not available on this device');
-  }
+    const isAvailable = await Sharing.isAvailableAsync();
+    if (!isAvailable) {
+      throw new Error('Sharing is not available on this device');
+    }
 
-  await Sharing.shareAsync(shareUri, {
-    UTI: '.pdf',
-    mimeType: 'application/pdf',
-    dialogTitle: `Share Receipt #${receiptData.receiptNumber} PDF to WhatsApp`,
-  });
+    await Sharing.shareAsync(shareUri, {
+      UTI: '.pdf',
+      mimeType: 'application/pdf',
+      dialogTitle: `Share Receipt #${receiptData.receiptNumber} PDF to WhatsApp`,
+    });
+  } catch (err: unknown) {
+    const msg = (err as Error)?.message || '';
+    if (msg.includes('Another share request')) {
+      console.warn('[receiptPdf] Suppressed duplicate Android share request:', msg);
+      return;
+    }
+    throw err;
+  } finally {
+    setTimeout(() => {
+      isSharingReceipt = false;
+    }, 1200);
+  }
 }
 
 /**

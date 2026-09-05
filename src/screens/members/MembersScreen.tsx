@@ -31,6 +31,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Plus } from 'lucide-react-native';
 import { buildExpiredAlertMessage, openWhatsAppLink } from '@/utils/format';
 import { getLocalDateStr } from '@/utils/date';
+import * as Clipboard from 'expo-clipboard';
+import {
+  buildMemberPdfData,
+  shareMemberPassPdf,
+  buildMemberSubscriptionClipboardText,
+} from '@/utils/memberPdf';
 
 interface RawJoinedMembership {
   id: string;
@@ -47,6 +53,16 @@ interface RawJoinedMember extends Member {
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
+export type MemberSortOption = 'id_asc' | 'id_desc' | 'name_asc' | 'expiry_asc' | 'join_desc';
+
+function parseMemberIdNum(id?: string | null): number {
+  if (!id) return 999999999;
+  const match = id.match(/\d+/);
+  if (!match) return 999999999;
+  const num = parseInt(match[0], 10);
+  return isNaN(num) ? 999999999 : num;
+}
+
 export function MembersScreen() {
   const navigation = useNavigation<NavigationProp>();
   const qc = useQueryClient();
@@ -56,8 +72,9 @@ export function MembersScreen() {
 
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [genderFilter, setGenderFilter] = useState('ALL');
-  const [sortBy, setSortBy] = useState<'name_asc' | 'expiry_asc' | 'join_desc'>('name_asc');
+  const [sortBy, setSortBy] = useState<MemberSortOption>('id_asc');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [sharingMemberId, setSharingMemberId] = useState<string | null>(null);
 
   // Debounce search 400ms
   useEffect(() => {
@@ -138,7 +155,20 @@ export function MembersScreen() {
 
       // Apply sorting
       mappedMembers.sort((a, b) => {
-        if (sortBy === 'name_asc') {
+        if (sortBy === 'id_asc') {
+          const aNum = parseMemberIdNum(a.member_id);
+          const bNum = parseMemberIdNum(b.member_id);
+          if (aNum !== bNum) return aNum - bNum;
+          return (a.member_id || '').localeCompare(b.member_id || '');
+        } else if (sortBy === 'id_desc') {
+          const aNum = parseMemberIdNum(a.member_id);
+          const bNum = parseMemberIdNum(b.member_id);
+          if (aNum === 999999999 && bNum === 999999999) return 0;
+          if (aNum === 999999999) return 1;
+          if (bNum === 999999999) return -1;
+          if (aNum !== bNum) return bNum - aNum;
+          return (b.member_id || '').localeCompare(a.member_id || '');
+        } else if (sortBy === 'name_asc') {
           return (a.full_name || '').localeCompare(b.full_name || '');
         } else if (sortBy === 'expiry_asc') {
           if (!a.membership_expiry_date && !b.membership_expiry_date) return 0;
@@ -179,6 +209,29 @@ export function MembersScreen() {
     openWhatsAppLink(member.mobile, message);
   };
 
+  const handleShareMember = async (member: MemberWithMembership) => {
+    if (sharingMemberId) return;
+    setSharingMemberId(member.id);
+    haptics.medium();
+    try {
+      // 1. Copy membership subscription pass summary to clipboard
+      const clipboardText = buildMemberSubscriptionClipboardText(member);
+      await Clipboard.setStringAsync(clipboardText);
+
+      // 2. Generate and open native share sheet for PDF pass
+      const pdfData = buildMemberPdfData(member);
+      await shareMemberPassPdf(pdfData);
+    } catch (err: unknown) {
+      const msg = (err as Error)?.message || '';
+      if (!msg.includes('Another share request')) {
+        haptics.error();
+        Alert.alert('Share Member Pass', msg || 'Failed to generate member pass PDF');
+      }
+    } finally {
+      setSharingMemberId(null);
+    }
+  };
+
   const statusFilters = ['ALL', 'ACTIVE', 'EXPIRING_SOON', 'EXPIRED', 'HOLD'];
 
   const handleStatusSelect = (status: string) => {
@@ -188,9 +241,11 @@ export function MembersScreen() {
 
   const handleSortToggle = () => {
     haptics.selection();
-    if (sortBy === 'name_asc') setSortBy('expiry_asc');
+    if (sortBy === 'id_asc') setSortBy('id_desc');
+    else if (sortBy === 'id_desc') setSortBy('name_asc');
+    else if (sortBy === 'name_asc') setSortBy('expiry_asc');
     else if (sortBy === 'expiry_asc') setSortBy('join_desc');
-    else setSortBy('name_asc');
+    else setSortBy('id_asc');
   };
 
   const todayStr = getLocalDateStr();
@@ -316,7 +371,11 @@ export function MembersScreen() {
             style={styles.sortBtn}
           >
             <Text style={styles.sortBtnText}>
-              {sortBy === 'name_asc'
+              {sortBy === 'id_asc'
+                ? 'Member ID (FVE-01 ↑)'
+                : sortBy === 'id_desc'
+                ? 'Member ID (FVE-99 ↓)'
+                : sortBy === 'name_asc'
                 ? 'Name (A-Z)'
                 : sortBy === 'expiry_asc'
                 ? 'Expiry (Soonest)'
@@ -364,6 +423,8 @@ export function MembersScreen() {
                   initialMember: item,
                 })
               }
+              onShare={handleShareMember}
+              isSharing={sharingMemberId === item.id}
               onWhatsAppAlert={handleSendWhatsAppAlert}
             />
           )}

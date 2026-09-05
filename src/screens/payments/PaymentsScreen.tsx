@@ -7,11 +7,13 @@ import {
   RefreshControl,
   TouchableOpacity,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, CreditCard, Filter, X } from 'lucide-react-native';
+import * as Clipboard from 'expo-clipboard';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEInput } from '@/components/common/FVEInput';
 import { PaymentItem } from '@/components/features/PaymentItem';
@@ -25,6 +27,7 @@ import { typography } from '@/constants/typography';
 import { formatCurrency, openWhatsAppLink } from '@/utils/format';
 import { formatDate } from '@/utils/date';
 import { RootStackParamList } from '@/navigation/types';
+import { buildReceiptDataFromPayment, sharePdfReceipt } from '@/utils/receiptPdf';
 
 import { haptics } from '@/utils/haptics';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -107,16 +110,22 @@ export function PaymentsScreen() {
     setMethodFilter(method);
   };
 
-  const handleShareWhatsApp = (p: Payment) => {
-    const memberName = p.members?.full_name || 'Member';
-    const mobile = p.members?.mobile;
-    const planName = p.memberships?.membership_plans?.name || 'Membership';
-    const text = `*FitVerse Elite Official Receipt*\nReceipt No: #${p.receipt_number || 'N/A'}\nMember: ${memberName}${p.members?.member_id ? ` (${p.members.member_id})` : ''}\nPlan: ${planName}\nAmount Paid: ${formatCurrency(p.amount)}\nPayment Method: ${p.payment_method}\nDate: ${formatDate(p.payment_date || p.created_at)}\n\n*DISCIPLINE • STRENGTH • TRANSFORMATION*\nFitVerse Elite Gym`;
+  const handleShareWhatsApp = async (p: Payment) => {
+    haptics.medium();
+    try {
+      const receiptData = buildReceiptDataFromPayment(p);
+      const memberName = p.members?.full_name || 'Member';
+      const planName = p.memberships?.membership_plans?.name || 'Membership';
+      const text = `*FitVerse Elite Official Receipt*\nReceipt No: #${p.receipt_number || 'N/A'}\nMember: ${memberName}${p.members?.member_id ? ` (${p.members.member_id})` : ''}\nPlan: ${planName}\nAmount Paid: ${formatCurrency(p.amount)}\nPayment Method: ${p.payment_method}\nDate: ${formatDate(p.payment_date || p.created_at)}\n\n*DISCIPLINE • STRENGTH • TRANSFORMATION*\nFitVerse Elite Gym`;
 
-    if (mobile) {
-      openWhatsAppLink(mobile, text);
-    } else {
-      openWhatsAppLink('91', text);
+      // Copy summary text to clipboard so it can be pasted into WhatsApp if desired
+      await Clipboard.setStringAsync(text);
+
+      // Generate and share the PDF invoice
+      await sharePdfReceipt(receiptData);
+    } catch (err: unknown) {
+      haptics.error();
+      Alert.alert('Share Receipt', (err as Error).message || 'Failed to generate receipt PDF');
     }
   };
 

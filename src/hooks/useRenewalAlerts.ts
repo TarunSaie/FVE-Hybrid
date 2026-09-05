@@ -80,6 +80,7 @@ export function useRenewalAlerts() {
               await supabase.from('notifications').insert(notifications);
               qc.invalidateQueries({ queryKey: ['mobile-notifications'] });
               qc.invalidateQueries({ queryKey: ['unread-notifications'] });
+              qc.invalidateQueries({ queryKey: ['unread-notifications-count'] });
             }
           }
         }

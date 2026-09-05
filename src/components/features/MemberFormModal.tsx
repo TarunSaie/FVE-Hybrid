@@ -27,6 +27,7 @@ import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { haptics } from '@/utils/haptics';
 import { checkAndNotifyBirthdays } from '@/hooks/useBirthdayAlerts';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface MemberFormModalProps {
   visible: boolean;
@@ -44,6 +45,7 @@ export function MemberFormModal({
   member,
 }: MemberFormModalProps) {
   const { user } = useAuth();
+  const qc = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
 
@@ -204,7 +206,7 @@ export function MemberFormModal({
     if (!gender) {
       errs.gender = 'Please select a gender';
     }
-    if (!addressRef.current.trim() && !notesRef.current) {
+    if (!addressRef.current.trim()) {
       errs.address = 'Residential address is required';
     }
     if (!joiningDate.trim()) {
@@ -233,24 +235,34 @@ export function MemberFormModal({
         ? calculateAge(dateOfBirth.trim())
         : (ageRef.current ? parseInt(ageRef.current, 10) : null);
 
-      const payload = {
+      // Base payload — member_id excluded from INSERTs so the DB trigger
+      // auto-assigns the next FVE-XX value. For UPDATEs we include it so
+      // admins can manually correct an ID if needed.
+      // NOTE: all text columns in the DB are NOT NULL DEFAULT '' — send ''
+      // not null for optional fields to avoid constraint violations.
+      const basePayload = {
         full_name: fullNameRef.current.trim(),
-        member_id: memberIdRef.current.trim() || null,
         mobile: mobileRef.current.trim() || null,
         email: emailRef.current.trim().toLowerCase() || null,
         date_of_birth: dateOfBirth.trim() || null,
-        age: calculatedAge ?? null,
-        gender,
+        age: calculatedAge ?? 0,
+        gender: gender || '',
         joining_date: joiningDate.trim() || getLocalDateStr(),
-        height: heightRef.current.trim() || null,
-        weight: weightRef.current.trim() || null,
-        blood_group: bloodGroup.trim() || null,
-        address: addressRef.current.trim(),
-        emergency_contact: emergencyContactRef.current.trim() || null,
-        notes: notesRef.current.trim() || null,
-        profile_photo: profilePhoto.trim() || null,
+        height: heightRef.current.trim() || '',
+        weight: weightRef.current.trim() || '',
+        blood_group: bloodGroup.trim() || '',
+        address: addressRef.current.trim() || '',
+        emergency_contact: emergencyContactRef.current.trim() || '',
+        notes: notesRef.current.trim() || '',
+        profile_photo: profilePhoto.trim() || '',
         updated_at: new Date().toISOString(),
       };
+
+      // Custom member ID (optional override; leave empty to auto-assign sequential FVE-XX)
+      const customId = memberIdRef.current.trim();
+      const payload = member
+        ? { ...basePayload, member_id: customId || undefined }
+        : (customId ? { ...basePayload, member_id: customId } : basePayload);
 
       if (member) {
         const { error } = await supabase
@@ -263,14 +275,49 @@ export function MemberFormModal({
         Alert.alert('Success', `${fullNameRef.current} updated successfully!`);
       } else {
         const randomQR = `FVE-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-        const { error } = await supabase.from('members').insert({
+        const { data: insertedMember, error } = await supabase.from('members').insert({
           ...payload,
           qr_code: randomQR,
           created_by: user?.id || null,
           created_at: new Date().toISOString(),
-        });
+        }).select('id, member_id, full_name').single();
 
         if (error) throw error;
+
+        // Insert in-app notification for new member registration
+        try {
+          const registeredName = fullNameRef.current.trim() || 'New member';
+          const memberCode = insertedMember?.member_id || memberIdRef.current.trim() || 'New';
+          const notifMsg = `New member ${registeredName} (${memberCode}) registered to FitVerse Elite.`;
+          const { data: admins } = await supabase
+            .from('user_profiles')
+            .select('id')
+            .in('role', ['OWNER', 'ADMIN']);
+
+          const notifRows: { user_id: string; title: string; message: string; type: string }[] = [];
+          const targetIds = new Set<string>();
+          if (user?.id) targetIds.add(user.id);
+          (admins || []).forEach(a => targetIds.add(a.id));
+
+          targetIds.forEach(uid => {
+            notifRows.push({
+              user_id: uid,
+              title: 'New Member Registered',
+              message: notifMsg,
+              type: 'INFO',
+            });
+          });
+
+          if (notifRows.length > 0) {
+            await supabase.from('notifications').insert(notifRows);
+            qc.invalidateQueries({ queryKey: ['mobile-notifications'] });
+            qc.invalidateQueries({ queryKey: ['unread-notifications'] });
+            qc.invalidateQueries({ queryKey: ['unread-notifications-count'] });
+          }
+        } catch (notifErr) {
+          console.warn('[MemberFormModal] Notification error:', notifErr);
+        }
+
         haptics.success();
         Alert.alert('Success', `${fullNameRef.current} registered to FitVerse Elite!`);
       }
@@ -380,7 +427,7 @@ export function MemberFormModal({
                 label="MEMBER ID (OPTIONAL)"
                 defaultValue={memberIdRef.current}
                 onChangeText={(t) => { memberIdRef.current = t; }}
-                placeholder="e.g. FVE-101"
+                placeholder="Auto-assigned (e.g. FVE-11)"
               />
             </View>
             <View style={[styles.flex1, { marginLeft: 10 }]}>

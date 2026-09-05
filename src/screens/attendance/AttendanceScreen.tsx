@@ -15,6 +15,7 @@ import {
   QrCode,
   UserCheck,
   Search,
+  X,
   Calendar,
   Users,
   CheckCircle,
@@ -48,14 +49,22 @@ export function AttendanceScreen() {
   const todayStr = getLocalDateStr();
   const [selectedDate, setSelectedDate] = useState(todayStr);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [methodFilter, setMethodFilter] = useState<'ALL' | 'QR' | 'MANUAL'>('ALL');
   const [showManualModal, setShowManualModal] = useState(false);
   const [manualLoading, setManualLoading] = useState(false);
+  const [manualSearch, setManualSearch] = useState('');
   const [selectedMemberForCalendar, setSelectedMemberForCalendar] = useState<{
     id: string;
     full_name: string;
     member_id?: string | null;
   } | null>(null);
+
+  // Debounce search 400ms to avoid excessive refetches
+  React.useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 400);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const handlePrevDay = () => {
     haptics.light();
@@ -77,9 +86,9 @@ export function AttendanceScreen() {
     setSelectedDate(todayStr);
   };
 
-  // Fetch Attendance Log for Selected Date
-  const { data: logs, isLoading, refetch } = useQuery({
-    queryKey: ['mobile-attendance-log', selectedDate, methodFilter, search],
+  // Fetch Attendance Log for Selected Date (search filtered client-side)
+  const { data: rawLogs, isLoading, refetch } = useQuery({
+    queryKey: ['mobile-attendance-log', selectedDate, methodFilter],
     queryFn: async () => {
       let q = supabase
         .from('attendance')
@@ -91,10 +100,6 @@ export function AttendanceScreen() {
         q = q.eq('check_in_method', methodFilter);
       }
 
-      if (search.trim()) {
-        q = q.ilike('members.full_name', `%${search.trim()}%`);
-      }
-
       const { data, error } = await q;
       if (error) throw error;
       return (data || []) as Attendance[];
@@ -102,15 +107,36 @@ export function AttendanceScreen() {
     refetchInterval: 15000,
   });
 
+  // Client-side search filter: name, member_id
+  const logs = React.useMemo(() => {
+    if (!rawLogs) return [];
+    const term = debouncedSearch.trim().toLowerCase();
+    if (!term) return rawLogs;
+    return rawLogs.filter(item => {
+      const name = (item.members?.full_name || '').toLowerCase();
+      const memberId = (item.members?.member_id || '').toLowerCase();
+      return name.includes(term) || memberId.includes(term);
+    });
+  }, [rawLogs, debouncedSearch]);
+
+
   // Fetch all active members for manual check-in
   const { data: allMembers } = useQuery({
     queryKey: ['all-members-attendance'],
     queryFn: async () => {
       const { data } = await supabase
         .from('members')
-        .select('id, full_name, mobile, member_id')
-        .order('full_name');
-      return (data || []) as Member[];
+        .select('id, full_name, mobile, member_id');
+      const members = (data || []) as Member[];
+      members.sort((a, b) => {
+        const aMatch = (a.member_id || '').match(/\d+/);
+        const bMatch = (b.member_id || '').match(/\d+/);
+        const aNum = aMatch ? parseInt(aMatch[0], 10) : 999999999;
+        const bNum = bMatch ? parseInt(bMatch[0], 10) : 999999999;
+        if (aNum !== bNum) return aNum - bNum;
+        return (a.full_name || '').localeCompare(b.full_name || '');
+      });
+      return members;
     },
     enabled: showManualModal,
   });
@@ -125,16 +151,17 @@ export function AttendanceScreen() {
     setManualLoading(true);
     try {
       const now = new Date();
-      const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+      // check_in_time column is TIMESTAMPTZ — must send a full ISO timestamp
+      const checkInTimestamp = now.toISOString();
 
       // Insert check-in record
       const { error } = await supabase.from('attendance').insert({
         member_id: member.id,
         date: selectedDate,
-        check_in_time: timeStr,
+        check_in_time: checkInTimestamp,
         marked_by: user?.id || null,
         check_in_method: 'MANUAL',
-        created_at: new Date().toISOString(),
+        created_at: now.toISOString(),
       });
 
       if (error) {
@@ -150,6 +177,7 @@ export function AttendanceScreen() {
       haptics.success();
       Alert.alert('Success', `Checked in ${member.full_name} successfully!`);
       setShowManualModal(false);
+      setManualSearch('');
       onRefresh();
     } catch (err: unknown) {
       haptics.error();
@@ -326,12 +354,32 @@ export function AttendanceScreen() {
       {/* Manual Check-in Modal */}
       <FVEModal
         visible={showManualModal}
-        onClose={() => setShowManualModal(false)}
+        onClose={() => { setShowManualModal(false); setManualSearch(''); }}
         title="Manual Check-In"
         subtitle="Select a member to register check-in for today"
       >
+        {/* Search inside modal */}
+        <FVEInput
+          value={manualSearch}
+          onChangeText={setManualSearch}
+          placeholder="Search member by name or ID..."
+          leftIcon={<Search size={15} color={colors.gold} />}
+          rightIcon={manualSearch ? <X size={14} color={colors.textSecondary} /> : undefined}
+          onRightIconPress={() => setManualSearch('')}
+          containerStyle={{ marginBottom: 12 }}
+        />
         <View style={styles.manualList}>
-          {(allMembers || []).map(m => (
+          {(allMembers || [])
+            .filter(m => {
+              const term = manualSearch.trim().toLowerCase();
+              if (!term) return true;
+              return (
+                m.full_name.toLowerCase().includes(term) ||
+                (m.member_id || '').toLowerCase().includes(term) ||
+                (m.mobile || '').includes(term)
+              );
+            })
+            .map(m => (
             <TouchableOpacity
               key={m.id}
               onPress={() => handleManualCheckIn(m)}

@@ -7,8 +7,9 @@ import {
   Pressable,
   Animated,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
-import { ChevronRight, Phone, Calendar, MessageCircle } from 'lucide-react-native';
+import { ChevronRight, Phone, Calendar, MessageCircle, Share2 } from 'lucide-react-native';
 import { MemberWithMembership } from '@/types';
 import { FVEBadge } from '@/components/common/FVEBadge';
 import { colors } from '@/constants/colors';
@@ -19,10 +20,12 @@ import { haptics } from '@/utils/haptics';
 interface MemberCardProps {
   member: MemberWithMembership;
   onPress: () => void;
+  onShare?: (member: MemberWithMembership) => void;
+  isSharing?: boolean;
   onWhatsAppAlert?: (member: MemberWithMembership) => void;
 }
 
-export function MemberCard({ member, onPress, onWhatsAppAlert }: MemberCardProps) {
+export function MemberCard({ member, onPress, onShare, isSharing, onWhatsAppAlert }: MemberCardProps) {
   const initial = member.full_name?.charAt(0)?.toUpperCase() || '?';
   const scale = useRef(new Animated.Value(1)).current;
 
@@ -117,6 +120,26 @@ export function MemberCard({ member, onPress, onWhatsAppAlert }: MemberCardProps
 
           {/* Actions & Chevron */}
           <View style={styles.rightActions}>
+            {onShare ? (
+              <TouchableOpacity
+                onPress={(e) => {
+                  e.stopPropagation();
+                  haptics.light();
+                  onShare(member);
+                }}
+                disabled={isSharing}
+                activeOpacity={0.7}
+                hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                style={styles.shareCardBtn}
+              >
+                {isSharing ? (
+                  <ActivityIndicator size={12} color={colors.gold} />
+                ) : (
+                  <Share2 size={15} color={colors.gold} />
+                )}
+              </TouchableOpacity>
+            ) : null}
+
             {isExpired && onWhatsAppAlert ? (
               <TouchableOpacity
                 onPress={() => {
@@ -263,6 +286,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     marginLeft: 6,
+  },
+  shareCardBtn: {
+    padding: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(239, 161, 0, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 161, 0, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   whatsappAlertBtn: {
     flexDirection: 'row',

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -28,49 +28,97 @@ import { useAuth } from '@/contexts/AuthContext';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { formatDateTime } from '@/utils/date';
+import { haptics } from '@/utils/haptics';
 
 export function NotificationsScreen() {
   const navigation = useNavigation();
   const { user } = useAuth();
   const qc = useQueryClient();
 
+  const isOwnerOrAdmin = Boolean(
+    user?.role && ['OWNER', 'ADMIN'].includes(user.role.toUpperCase())
+  );
+
   const { data: notifications, isLoading, refetch } = useQuery({
-    queryKey: ['mobile-notifications', user?.id],
+    queryKey: ['mobile-notifications', user?.id, isOwnerOrAdmin],
     queryFn: async () => {
       if (!user?.id) return [];
-      const { data, error } = await supabase
+      let query = supabase
         .from('notifications')
         .select('*')
-        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
-      if (error) throw error;
+
+      if (!isOwnerOrAdmin) {
+        query = query.or(`user_id.eq.${user.id},user_id.is.null`);
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        console.error('[NotificationsScreen] Fetch error:', error.message);
+        throw error;
+      }
       return (data || []) as Notification[];
     },
     enabled: !!user?.id,
+    refetchInterval: 15000,
   });
 
-  const onRefresh = useCallback(() => {
+  const invalidateAll = useCallback(() => {
     qc.invalidateQueries({ queryKey: ['mobile-notifications'] });
     qc.invalidateQueries({ queryKey: ['unread-notifications'] });
+    qc.invalidateQueries({ queryKey: ['unread-notifications-count'] });
   }, [qc]);
 
+  // Realtime subscription for instant notification updates
+  useEffect(() => {
+    const channel = supabase
+      .channel('mobile-notifications-feed')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'notifications' },
+        () => {
+          invalidateAll();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [invalidateAll]);
+
+  const onRefresh = useCallback(() => {
+    haptics.light();
+    invalidateAll();
+  }, [invalidateAll]);
+
   const markAsRead = async (id: string) => {
+    haptics.light();
     await supabase.from('notifications').update({ read: true }).eq('id', id);
-    onRefresh();
+    invalidateAll();
   };
 
   const markAllAsRead = async () => {
-    if (!user?.id) return;
+    const unreadIds = (notifications || []).filter(n => !n.read).map(n => n.id);
+    if (unreadIds.length === 0) return;
+    haptics.success();
     await supabase
       .from('notifications')
       .update({ read: true })
-      .eq('user_id', user.id)
-      .eq('read', false);
-    onRefresh();
+      .in('id', unreadIds);
+    invalidateAll();
+  };
+
+  const deleteSingle = async (id: string) => {
+    haptics.light();
+    await supabase.from('notifications').delete().eq('id', id);
+    invalidateAll();
   };
 
   const clearAllNotifications = async () => {
-    if (!user?.id) return;
+    const allIds = (notifications || []).map(n => n.id);
+    if (allIds.length === 0) return;
+    haptics.warning();
     Alert.alert(
       'Clear Notifications',
       'Are you sure you want to delete all notifications?',
@@ -80,11 +128,12 @@ export function NotificationsScreen() {
           text: 'Clear All',
           style: 'destructive',
           onPress: async () => {
+            haptics.medium();
             await supabase
               .from('notifications')
               .delete()
-              .eq('user_id', user.id);
-            onRefresh();
+              .in('id', allIds);
+            invalidateAll();
           },
         },
       ]
@@ -107,6 +156,7 @@ export function NotificationsScreen() {
   };
 
   const unreadCount = (notifications || []).filter(n => !n.read).length;
+  const totalCount = (notifications || []).length;
 
   return (
     <View style={styles.container}>
@@ -119,6 +169,11 @@ export function NotificationsScreen() {
             <TouchableOpacity onPress={markAllAsRead} style={styles.readAllBtn}>
               <CheckCheck size={14} color={colors.gold} />
               <Text style={styles.readAllBtnText}>Read All</Text>
+            </TouchableOpacity>
+          ) : totalCount > 0 ? (
+            <TouchableOpacity onPress={clearAllNotifications} style={styles.clearBtn}>
+              <Trash2 size={14} color={colors.textMuted} />
+              <Text style={styles.clearBtnText}>Clear All</Text>
             </TouchableOpacity>
           ) : undefined
         }
@@ -142,7 +197,7 @@ export function NotificationsScreen() {
         }
         renderItem={({ item }) => (
           <TouchableOpacity
-            onPress={() => markAsRead(item.id)}
+            onPress={() => !item.read && markAsRead(item.id)}
             activeOpacity={0.8}
             style={[styles.notifCard, !item.read && styles.unreadCard]}
           >
@@ -152,7 +207,16 @@ export function NotificationsScreen() {
               <View style={styles.textCol}>
                 <View style={styles.titleRow}>
                   <Text style={styles.notifTitle}>{item.title}</Text>
-                  {!item.read && <View style={styles.unreadDot} />}
+                  <View style={styles.actionRow}>
+                    {!item.read && <View style={styles.unreadDot} />}
+                    <TouchableOpacity
+                      onPress={() => deleteSingle(item.id)}
+                      style={styles.deleteItemBtn}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Trash2 size={13} color={colors.textMuted} />
+                    </TouchableOpacity>
+                  </View>
                 </View>
 
                 <Text style={styles.notifMessage}>{item.message}</Text>
@@ -197,6 +261,21 @@ const styles = StyleSheet.create({
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '700',
   },
+  clearBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  clearBtnText: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+  },
   listContent: {
     padding: 16,
     paddingBottom: 40,
@@ -233,12 +312,23 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.base,
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '700',
+    flex: 1,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginLeft: 6,
   },
   unreadDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
     backgroundColor: colors.gold,
+  },
+  deleteItemBtn: {
+    padding: 2,
+    opacity: 0.7,
   },
   notifMessage: {
     color: colors.textSecondary,

@@ -48,6 +48,13 @@ import { formatDate, calculateAge, getLocalDateStr } from '@/utils/date';
 import { formatCurrency, openWhatsAppLink, buildExpiredAlertMessage } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
 import { RootStackParamList } from '@/navigation/types';
+import * as Clipboard from 'expo-clipboard';
+import {
+  buildMemberPdfData,
+  shareMemberPassPdf,
+  buildMemberSubscriptionClipboardText,
+} from '@/utils/memberPdf';
+import { buildReceiptDataFromPayment, sharePdfReceipt } from '@/utils/receiptPdf';
 
 type DetailRouteProp = RouteProp<RootStackParamList, 'MemberDetail'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -241,15 +248,70 @@ export function MemberDetailScreen() {
   };
 
   const handleNativeShare = async () => {
+    if (!member) return;
     haptics.medium();
-    const text = `FitVerse Elite Member: ${member?.full_name}\nMember ID: ${member?.member_id || 'N/A'}\nMobile: ${member?.mobile || 'N/A'}\nStatus: ${activeMembership?.status || 'NONE'}\nQR Code: ${member?.qr_code || 'N/A'}`;
-    try {
-      await Share.share({
-        title: `${member?.full_name} - FitVerse Elite`,
-        message: text,
-      });
-    } catch {
-      // User cancelled
+
+    const hasPayment = payments && payments.length > 0;
+    if (hasPayment) {
+      Alert.alert(
+        'Share Member Document',
+        `Choose which document to share for ${member.full_name}:`,
+        [
+          {
+            text: '📄 Member Pass (PDF)',
+            onPress: async () => {
+              try {
+                // Copy subscription details to clipboard
+                const clipboardText = buildMemberSubscriptionClipboardText(member, activeMembership);
+                await Clipboard.setStringAsync(clipboardText);
+
+                const pdfData = buildMemberPdfData(member, activeMembership);
+                await shareMemberPassPdf(pdfData);
+              } catch (err: unknown) {
+                const msg = (err as Error)?.message || '';
+                if (!msg.includes('Another share request')) {
+                  haptics.error();
+                  Alert.alert('Error', msg || 'Failed to share Member Pass PDF');
+                }
+              }
+            },
+          },
+          {
+            text: '🧾 Latest Receipt (PDF)',
+            onPress: async () => {
+              try {
+                const latestPayment = payments[0];
+                const receiptData = buildReceiptDataFromPayment(latestPayment);
+                const receiptText = `*FitVerse Elite Official Receipt*\nReceipt No: #${receiptData.receiptNumber}\nMember: ${receiptData.memberName}${receiptData.memberId ? ` (${receiptData.memberId})` : ''}\nPlan: ${receiptData.planName}\nAmount Paid: ${formatCurrency(receiptData.amount)}\nPayment Method: ${receiptData.paymentMethod}\nDate: ${receiptData.paymentDate}\n\n*DISCIPLINE • STRENGTH • TRANSFORMATION*\nFitVerse Elite Gym`;
+                await Clipboard.setStringAsync(receiptText);
+
+                await sharePdfReceipt(receiptData);
+              } catch (err: unknown) {
+                const msg = (err as Error)?.message || '';
+                if (!msg.includes('Another share request')) {
+                  haptics.error();
+                  Alert.alert('Error', msg || 'Failed to share Receipt PDF');
+                }
+              }
+            },
+          },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
+    } else {
+      try {
+        const clipboardText = buildMemberSubscriptionClipboardText(member, activeMembership);
+        await Clipboard.setStringAsync(clipboardText);
+
+        const pdfData = buildMemberPdfData(member, activeMembership);
+        await shareMemberPassPdf(pdfData);
+      } catch (err: unknown) {
+        const msg = (err as Error)?.message || '';
+        if (!msg.includes('Another share request')) {
+          haptics.error();
+          Alert.alert('Error', msg || 'Failed to share Member Pass PDF');
+        }
+      }
     }
   };
 

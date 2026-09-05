@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/api/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { getLocalDateStr } from '@/utils/date';
 
 const LAST_CHECK_KEY = '@fve_last_birthday_check';
 
@@ -51,7 +52,8 @@ export async function checkAndNotifyBirthdays(): Promise<number> {
     }
 
     // 4. Fetch notifications created today to prevent duplicate birthday alerts
-    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
+    const todayStr = getLocalDateStr();
+    const todayStart = `${todayStr}T00:00:00`;
     const { data: existingNotifs, error: notifErr } = await supabase
       .from('notifications')
       .select('id, user_id, message')
@@ -128,7 +130,7 @@ export function useBirthdayAlerts() {
     const role = user.role?.toUpperCase();
     if (role !== 'OWNER' && role !== 'ADMIN') return;
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getLocalDateStr();
     const lastCheck = await AsyncStorage.getItem(LAST_CHECK_KEY);
 
     if (lastCheck === todayStr) {
@@ -143,6 +145,7 @@ export function useBirthdayAlerts() {
       qc.invalidateQueries({ queryKey: ['mobile-notifications'] });
       qc.invalidateQueries({ queryKey: ['notifications'] });
       qc.invalidateQueries({ queryKey: ['unread-notifications'] });
+      qc.invalidateQueries({ queryKey: ['unread-notifications-count'] });
     }
   }, [user, qc]);
 
