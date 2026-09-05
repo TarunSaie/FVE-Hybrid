@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Bell, Menu } from 'lucide-react-native';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
@@ -44,7 +44,6 @@ export function FVEHeader({
 }: FVEHeaderProps) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { user } = useAuth();
-  const qc = useQueryClient();
   const [drawerVisible, setDrawerVisible] = useState(false);
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : insets.top;
@@ -76,26 +75,6 @@ export function FVEHeader({
     enabled: !!user?.id,
     refetchInterval: 15000,
   });
-
-  // Realtime subscription to keep unread badge updated across screens
-  useEffect(() => {
-    const channel = supabase
-      .channel('header-unread-badge')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'notifications' },
-        () => {
-          qc.invalidateQueries({ queryKey: ['unread-notifications-count'] });
-          qc.invalidateQueries({ queryKey: ['unread-notifications'] });
-          qc.invalidateQueries({ queryKey: ['mobile-notifications'] });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [qc]);
 
   const finalUnreadCount = unreadCount || fetchedUnreadCount || 0;
 

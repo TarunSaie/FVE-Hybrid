@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback } from 'react';
 import {
   View,
   Text,
@@ -68,24 +68,6 @@ export function NotificationsScreen() {
     qc.invalidateQueries({ queryKey: ['unread-notifications'] });
     qc.invalidateQueries({ queryKey: ['unread-notifications-count'] });
   }, [qc]);
-
-  // Realtime subscription for instant notification updates
-  useEffect(() => {
-    const channel = supabase
-      .channel('mobile-notifications-feed')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'notifications' },
-        () => {
-          invalidateAll();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [invalidateAll]);
 
   const onRefresh = useCallback(() => {
     haptics.light();
