@@ -1,5 +1,6 @@
 import { Linking, Alert } from 'react-native';
 import { colors } from '@/constants/colors';
+import { formatDate } from './date';
 
 /**
  * Format number into Indian Rupee format without decimals.
@@ -91,4 +92,23 @@ export function getMembershipStatusStyle(status?: string | null): { bg: string; 
         label: status || 'NONE',
       };
   }
+}
+
+/**
+ * Builds standard WhatsApp renewal alert message for expired members.
+ */
+export function buildExpiredAlertMessage(
+  memberName: string,
+  planName?: string | null,
+  expiryDate?: string | null
+): string {
+  const planInfo = planName ? ` (${planName})` : '';
+  const dateInfo = expiryDate ? ` on *${formatDate(expiryDate)}*` : '';
+  return (
+    `Hi *${memberName}*,\n\n` +
+    `Your *FitVerse Elite* gym membership${planInfo} has expired${dateInfo}.\n\n` +
+    `Please renew your membership to continue your workouts uninterrupted.\n\n` +
+    `Visit our front desk or contact us for quick renewal assistance.\n\n` +
+    `— Team FitVerse Elite`
+  );
 }

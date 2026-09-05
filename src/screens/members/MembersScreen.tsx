@@ -7,11 +7,12 @@ import {
   RefreshControl,
   TouchableOpacity,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Search, UserPlus, Users, Filter, X, ArrowUpDown } from 'lucide-react-native';
+import { Search, UserPlus, Users, Filter, X, ArrowUpDown, AlertCircle } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEInput } from '@/components/common/FVEInput';
 import { MemberCard } from '@/components/features/MemberCard';
@@ -28,6 +29,8 @@ import { RootStackParamList } from '@/navigation/types';
 import { haptics } from '@/utils/haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Plus } from 'lucide-react-native';
+import { buildExpiredAlertMessage, openWhatsAppLink } from '@/utils/format';
+import { getLocalDateStr } from '@/utils/date';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -49,6 +52,31 @@ export function MembersScreen() {
     return () => clearTimeout(t);
   }, [search]);
 
+  // Expired members count query for live badge on the "EXPIRED" filter chip
+  const { data: expiredCount = 0 } = useQuery({
+    queryKey: ['mobile-members-expired-count'],
+    queryFn: async () => {
+      const todayStr = getLocalDateStr();
+      try {
+        const { count, error } = await supabase
+          .from('members_with_membership')
+          .select('*', { count: 'exact', head: true })
+          .or(`membership_status.eq.EXPIRED,expiry_sort_group.eq.2,membership_expiry_date.lt.${todayStr}`);
+        if (!error && typeof count === 'number') {
+          return count;
+        }
+      } catch {
+        // Fallback below
+      }
+      const { count: fallbackCount } = await supabase
+        .from('memberships')
+        .select('*', { count: 'exact', head: true })
+        .or(`status.eq.EXPIRED,expiry_date.lt.${todayStr}`);
+      return fallbackCount || 0;
+    },
+    staleTime: 30000,
+  });
+
   // Query members from members_with_membership view (or join with members)
   const { data: members, isLoading, refetch } = useQuery({
     queryKey: ['mobile-members', debouncedSearch, statusFilter, genderFilter, sortBy],
@@ -69,7 +97,13 @@ export function MembersScreen() {
         );
       }
 
-      if (statusFilter !== 'ALL') {
+      if (statusFilter === 'EXPIRED') {
+        const todayStr = getLocalDateStr();
+        q = q.or(`membership_status.eq.EXPIRED,expiry_sort_group.eq.2,membership_expiry_date.lt.${todayStr}`);
+      } else if (statusFilter === 'ACTIVE') {
+        const todayStr = getLocalDateStr();
+        q = q.or(`membership_status.eq.ACTIVE,expiry_sort_group.eq.1,membership_expiry_date.gte.${todayStr}`);
+      } else if (statusFilter !== 'ALL') {
         q = q.eq('membership_status', statusFilter);
       }
 
@@ -105,7 +139,27 @@ export function MembersScreen() {
   const onRefresh = useCallback(() => {
     haptics.light();
     qc.invalidateQueries({ queryKey: ['mobile-members'] });
+    qc.invalidateQueries({ queryKey: ['mobile-members-expired-count'] });
   }, [qc]);
+
+  // Handler for individual member WhatsApp renewal alert
+  const handleSendWhatsAppAlert = (member: MemberWithMembership) => {
+    if (!member.mobile) {
+      haptics.error();
+      Alert.alert(
+        'No Mobile Number',
+        `No mobile phone number is recorded for ${member.full_name || 'this member'}.`
+      );
+      return;
+    }
+    haptics.medium();
+    const message = buildExpiredAlertMessage(
+      member.full_name,
+      member.plan_name,
+      member.membership_expiry_date
+    );
+    openWhatsAppLink(member.mobile, message);
+  };
 
   const statusFilters = ['ALL', 'ACTIVE', 'EXPIRING_SOON', 'EXPIRED', 'HOLD'];
 
@@ -162,19 +216,30 @@ export function MembersScreen() {
         >
           {statusFilters.map(status => {
             const isSelected = statusFilter === status;
+            const isExpiredChip = status === 'EXPIRED';
+            const label =
+              isExpiredChip && expiredCount > 0
+                ? `EXPIRED (${expiredCount})`
+                : status.replace('_', ' ');
+
             return (
               <TouchableOpacity
                 key={status}
                 onPress={() => handleStatusSelect(status)}
-                style={[styles.filterChip, isSelected && styles.selectedFilterChip]}
+                style={[
+                  styles.filterChip,
+                  isSelected && styles.selectedFilterChip,
+                  isExpiredChip && isSelected && styles.selectedExpiredChip,
+                ]}
               >
                 <Text
                   style={[
                     styles.filterChipText,
                     isSelected && styles.selectedFilterChipText,
+                    isExpiredChip && isSelected && styles.selectedExpiredChipText,
                   ]}
                 >
-                  {status.replace('_', ' ')}
+                  {label}
                 </Text>
               </TouchableOpacity>
             );
@@ -202,24 +267,47 @@ export function MembersScreen() {
         </View>
       </View>
 
+      {/* Expired Members Alert Banner (Indicator) */}
+      {statusFilter === 'EXPIRED' && (
+        <View style={styles.expiredBanner}>
+          <View style={styles.expiredBannerIconBox}>
+            <AlertCircle size={20} color="#F87171" />
+          </View>
+          <View style={styles.expiredBannerContent}>
+            <View style={styles.expiredBannerHeader}>
+              <Text style={styles.expiredBannerTitle}>EXPIRED MEMBERS LIST</Text>
+              <View style={styles.expiredCountBadge}>
+                <Text style={styles.expiredCountBadgeText}>
+                  {members?.length || 0} expired
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.expiredBannerText}>
+              Tap the WhatsApp Alert button on any member card below to notify them directly for renewal.
+            </Text>
+          </View>
+        </View>
+      )}
+
       {/* Member List */}
       {isLoading ? (
         <FVELogoLoader message="Syncing Members..." fullScreen />
       ) : (
         <FlatList
           data={members || []}
-        keyExtractor={item => item.id}
-        renderItem={({ item }) => (
-          <MemberCard
-            member={item}
-            onPress={() =>
-              navigation.navigate('MemberDetail', {
-                memberId: item.id,
-                initialMember: item,
-              })
-            }
-          />
-        )}
+          keyExtractor={item => item.id}
+          renderItem={({ item }) => (
+            <MemberCard
+              member={item}
+              onPress={() =>
+                navigation.navigate('MemberDetail', {
+                  memberId: item.id,
+                  initialMember: item,
+                })
+              }
+              onWhatsAppAlert={handleSendWhatsAppAlert}
+            />
+          )}
         contentContainerStyle={styles.listContent}
         keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
@@ -328,6 +416,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(239, 161, 0, 0.15)',
     borderColor: 'rgba(239, 161, 0, 0.35)',
   },
+  selectedExpiredChip: {
+    backgroundColor: 'rgba(239, 68, 68, 0.18)',
+    borderColor: 'rgba(239, 68, 68, 0.45)',
+  },
   filterChipText: {
     color: colors.textSecondary,
     fontSize: 11,
@@ -337,6 +429,68 @@ const styles = StyleSheet.create({
   },
   selectedFilterChipText: {
     color: colors.gold,
+  },
+  selectedExpiredChipText: {
+    color: '#F87171',
+  },
+  expiredBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(127, 29, 29, 0.22)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.35)',
+    borderRadius: 14,
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 4,
+    padding: 12,
+    gap: 12,
+  },
+  expiredBannerIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: 'rgba(239, 68, 68, 0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  expiredBannerContent: {
+    flex: 1,
+  },
+  expiredBannerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 2,
+  },
+  expiredBannerTitle: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  expiredCountBadge: {
+    backgroundColor: 'rgba(239, 68, 68, 0.25)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.4)',
+    borderRadius: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 1,
+  },
+  expiredCountBadgeText: {
+    color: '#FCA5A5',
+    fontSize: 10,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+  },
+  expiredBannerText: {
+    color: '#BFC3C7',
+    fontSize: 11,
+    fontFamily: typography.fonts.inter,
+    lineHeight: 15,
   },
   sortRow: {
     flexDirection: 'row',

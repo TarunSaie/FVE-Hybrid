@@ -31,6 +31,7 @@ import {
   PauseCircle,
   PlayCircle,
   Cake,
+  MessageCircle,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEBadge } from '@/components/common/FVEBadge';
@@ -43,8 +44,8 @@ import { Member, Membership, Payment, Attendance, WorkoutPlan } from '@/types';
 import { supabase } from '@/api/supabase';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
-import { formatDate, calculateAge } from '@/utils/date';
-import { formatCurrency, openWhatsAppLink } from '@/utils/format';
+import { formatDate, calculateAge, getLocalDateStr } from '@/utils/date';
+import { formatCurrency, openWhatsAppLink, buildExpiredAlertMessage } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
 import { RootStackParamList } from '@/navigation/types';
 
@@ -220,13 +221,22 @@ export function MemberDetailScreen() {
     }
   };
 
+  const todayStr = getLocalDateStr();
+  const isMemberExpired =
+    activeMembership?.status === 'EXPIRED' ||
+    (!!activeMembership?.expiry_date && activeMembership.expiry_date < todayStr);
+
   const handleWhatsApp = () => {
     if (member?.mobile) {
       haptics.medium();
-      openWhatsAppLink(
-        member.mobile,
-        `Hi ${member.full_name}, greetings from FitVerse Elite!`
-      );
+      const msg = isMemberExpired
+        ? buildExpiredAlertMessage(
+            member.full_name,
+            activeMembership?.membership_plans?.name,
+            activeMembership?.expiry_date
+          )
+        : `Hi ${member.full_name}, greetings from FitVerse Elite!`;
+      openWhatsAppLink(member.mobile, msg);
     }
   };
 
@@ -361,9 +371,9 @@ export function MemberDetailScreen() {
                   onPress={handleWhatsApp}
                   style={[styles.contactBtn, styles.whatsappBtn]}
                 >
-                  <Share2 size={14} color="#25D366" />
+                  <MessageCircle size={14} color="#25D366" />
                   <Text style={[styles.contactBtnText, { color: '#25D366' }]}>
-                    WhatsApp
+                    {isMemberExpired ? 'WhatsApp Alert' : 'WhatsApp'}
                   </Text>
                 </TouchableOpacity>
               </>

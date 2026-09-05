@@ -6,23 +6,32 @@ import {
   Image,
   Pressable,
   Animated,
+  TouchableOpacity,
 } from 'react-native';
-import { ChevronRight, Phone, Calendar } from 'lucide-react-native';
+import { ChevronRight, Phone, Calendar, MessageCircle } from 'lucide-react-native';
 import { MemberWithMembership } from '@/types';
 import { FVEBadge } from '@/components/common/FVEBadge';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
-import { formatDate } from '@/utils/date';
+import { formatDate, getLocalDateStr } from '@/utils/date';
 import { haptics } from '@/utils/haptics';
 
 interface MemberCardProps {
   member: MemberWithMembership;
   onPress: () => void;
+  onWhatsAppAlert?: (member: MemberWithMembership) => void;
 }
 
-export function MemberCard({ member, onPress }: MemberCardProps) {
+export function MemberCard({ member, onPress, onWhatsAppAlert }: MemberCardProps) {
   const initial = member.full_name?.charAt(0)?.toUpperCase() || '?';
   const scale = useRef(new Animated.Value(1)).current;
+
+  const todayStr = getLocalDateStr();
+  const isExpired =
+    member.membership_status === 'EXPIRED' ||
+    (!!member.membership_expiry_date && member.membership_expiry_date < todayStr);
+
+  const displayStatus = isExpired ? 'EXPIRED' : (member.membership_status || 'NONE');
 
   const handlePressIn = () => {
     Animated.spring(scale, {
@@ -54,7 +63,7 @@ export function MemberCard({ member, onPress }: MemberCardProps) {
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         android_ripple={{ color: 'rgba(239, 161, 0, 0.12)', borderless: false }}
-        style={styles.card}
+        style={[styles.card, isExpired && styles.expiredCard]}
       >
         <View style={styles.contentRow}>
           {/* Avatar */}
@@ -89,7 +98,7 @@ export function MemberCard({ member, onPress }: MemberCardProps) {
             ) : null}
 
             <View style={styles.statusRow}>
-              <FVEBadge status={member.membership_status || 'NONE'} size="sm" />
+              <FVEBadge status={displayStatus} size="sm" />
               {member.plan_name ? (
                 <Text numberOfLines={1} style={styles.planName}>
                   {member.plan_name}
@@ -98,7 +107,7 @@ export function MemberCard({ member, onPress }: MemberCardProps) {
               {member.membership_expiry_date ? (
                 <View style={styles.expiryContainer}>
                   <Calendar size={11} color={colors.textMuted} />
-                  <Text style={styles.expiryText}>
+                  <Text style={[styles.expiryText, isExpired && styles.expiredDateText]}>
                     {formatDate(member.membership_expiry_date)}
                   </Text>
                 </View>
@@ -106,8 +115,24 @@ export function MemberCard({ member, onPress }: MemberCardProps) {
             </View>
           </View>
 
-          {/* Chevron */}
-          <ChevronRight size={18} color={colors.gold} style={styles.chevron} />
+          {/* Actions & Chevron */}
+          <View style={styles.rightActions}>
+            {isExpired && onWhatsAppAlert ? (
+              <TouchableOpacity
+                onPress={() => {
+                  haptics.medium();
+                  onWhatsAppAlert(member);
+                }}
+                activeOpacity={0.8}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                style={styles.whatsappAlertBtn}
+              >
+                <MessageCircle size={13} color="#25D366" />
+                <Text style={styles.whatsappAlertText}>Alert</Text>
+              </TouchableOpacity>
+            ) : null}
+            <ChevronRight size={18} color={isExpired ? '#F87171' : colors.gold} style={styles.chevron} />
+          </View>
         </View>
       </Pressable>
     </Animated.View>
@@ -222,7 +247,39 @@ const styles = StyleSheet.create({
     fontFamily: typography.fonts.inter,
   },
   chevron: {
-    marginLeft: 6,
+    marginLeft: 2,
     opacity: 0.6,
+  },
+  expiredCard: {
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    backgroundColor: '#140D0E',
+  },
+  expiredDateText: {
+    color: '#F87171',
+    fontWeight: '600',
+  },
+  rightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginLeft: 6,
+  },
+  whatsappAlertBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(37, 211, 102, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(37, 211, 102, 0.4)',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  whatsappAlertText: {
+    color: '#25D366',
+    fontSize: 11,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
 });
