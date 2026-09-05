@@ -20,7 +20,7 @@ import { MemberFormModal } from '@/components/features/MemberFormModal';
 import { FVEEmptyState } from '@/components/common/FVEEmptyState';
 import { FVELogoLoader } from '@/components/common/FVELogoLoader';
 import { SkeletonMemberCard } from '@/components/common/FVESkeleton';
-import { MemberWithMembership } from '@/types';
+import { Member, MemberWithMembership } from '@/types';
 import { supabase } from '@/api/supabase';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
@@ -31,6 +31,19 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Plus } from 'lucide-react-native';
 import { buildExpiredAlertMessage, openWhatsAppLink } from '@/utils/format';
 import { getLocalDateStr } from '@/utils/date';
+
+interface RawJoinedMembership {
+  id: string;
+  start_date: string;
+  expiry_date: string;
+  status: string | null;
+  created_at: string;
+  membership_plans: { name: string } | null;
+}
+
+interface RawJoinedMember extends Member {
+  memberships?: RawJoinedMembership[];
+}
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -52,59 +65,18 @@ export function MembersScreen() {
     return () => clearTimeout(t);
   }, [search]);
 
-  // Expired members count query for live badge on the "EXPIRED" filter chip
-  const { data: expiredCount = 0 } = useQuery({
-    queryKey: ['mobile-members-expired-count'],
+  // Query all members directly with their memberships and plans (resilient direct join matching web app)
+  const { data: allMembers = [], isLoading, refetch } = useQuery({
+    queryKey: ['mobile-members', debouncedSearch, genderFilter, sortBy],
     queryFn: async () => {
-      const todayStr = getLocalDateStr();
-      try {
-        const { count, error } = await supabase
-          .from('members_with_membership')
-          .select('*', { count: 'exact', head: true })
-          .or(`membership_status.eq.EXPIRED,expiry_sort_group.eq.2,membership_expiry_date.lt.${todayStr}`);
-        if (!error && typeof count === 'number') {
-          return count;
-        }
-      } catch {
-        // Fallback below
-      }
-      const { count: fallbackCount } = await supabase
-        .from('memberships')
-        .select('*', { count: 'exact', head: true })
-        .or(`status.eq.EXPIRED,expiry_date.lt.${todayStr}`);
-      return fallbackCount || 0;
-    },
-    staleTime: 30000,
-  });
-
-  // Query members from members_with_membership view (or join with members)
-  const { data: members, isLoading, refetch } = useQuery({
-    queryKey: ['mobile-members', debouncedSearch, statusFilter, genderFilter, sortBy],
-    queryFn: async () => {
-      let q = supabase.from('members_with_membership').select('*');
-
-      if (sortBy === 'name_asc') {
-        q = q.order('full_name', { ascending: true });
-      } else if (sortBy === 'expiry_asc') {
-        q = q.order('membership_expiry_date', { ascending: true, nullsFirst: false });
-      } else if (sortBy === 'join_desc') {
-        q = q.order('joining_date', { ascending: false });
-      }
+      let q = supabase
+        .from('members')
+        .select('*, memberships(id, start_date, expiry_date, status, created_at, membership_plans(name))');
 
       if (debouncedSearch.trim()) {
         q = q.or(
-          `full_name.ilike.%${search.trim()}%,mobile.ilike.%${search.trim()}%,member_id.ilike.%${search.trim()}%`
+          `full_name.ilike.%${debouncedSearch.trim()}%,mobile.ilike.%${debouncedSearch.trim()}%,member_id.ilike.%${debouncedSearch.trim()}%`
         );
-      }
-
-      if (statusFilter === 'EXPIRED') {
-        const todayStr = getLocalDateStr();
-        q = q.or(`membership_status.eq.EXPIRED,expiry_sort_group.eq.2,membership_expiry_date.lt.${todayStr}`);
-      } else if (statusFilter === 'ACTIVE') {
-        const todayStr = getLocalDateStr();
-        q = q.or(`membership_status.eq.ACTIVE,expiry_sort_group.eq.1,membership_expiry_date.gte.${todayStr}`);
-      } else if (statusFilter !== 'ALL') {
-        q = q.eq('membership_status', statusFilter);
       }
 
       if (genderFilter !== 'ALL') {
@@ -114,32 +86,78 @@ export function MembersScreen() {
       const { data, error } = await q;
 
       if (error) {
-        let fallbackQuery = supabase.from('members').select('*');
-        if (sortBy === 'join_desc') {
-          fallbackQuery = fallbackQuery.order('joining_date', { ascending: false });
-        } else {
-          fallbackQuery = fallbackQuery.order('full_name', { ascending: true });
-        }
-        if (debouncedSearch.trim()) {
-          fallbackQuery = fallbackQuery.or(
-            `full_name.ilike.%${search.trim()}%,mobile.ilike.%${search.trim()}%,member_id.ilike.%${search.trim()}%`
-          );
-        }
-        if (genderFilter !== 'ALL') {
-          fallbackQuery = fallbackQuery.eq('gender', genderFilter);
-        }
-        const fallbackRes = await fallbackQuery;
-        return (fallbackRes.data || []) as MemberWithMembership[];
+        console.error('Error fetching members:', error.message);
+        return [];
       }
 
-      return (data || []) as MemberWithMembership[];
+      const rawMembers = (data || []) as unknown as RawJoinedMember[];
+      const todayStr = getLocalDateStr();
+
+      const mappedMembers: MemberWithMembership[] = rawMembers.map(m => {
+        const list = [...(m.memberships || [])].sort((a, b) => {
+          const aActive = a.status && ['ACTIVE', 'EXPIRING_SOON'].includes(a.status) ? 1 : 0;
+          const bActive = b.status && ['ACTIVE', 'EXPIRING_SOON'].includes(b.status) ? 1 : 0;
+          if (aActive !== bActive) return bActive - aActive;
+          return (b.expiry_date || '').localeCompare(a.expiry_date || '');
+        });
+
+        const latest = list[0];
+        const expiry = latest?.expiry_date || null;
+        let group = 3;
+        if (expiry) {
+          group = expiry >= todayStr ? 1 : 2;
+        }
+
+        // Determine computed status:
+        let computedStatus = latest?.status || 'NONE';
+        if (latest?.status === 'HOLD') {
+          computedStatus = 'HOLD';
+        } else if (expiry && expiry < todayStr) {
+          computedStatus = 'EXPIRED';
+        } else if (expiry && expiry >= todayStr) {
+          const daysLeft = Math.ceil(
+            (new Date(expiry).getTime() - new Date(todayStr).getTime()) / (1000 * 60 * 60 * 24)
+          );
+          if (daysLeft <= 7) {
+            computedStatus = 'EXPIRING_SOON';
+          } else {
+            computedStatus = 'ACTIVE';
+          }
+        }
+
+        return {
+          ...m,
+          membership_id: latest?.id || null,
+          membership_start_date: latest?.start_date || null,
+          membership_expiry_date: expiry,
+          membership_status: computedStatus,
+          plan_name: latest?.membership_plans?.name || null,
+          expiry_sort_group: group,
+        };
+      });
+
+      // Apply sorting
+      mappedMembers.sort((a, b) => {
+        if (sortBy === 'name_asc') {
+          return (a.full_name || '').localeCompare(b.full_name || '');
+        } else if (sortBy === 'expiry_asc') {
+          if (!a.membership_expiry_date && !b.membership_expiry_date) return 0;
+          if (!a.membership_expiry_date) return 1;
+          if (!b.membership_expiry_date) return -1;
+          return a.membership_expiry_date.localeCompare(b.membership_expiry_date);
+        } else if (sortBy === 'join_desc') {
+          return (b.joining_date || '').localeCompare(a.joining_date || '');
+        }
+        return 0;
+      });
+
+      return mappedMembers;
     },
   });
 
   const onRefresh = useCallback(() => {
     haptics.light();
     qc.invalidateQueries({ queryKey: ['mobile-members'] });
-    qc.invalidateQueries({ queryKey: ['mobile-members-expired-count'] });
   }, [qc]);
 
   // Handler for individual member WhatsApp renewal alert
@@ -175,11 +193,54 @@ export function MembersScreen() {
     else setSortBy('name_asc');
   };
 
+  const todayStr = getLocalDateStr();
+
+  // Tab counts dynamically calculated from the full dataset
+  const counts = {
+    ALL: allMembers.length,
+    ACTIVE: allMembers.filter(
+      m => m.membership_status === 'ACTIVE' ||
+        (!!m.membership_expiry_date && m.membership_expiry_date >= todayStr && m.membership_status !== 'HOLD' && m.membership_status !== 'EXPIRED')
+    ).length,
+    EXPIRING_SOON: allMembers.filter(m => m.membership_status === 'EXPIRING_SOON').length,
+    EXPIRED: allMembers.filter(
+      m => m.membership_status === 'EXPIRED' ||
+        m.expiry_sort_group === 2 ||
+        (!!m.membership_expiry_date && m.membership_expiry_date < todayStr)
+    ).length,
+    HOLD: allMembers.filter(m => m.membership_status === 'HOLD').length,
+  };
+
+  // Filter members by the selected tab
+  const members = allMembers.filter(m => {
+    if (statusFilter === 'ALL') return true;
+    if (statusFilter === 'ACTIVE') {
+      return (
+        m.membership_status === 'ACTIVE' ||
+        (!!m.membership_expiry_date && m.membership_expiry_date >= todayStr && m.membership_status !== 'HOLD' && m.membership_status !== 'EXPIRED')
+      );
+    }
+    if (statusFilter === 'EXPIRED') {
+      return (
+        m.membership_status === 'EXPIRED' ||
+        m.expiry_sort_group === 2 ||
+        (!!m.membership_expiry_date && m.membership_expiry_date < todayStr)
+      );
+    }
+    if (statusFilter === 'EXPIRING_SOON') {
+      return m.membership_status === 'EXPIRING_SOON';
+    }
+    if (statusFilter === 'HOLD') {
+      return m.membership_status === 'HOLD';
+    }
+    return true;
+  });
+
   return (
     <View style={styles.container}>
       <FVEHeader
         title="MEMBERS"
-        subtitle={`${members?.length || 0} registered members`}
+        subtitle={`${members.length} of ${allMembers.length} members`}
         rightAction={
           <TouchableOpacity
             onPress={() => {
@@ -217,10 +278,8 @@ export function MembersScreen() {
           {statusFilters.map(status => {
             const isSelected = statusFilter === status;
             const isExpiredChip = status === 'EXPIRED';
-            const label =
-              isExpiredChip && expiredCount > 0
-                ? `EXPIRED (${expiredCount})`
-                : status.replace('_', ' ');
+            const count = counts[status as keyof typeof counts] || 0;
+            const label = `${status.replace('_', ' ')} (${count})`;
 
             return (
               <TouchableOpacity

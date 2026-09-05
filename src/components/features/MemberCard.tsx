@@ -256,7 +256,7 @@ const styles = StyleSheet.create({
   },
   expiredDateText: {
     color: '#F87171',
-    fontWeight: '600',
+    fontFamily: typography.fonts.interSemiBold,
   },
   rightActions: {
     flexDirection: 'row',
