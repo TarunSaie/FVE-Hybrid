@@ -6,7 +6,7 @@ import { FVEInput } from '@/components/common/FVEInput';
 import { FVEButton } from '@/components/common/FVEButton';
 import { Member, MembershipPlan, PAYMENT_METHODS } from '@/types';
 import { supabase } from '@/api/supabase';
-import { getLocalDateStr } from '@/utils/date';
+import { getLocalDateStr, calculateExpiryDate } from '@/utils/date';
 import { formatCurrency, generateReceiptNumber } from '@/utils/format';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQueryClient } from '@tanstack/react-query';
@@ -125,11 +125,7 @@ export function PaymentFormModal({
           }
         }
 
-        const [sy, sm, sd] = subStartDate.split('T')[0].split('-').map(Number);
-        const sDate = new Date(sy, sm - 1, sd);
-        const eDate = new Date(sDate);
-        eDate.setDate(sDate.getDate() + selectedPlan.duration_days);
-        const expiryStr = getLocalDateStr(eDate);
+        const expiryStr = calculateExpiryDate(subStartDate, selectedPlan.duration_days);
 
         const { data: newMs, error: msError } = await supabase
           .from('memberships')

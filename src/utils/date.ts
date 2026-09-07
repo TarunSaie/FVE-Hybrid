@@ -82,3 +82,26 @@ export function calculateAge(dob?: string | null): number | null {
     return null;
   }
 }
+
+/**
+ * Timezone-safe calculation of expiry date string (YYYY-MM-DD) from a local start date string (YYYY-MM-DD)
+ * and duration in days using inclusive date math (Option A).
+ *
+ * Expiry Date = Start Date + (durationDays - 1) days.
+ * E.g. A 1-month (30-day) membership starting Sept 7 expires on Oct 6 at 23:59:59 (30 full days: Sept 7 to Oct 6 inclusive).
+ * Day 1 is counted on the start date itself.
+ */
+export function calculateExpiryDate(startDateStr: string, durationDays: number): string {
+  if (!startDateStr) return getLocalDateStr();
+  const daysToAdd = Math.max(0, durationDays - 1);
+  const cleanStr = startDateStr.split('T')[0];
+  const parts = cleanStr.split('-').map(Number);
+  if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+    const d = new Date(parts[0], parts[1] - 1, parts[2] + daysToAdd);
+    return getLocalDateStr(d);
+  }
+  const d = new Date(startDateStr);
+  d.setDate(d.getDate() + daysToAdd);
+  return getLocalDateStr(d);
+}
+
