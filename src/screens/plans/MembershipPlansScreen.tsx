@@ -19,7 +19,8 @@ import { MembershipPlan } from '@/types';
 import { supabase } from '@/api/supabase';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
-import { formatCurrency } from '@/utils/format';
+import { formatCurrency, parseFeatures } from '@/utils/format';
+import { haptics } from '@/utils/haptics';
 
 export function MembershipPlansScreen() {
   const navigation = useNavigation();
@@ -124,70 +125,101 @@ export function MembershipPlansScreen() {
             colors={[colors.gold]}
           />
         }
-        renderItem={({ item }) => (
-          <View style={[styles.planCard, !item.active && styles.inactiveCard]}>
-            <View style={styles.planHeader}>
-              <View style={styles.planTitleContainer}>
-                <Text style={styles.planName}>{item.name}</Text>
-                <View style={styles.durationRow}>
-                  <Clock size={12} color={colors.textMuted} />
-                  <Text style={styles.durationText}>
-                    {item.duration_days} Days ({item.duration_type || 'STANDARD'})
+        renderItem={({ item }) => {
+          const featuresList = parseFeatures(item.features);
+          const durationLabel: Record<string, string> = {
+            MONTHLY: '1 Month',
+            QUARTERLY: '3 Months',
+            HALF_YEARLY: '6 Months',
+            YEARLY: '1 Year',
+            CUSTOM: 'Custom',
+          };
+          const durationDisplay = item.duration_type === 'CUSTOM'
+            ? `Custom · ${item.duration_days} Days`
+            : `${durationLabel[item.duration_type] || `${item.duration_days} Days`} · ${item.duration_days} Days`;
+
+          return (
+            <View style={[styles.planCard, !item.active && styles.inactiveCard]}>
+              <View style={styles.planHeader}>
+                <View style={styles.planTitleContainer}>
+                  <Text style={styles.planName}>{item.name}</Text>
+                  <View style={styles.durationRow}>
+                    <Clock size={12} color={colors.gold} />
+                    <Text style={styles.durationText}>{durationDisplay}</Text>
+                  </View>
+                </View>
+
+                <Text style={styles.planPrice}>{formatCurrency(item.price)}</Text>
+              </View>
+
+              {item.visit_day_limit != null && (
+                <View style={styles.limitBadge}>
+                  <Text style={styles.limitText}>
+                    Max {item.visit_day_limit} usable visit days
                   </Text>
                 </View>
-              </View>
+              )}
 
-              <Text style={styles.planPrice}>{formatCurrency(item.price)}</Text>
-            </View>
+              {/* Plan Features Checklist */}
+              {featuresList.length > 0 && (
+                <View style={styles.featuresContainer}>
+                  {featuresList.map((feature, fIdx) => (
+                    <View key={fIdx} style={styles.featureItemRow}>
+                      <Check size={13} color={colors.gold} style={styles.featureCheckIcon} />
+                      <Text style={styles.featureItemText}>{feature}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
 
-            {item.visit_day_limit != null && (
-              <View style={styles.limitBadge}>
-                <Text style={styles.limitText}>
-                  Max {item.visit_day_limit} usable visit days
-                </Text>
-              </View>
-            )}
-
-            {/* Actions Bar */}
-            <View style={styles.cardActions}>
-              <TouchableOpacity
-                onPress={() => togglePlanActive(item)}
-                style={[
-                  styles.statusToggleBtn,
-                  item.active ? styles.activeBtn : styles.inactiveBtn,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.statusToggleText,
-                    { color: item.active ? colors.success : colors.textMuted },
-                  ]}
-                >
-                  {item.active ? 'ACTIVE' : 'INACTIVE'}
-                </Text>
-              </TouchableOpacity>
-
-              <View style={styles.rightActions}>
+              {/* Actions Bar */}
+              <View style={styles.cardActions}>
                 <TouchableOpacity
                   onPress={() => {
-                    setSelectedPlan(item);
-                    setShowPlanModal(true);
+                    haptics.selection();
+                    togglePlanActive(item);
                   }}
-                  style={styles.iconActionBtn}
+                  style={[
+                    styles.statusToggleBtn,
+                    item.active ? styles.activeBtn : styles.inactiveBtn,
+                  ]}
                 >
-                  <Edit size={16} color={colors.gold} />
+                  <Text
+                    style={[
+                      styles.statusToggleText,
+                      { color: item.active ? colors.success : colors.textMuted },
+                    ]}
+                  >
+                    {item.active ? 'ACTIVE' : 'INACTIVE'}
+                  </Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                  onPress={() => handleDeletePlan(item)}
-                  style={[styles.iconActionBtn, styles.deleteBtn]}
-                >
-                  <Trash2 size={16} color={colors.error} />
-                </TouchableOpacity>
+                <View style={styles.rightActions}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      haptics.light();
+                      setSelectedPlan(item);
+                      setShowPlanModal(true);
+                    }}
+                    style={styles.iconActionBtn}
+                  >
+                    <Edit size={16} color={colors.gold} />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => {
+                      haptics.warning();
+                      handleDeletePlan(item);
+                    }}
+                    style={[styles.iconActionBtn, styles.deleteBtn]}
+                  >
+                    <Trash2 size={16} color={colors.error} />
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
-          </View>
-        )}
+          );
+        }}
         ListEmptyComponent={
           !isLoading ? (
             <FVEEmptyState
@@ -338,5 +370,26 @@ const styles = StyleSheet.create({
   },
   deleteBtn: {
     backgroundColor: colors.errorMuted,
+  },
+  featuresContainer: {
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.06)',
+    gap: 6,
+  },
+  featureItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  featureCheckIcon: {
+    flexShrink: 0,
+  },
+  featureItemText: {
+    color: '#BFC3C7',
+    fontSize: typography.sizes.xs,
+    fontFamily: typography.fonts.inter,
+    flex: 1,
   },
 });

@@ -112,3 +112,31 @@ export function buildExpiredAlertMessage(
     `— Team FitVerse Elite`
   );
 }
+
+/**
+ * Safely parse features stored as JSON string, string array, or comma-separated string.
+ */
+export function parseFeatures(features: unknown): string[] {
+  if (Array.isArray(features)) return features.map(String).map(s => s.trim()).filter(Boolean);
+  if (typeof features === 'string') {
+    try {
+      const parsed = JSON.parse(features);
+      if (Array.isArray(parsed)) return parsed.map(String).map(s => s.trim()).filter(Boolean);
+    } catch {
+      // Fall back to comma-separated or single string
+    }
+    return features.split(',').map(s => s.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+/**
+ * Normalizes a membership plan with parsed features array and numeric price.
+ */
+export function normalizeMembershipPlan<T extends { price: unknown; features?: unknown }>(plan: T) {
+  return {
+    ...plan,
+    price: Number(plan.price) || 0,
+    features: parseFeatures(plan.features),
+  };
+}
