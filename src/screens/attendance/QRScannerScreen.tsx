@@ -21,6 +21,7 @@ import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { useAuth } from '@/contexts/AuthContext';
 import { haptics } from '@/utils/haptics';
+import { sounds } from '@/utils/sounds';
 import { Member, Membership } from '@/types';
 
 export function QRScannerScreen() {
@@ -104,6 +105,7 @@ export function QRScannerScreen() {
       }
 
       if (!member) {
+        sounds.qrInvalid();
         haptics.error();
         setScannedResult({
           member: { full_name: 'Unknown Code', qr_code: cleanCode } as Member,
@@ -129,6 +131,7 @@ export function QRScannerScreen() {
       const activeMs = memberships?.[0];
 
       if (!activeMs || activeMs.status === 'HOLD' || (activeMs.expiry_date && activeMs.expiry_date < today)) {
+        sounds.qrInvalid();
         haptics.warning();
         setScannedResult({
           member,
@@ -146,6 +149,7 @@ export function QRScannerScreen() {
       // 3. Check visit day limit
       const limitStatus = visitLimitStatus(activeMs);
       if (limitStatus.exhausted) {
+        sounds.qrInvalid();
         haptics.warning();
         setScannedResult({
           member,
@@ -177,6 +181,7 @@ export function QRScannerScreen() {
       if (attError) {
         if (attError.code === '23505') {
           // Unique index violation: already checked in today
+          sounds.checkinAlready();
           haptics.warning();
           setScannedResult({
             member,
@@ -190,6 +195,7 @@ export function QRScannerScreen() {
           }, 3500);
           return;
         }
+        sounds.qrInvalid();
         haptics.error();
         throw attError;
       }
@@ -204,6 +210,7 @@ export function QRScannerScreen() {
       qc.invalidateQueries({ queryKey: ['mobile-recent-attendance'] });
       qc.invalidateQueries({ queryKey: ['mobile-dashboard-stats'] });
 
+      sounds.checkinSuccess();
       haptics.success();
       setScannedResult({
         member,
@@ -218,6 +225,8 @@ export function QRScannerScreen() {
         setScanned(false);
       }, 3500);
     } catch (err: unknown) {
+      sounds.qrInvalid();
+      haptics.error();
       setScannedResult({
         member: { full_name: 'Error' } as Member,
         status: 'error',

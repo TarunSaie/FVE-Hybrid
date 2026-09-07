@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/api/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { getLocalDateStr, formatDate } from '@/utils/date';
+import { sounds } from '@/utils/sounds';
 
 /**
  * Checks for memberships expiring in <= 7 days once per session day
@@ -78,6 +79,7 @@ export function useRenewalAlerts() {
 
             if (notifications.length > 0) {
               await supabase.from('notifications').insert(notifications);
+              sounds.notification();
               qc.invalidateQueries({ queryKey: ['mobile-notifications'] });
               qc.invalidateQueries({ queryKey: ['unread-notifications'] });
               qc.invalidateQueries({ queryKey: ['unread-notifications-count'] });

@@ -12,6 +12,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useQueryClient } from '@tanstack/react-query';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
+import { sounds } from '@/utils/sounds';
 
 interface PaymentFormModalProps {
   visible: boolean;
@@ -186,6 +187,7 @@ export function PaymentFormModal({
 
         if (notifRows.length > 0) {
           await supabase.from('notifications').insert(notifRows);
+          sounds.notification();
           qc.invalidateQueries({ queryKey: ['mobile-notifications'] });
           qc.invalidateQueries({ queryKey: ['unread-notifications'] });
           qc.invalidateQueries({ queryKey: ['unread-notifications-count'] });

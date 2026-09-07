@@ -13,11 +13,15 @@ import { ReportsScreen } from '@/screens/reports/ReportsScreen';
 import { StaffScreen } from '@/screens/staff/StaffScreen';
 import { NotificationsScreen } from '@/screens/notifications/NotificationsScreen';
 import { RootStackParamList } from './types';
+import { useNotificationSoundListener } from '@/hooks/useNotificationSoundListener';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export function RootNavigator() {
   const { user, loading } = useAuth();
+
+  // Listen globally for incoming notifications and play chime sound
+  useNotificationSoundListener();
 
   if (loading) {
     return <FVELoading message="AUTHENTICATING PROFILE" />;

@@ -70,7 +70,8 @@
           }
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      "expo-audio"
     ]
   }
 }

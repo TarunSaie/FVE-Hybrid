@@ -37,6 +37,7 @@ import { typography } from '@/constants/typography';
 import { getLocalDateStr, formatDate } from '@/utils/date';
 import { useAuth } from '@/contexts/AuthContext';
 import { haptics } from '@/utils/haptics';
+import { sounds } from '@/utils/sounds';
 import { RootStackParamList } from '@/navigation/types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -166,20 +167,22 @@ export function AttendanceScreen() {
 
       if (error) {
         if (error.code === '23505') {
+          sounds.checkinAlready();
           haptics.warning();
           Alert.alert('Already Checked In', `${member.full_name} has already checked in on this date.`);
           return;
         }
-        haptics.error();
         throw error;
       }
 
+      sounds.checkinSuccess();
       haptics.success();
       Alert.alert('Success', `Checked in ${member.full_name} successfully!`);
       setShowManualModal(false);
       setManualSearch('');
       onRefresh();
     } catch (err: unknown) {
+      sounds.qrInvalid();
       haptics.error();
       Alert.alert('Check-In Error', (err as Error).message || 'Failed to check in member');
     } finally {

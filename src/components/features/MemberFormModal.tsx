@@ -26,6 +26,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { haptics } from '@/utils/haptics';
+import { sounds } from '@/utils/sounds';
 import { checkAndNotifyBirthdays } from '@/hooks/useBirthdayAlerts';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -310,6 +311,7 @@ export function MemberFormModal({
 
           if (notifRows.length > 0) {
             await supabase.from('notifications').insert(notifRows);
+            sounds.notification();
             qc.invalidateQueries({ queryKey: ['mobile-notifications'] });
             qc.invalidateQueries({ queryKey: ['unread-notifications'] });
             qc.invalidateQueries({ queryKey: ['unread-notifications-count'] });

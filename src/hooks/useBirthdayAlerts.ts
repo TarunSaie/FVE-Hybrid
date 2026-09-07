@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/api/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { getLocalDateStr } from '@/utils/date';
+import { sounds } from '@/utils/sounds';
 
 const LAST_CHECK_KEY = '@fve_last_birthday_check';
 
@@ -142,6 +143,7 @@ export function useBirthdayAlerts() {
     await AsyncStorage.setItem(LAST_CHECK_KEY, todayStr);
 
     if (insertedCount > 0) {
+      sounds.notification();
       qc.invalidateQueries({ queryKey: ['mobile-notifications'] });
       qc.invalidateQueries({ queryKey: ['notifications'] });
       qc.invalidateQueries({ queryKey: ['unread-notifications'] });
