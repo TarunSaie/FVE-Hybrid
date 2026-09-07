@@ -208,24 +208,16 @@ export function DashboardScreen() {
   });
 
   // Unread notifications
-  const isOwnerOrAdmin = Boolean(
-    user?.role && ['OWNER', 'ADMIN'].includes(user.role.toUpperCase())
-  );
-
   const { data: unreadNotifs } = useQuery({
-    queryKey: ['unread-notifications', user?.id, isOwnerOrAdmin],
+    queryKey: ['unread-notifications', user?.id],
     queryFn: async () => {
       if (!user?.id) return 0;
-      let query = supabase
+      const { count } = await supabase
         .from('notifications')
         .select('*', { count: 'exact', head: true })
-        .eq('read', false);
+        .eq('read', false)
+        .or(`user_id.eq.${user.id},user_id.is.null`);
 
-      if (!isOwnerOrAdmin) {
-        query = query.or(`user_id.eq.${user.id},user_id.is.null`);
-      }
-
-      const { count } = await query;
       return count || 0;
     },
     enabled: !!user?.id,

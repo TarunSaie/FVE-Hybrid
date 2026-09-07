@@ -35,24 +35,16 @@ export function NotificationsScreen() {
   const { user } = useAuth();
   const qc = useQueryClient();
 
-  const isOwnerOrAdmin = Boolean(
-    user?.role && ['OWNER', 'ADMIN'].includes(user.role.toUpperCase())
-  );
-
   const { data: notifications, isLoading, refetch } = useQuery({
-    queryKey: ['mobile-notifications', user?.id, isOwnerOrAdmin],
+    queryKey: ['mobile-notifications', user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
-      let query = supabase
+      const { data, error } = await supabase
         .from('notifications')
         .select('*')
+        .or(`user_id.eq.${user.id},user_id.is.null`)
         .order('created_at', { ascending: false });
 
-      if (!isOwnerOrAdmin) {
-        query = query.or(`user_id.eq.${user.id},user_id.is.null`);
-      }
-
-      const { data, error } = await query;
       if (error) {
         console.error('[NotificationsScreen] Fetch error:', error.message);
         throw error;

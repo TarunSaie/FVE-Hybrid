@@ -63,7 +63,7 @@ export function useRenewalAlerts() {
               );
 
               for (const staff of staffList) {
-                const message = `${memberName}'s ${planName} expires on ${expiryDate} (${daysLeft} day${daysLeft === 1 ? '' : 's'} left). Renew now to retain member.`;
+                const message = `${memberName}'s ${planName} expires on ${expiryDate} (${daysLeft} day${daysLeft === 1 ? '' : 's'} left). Renew now to retain the member.`;
                 const key = `${staff.id}|${message}`;
                 if (existingKeys.has(key)) continue;
 

@@ -48,24 +48,16 @@ export function FVEHeader({
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : insets.top;
 
-  const isOwnerOrAdmin = Boolean(
-    user?.role && ['OWNER', 'ADMIN'].includes(user.role.toUpperCase())
-  );
-
   const { data: fetchedUnreadCount } = useQuery({
-    queryKey: ['unread-notifications-count', user?.id, isOwnerOrAdmin],
+    queryKey: ['unread-notifications-count', user?.id],
     queryFn: async () => {
       if (!user?.id) return 0;
-      let query = supabase
+      const { count, error } = await supabase
         .from('notifications')
         .select('*', { count: 'exact', head: true })
-        .eq('read', false);
+        .eq('read', false)
+        .or(`user_id.eq.${user.id},user_id.is.null`);
 
-      if (!isOwnerOrAdmin) {
-        query = query.or(`user_id.eq.${user.id},user_id.is.null`);
-      }
-
-      const { count, error } = await query;
       if (error) {
         console.warn('[FVEHeader] Error fetching unread count:', error.message);
         return 0;
