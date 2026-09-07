@@ -25,6 +25,11 @@ import {
   ChevronRight,
   Save,
   Sparkles,
+  Volume2,
+  BellRing,
+  CheckCircle,
+  AlertTriangle,
+  XCircle,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEInput } from '@/components/common/FVEInput';
@@ -37,6 +42,7 @@ import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { APP_NAME, TAGLINE, CHIRVEX_WEBSITE } from '@/constants/branding';
 import { haptics } from '@/utils/haptics';
+import { sounds } from '@/utils/sounds';
 import { RootStackParamList } from '@/navigation/types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -311,6 +317,67 @@ export function SettingsScreen() {
           </View>
         )}
 
+        {/* Native Audio & Haptic Diagnostics */}
+        <View style={styles.cardSection}>
+          <View style={styles.sectionHeaderRow}>
+            <Volume2 size={16} color={colors.gold} style={{ marginRight: 8 }} />
+            <Text style={styles.sectionHeader}>AUDIO & SOUND FEEDBACK</Text>
+          </View>
+          <Text style={styles.diagnosticsSubtext}>
+            Test native audio chimes and vibration haptics for check-ins and alerts.
+          </Text>
+
+          <View style={styles.soundTestGrid}>
+            <TouchableOpacity
+              onPress={() => {
+                haptics.success();
+                sounds.checkinSuccess();
+              }}
+              style={styles.soundTestBtn}
+              activeOpacity={0.75}
+            >
+              <CheckCircle size={16} color={colors.success} />
+              <Text style={styles.soundTestBtnText}>Check-In Chime</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => {
+                haptics.warning();
+                sounds.checkinAlready();
+              }}
+              style={styles.soundTestBtn}
+              activeOpacity={0.75}
+            >
+              <AlertTriangle size={16} color={colors.warning} />
+              <Text style={styles.soundTestBtnText}>Already Checked-In</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => {
+                haptics.error();
+                sounds.qrInvalid();
+              }}
+              style={styles.soundTestBtn}
+              activeOpacity={0.75}
+            >
+              <XCircle size={16} color={colors.error} />
+              <Text style={styles.soundTestBtnText}>Invalid QR Buzz</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => {
+                haptics.notification();
+                sounds.notification();
+              }}
+              style={styles.soundTestBtn}
+              activeOpacity={0.75}
+            >
+              <BellRing size={16} color={colors.gold} />
+              <Text style={styles.soundTestBtnText}>Notification Alert</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* About FitVerse Elite */}
         <View style={styles.cardSection}>
           <Text style={styles.sectionHeader}>ABOUT FITVERSE ELITE</Text>
@@ -566,5 +633,40 @@ const styles = StyleSheet.create({
     marginTop: 6,
     alignSelf: 'center',
     width: '100%',
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  diagnosticsSubtext: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontFamily: typography.fonts.inter,
+    marginBottom: 12,
+  },
+  soundTestGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  soundTestBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#161A22',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    flexBasis: '48%',
+    flexGrow: 1,
+  },
+  soundTestBtnText: {
+    color: colors.textSecondary,
+    fontSize: 11,
+    fontFamily: typography.fonts.inter,
+    fontWeight: '600',
   },
 });

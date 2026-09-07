@@ -6,6 +6,9 @@ import {
   ScrollView,
   Pressable,
   RefreshControl,
+  TouchableOpacity,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
@@ -19,14 +22,16 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
+  Share2,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { supabase } from '@/api/supabase';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { formatCurrency } from '@/utils/format';
-import { getLocalDateStr, getLocalMonthStr } from '@/utils/date';
+import { getLocalDateStr, getLocalMonthStr, formatDate } from '@/utils/date';
 import { haptics } from '@/utils/haptics';
+import { shareReportPdf } from '@/utils/reportPdf';
 
 type Period = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
@@ -161,11 +166,63 @@ export function ReportsScreen() {
     setPeriod(p);
   };
 
+  const [sharing, setSharing] = useState(false);
+
+  const handleShareReport = async () => {
+    if (!reportData) return;
+    haptics.medium();
+    setSharing(true);
+    try {
+      const periodMap: Record<Period, string> = {
+        daily: 'Daily Performance Report',
+        weekly: 'Weekly Performance Report',
+        monthly: 'Monthly Performance Report',
+        yearly: 'Yearly Performance Report',
+      };
+      await shareReportPdf({
+        periodLabel: periodMap[period],
+        generatedDate: formatDate(getLocalDateStr()),
+        totalRevenue: reportData.totalRevenue,
+        averageRevenue: reportData.averageRevenue,
+        bars: reportData.bars,
+        memberStats,
+        popularPlans,
+      });
+      haptics.success();
+    } catch (err: unknown) {
+      haptics.error();
+      Alert.alert('Share Error', (err as Error).message || 'Failed to export report');
+    } finally {
+      setSharing(false);
+    }
+  };
+
   const maxPlanCount = Math.max(...(popularPlans || []).map(p => p.count), 1);
 
   return (
     <View style={styles.container}>
-      <FVEHeader title="ANALYTICS & REPORTS" showBack onBack={() => navigation.goBack()} />
+      <FVEHeader
+        title="ANALYTICS & REPORTS"
+        showBack
+        onBack={() => navigation.goBack()}
+        rightAction={
+          <TouchableOpacity
+            onPress={handleShareReport}
+            disabled={sharing || !reportData}
+            style={styles.shareBtn}
+            activeOpacity={0.7}
+          >
+            {sharing ? (
+              <ActivityIndicator size={14} color={colors.gold} />
+            ) : (
+              <>
+                <Share2 size={15} color={colors.gold} />
+                <Text style={styles.shareBtnText}>PDF</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        }
+      />
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -571,5 +628,22 @@ const styles = StyleSheet.create({
   planProgressFill: {
     height: '100%',
     borderRadius: 3,
+  },
+  shareBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: colors.goldMuted,
+    borderWidth: 1,
+    borderColor: colors.goldBorder,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  shareBtnText: {
+    color: colors.gold,
+    fontSize: typography.sizes.xs,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
   },
 });

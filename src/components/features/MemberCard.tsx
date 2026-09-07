@@ -8,6 +8,7 @@ import {
   Animated,
   TouchableOpacity,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { ChevronRight, Phone, Calendar, MessageCircle, Share2 } from 'lucide-react-native';
 import { MemberWithMembership } from '@/types';
@@ -94,10 +95,19 @@ export function MemberCard({ member, onPress, onShare, isSharing, onWhatsAppAler
             </View>
 
             {member.mobile ? (
-              <View style={styles.detailRow}>
-                <Phone size={12} color={colors.textMuted} />
-                <Text style={styles.detailText}>{member.mobile}</Text>
-              </View>
+              <TouchableOpacity
+                onPress={() => {
+                  haptics.selection();
+                  const cleanPhone = member.mobile?.replace(/\D/g, '');
+                  if (cleanPhone) Linking.openURL(`tel:${cleanPhone}`);
+                }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                activeOpacity={0.7}
+                style={styles.detailRow}
+              >
+                <Phone size={12} color={colors.gold} />
+                <Text style={[styles.detailText, { color: colors.gold }]}>{member.mobile}</Text>
+              </TouchableOpacity>
             ) : null}
 
             <View style={styles.statusRow}>
