@@ -6,8 +6,8 @@ import { FVEInput } from '@/components/common/FVEInput';
 import { FVEButton } from '@/components/common/FVEButton';
 import { Member, MembershipPlan, PAYMENT_METHODS } from '@/types';
 import { supabase } from '@/api/supabase';
-import { getLocalDateStr, calculateExpiryDate } from '@/utils/date';
-import { formatCurrency, generateReceiptNumber } from '@/utils/format';
+import { getLocalDateStr, calculateExpiryDate, formatDate } from '@/utils/date';
+import { formatCurrency, generateReceiptNumber, getFriendlyErrorMessage } from '@/utils/format';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQueryClient } from '@tanstack/react-query';
 import { colors } from '@/constants/colors';
@@ -39,6 +39,41 @@ export function PaymentFormModal({
   const [paymentMethod, setPaymentMethod] = useState<string>('UPI');
   const transactionRefInput = useRef('');
   const notesRef = useRef('');
+  const [activePlanInfo, setActivePlanInfo] = useState<{
+    name: string;
+    expiryDate: string;
+    isActive: boolean;
+  } | null>(null);
+
+  // Detect active plan whenever selected member changes
+  useEffect(() => {
+    if (!selectedMemberId) {
+      setActivePlanInfo(null);
+      return;
+    }
+    supabase
+      .from('memberships')
+      .select('id, expiry_date, status, membership_plans(name)')
+      .eq('member_id', selectedMemberId)
+      .in('status', ['ACTIVE', 'EXPIRING_SOON'])
+      .order('expiry_date', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          const todayStr = getLocalDateStr();
+          const notExpired = !!data.expiry_date && data.expiry_date >= todayStr;
+          const plan = data.membership_plans as { name?: string } | null;
+          setActivePlanInfo({
+            name: plan?.name || 'Active Membership',
+            expiryDate: data.expiry_date,
+            isActive: notExpired,
+          });
+        } else {
+          setActivePlanInfo(null);
+        }
+      });
+  }, [selectedMemberId]);
 
   useEffect(() => {
     if (visible) {
@@ -91,6 +126,7 @@ export function PaymentFormModal({
   };
 
   const handleSubmit = async () => {
+    if (loading) return;
     if (!selectedMemberId) {
       Alert.alert('Error', 'Please select a member');
       return;
@@ -100,6 +136,26 @@ export function PaymentFormModal({
       return;
     }
 
+    // If member already has an active membership into the future, warn owner
+    if (activePlanInfo?.isActive && selectedPlanId) {
+      Alert.alert(
+        'Active Membership Exists',
+        `${selectedMember?.full_name || 'This member'} already has an active membership (${activePlanInfo.name}) valid until ${formatDate(activePlanInfo.expiryDate)}.\n\nDo you want to proceed with recording this renewal payment?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Yes, Record Payment',
+            onPress: () => processPaymentSubmission(),
+          },
+        ]
+      );
+      return;
+    }
+
+    await processPaymentSubmission();
+  };
+
+  const processPaymentSubmission = async () => {
     setLoading(true);
     try {
       const today = getLocalDateStr();
@@ -114,20 +170,33 @@ export function PaymentFormModal({
       if (selectedPlan) {
         let subStartDate = today;
 
-        // If member has no active/expiring memberships, default to joining date
-        if (memberObj?.joining_date) {
-          const { data: activeMs } = await supabase
-            .from('memberships')
-            .select('id')
-            .eq('member_id', selectedMemberId)
-            .in('status', ['ACTIVE', 'EXPIRING_SOON']);
-          if (!activeMs || activeMs.length === 0) {
-            subStartDate = memberObj.joining_date;
-          }
+        // Check if member has any existing memberships
+        const { data: existingMs } = await supabase
+          .from('memberships')
+          .select('id, start_date, expiry_date, status')
+          .eq('member_id', selectedMemberId)
+          .order('expiry_date', { ascending: false });
+
+        const hasAnyMembership = (existingMs || []).length > 0;
+
+        // ONLY default to joining date if this is brand new member with NO membership history at all
+        if (!hasAnyMembership && memberObj?.joining_date) {
+          subStartDate = memberObj.joining_date;
+        } else {
+          // For renewals: start from today
+          subStartDate = today;
         }
 
         const expiryStr = calculateExpiryDate(subStartDate, selectedPlan.duration_days);
 
+        // Expire all previous active/expiring memberships so old ones don't conflict
+        await supabase
+          .from('memberships')
+          .update({ status: 'EXPIRED' })
+          .eq('member_id', selectedMemberId)
+          .in('status', ['ACTIVE', 'EXPIRING_SOON']);
+
+        // Insert new active membership with future expiry date
         const { data: newMs, error: msError } = await supabase
           .from('memberships')
           .insert({
@@ -153,15 +222,24 @@ export function PaymentFormModal({
         membership_id: membershipId,
         amount: String(amountRef.current),
         payment_method: paymentMethod,
-        transaction_reference: transactionRefInput.current.trim() || null,
+        transaction_reference: transactionRefInput.current.trim() || '',
         received_by: user?.id || null,
         payment_date: today,
         receipt_number: receiptNumber,
-        notes: notesRef.current.trim() || null,
+        notes: notesRef.current.trim() || '',
         created_at: new Date().toISOString(),
       });
 
       if (payError) throw payError;
+
+      // Invalidate queries across screens
+      qc.invalidateQueries({ queryKey: ['mobile-payments'] });
+      qc.invalidateQueries({ queryKey: ['mobile-members'] });
+      qc.invalidateQueries({ queryKey: ['member-detail', selectedMemberId] });
+      qc.invalidateQueries({ queryKey: ['member-memberships', selectedMemberId] });
+      qc.invalidateQueries({ queryKey: ['member-payments', selectedMemberId] });
+      qc.invalidateQueries({ queryKey: ['mobile-dashboard-stats'] });
+      qc.invalidateQueries({ queryKey: ['expiring-memberships'] });
 
       // Insert in-app notifications
       try {
@@ -200,7 +278,7 @@ export function PaymentFormModal({
       onSaved();
       onClose();
     } catch (err: unknown) {
-      Alert.alert('Payment Failed', (err as Error).message || 'Unable to record payment');
+      Alert.alert('Payment Failed', getFriendlyErrorMessage(err, 'Unable to record payment. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -236,6 +314,19 @@ export function PaymentFormModal({
                 {selectedMember.mobile ? (
                   <Text style={styles.selectedMemberMobile}>📞 {selectedMember.mobile}</Text>
                 ) : null}
+                {activePlanInfo?.isActive ? (
+                  <View style={{ marginTop: 6, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(34, 197, 94, 0.1)', borderWidth: 1, borderColor: 'rgba(34, 197, 94, 0.3)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
+                    <Text style={{ color: colors.success, fontSize: 11, fontFamily: typography.fonts.interSemiBold }}>
+                      ✓ Active Membership: {activePlanInfo.name} (Valid till {formatDate(activePlanInfo.expiryDate)})
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={{ marginTop: 6, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(239, 68, 68, 0.08)', borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.25)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
+                    <Text style={{ color: colors.error, fontSize: 11, fontFamily: typography.fonts.interSemiBold }}>
+                      ⚠️ Membership Expired / Renewal Due
+                    </Text>
+                  </View>
+                )}
               </View>
               {!preselectedMemberId && (
                 <TouchableOpacity

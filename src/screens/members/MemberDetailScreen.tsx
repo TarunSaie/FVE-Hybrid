@@ -204,7 +204,9 @@ export function MemberDetailScreen() {
     enabled: !!personalTraining?.id,
   });
 
-  const activeMembership = memberships?.[0];
+  const activeMembership =
+    memberships?.find(m => m.status === 'ACTIVE' || m.status === 'EXPIRING_SOON') ||
+    memberships?.[0];
   const initial = member?.full_name?.charAt(0)?.toUpperCase() || '?';
 
   const onRefresh = async () => {
@@ -346,8 +348,10 @@ export function MemberDetailScreen() {
 
   const todayStr = getLocalDateStr();
   const isMemberExpired =
-    activeMembership?.status === 'EXPIRED' ||
+    !activeMembership ||
+    activeMembership.status === 'EXPIRED' ||
     (!!activeMembership?.expiry_date && activeMembership.expiry_date < todayStr);
+  const canCollectPayment = isMemberExpired;
 
   const handleWhatsApp = () => {
     if (member?.mobile) {
@@ -550,7 +554,7 @@ export function MemberDetailScreen() {
             </View>
           </View>
 
-          {/* Quick Contact Buttons */}
+          {/* Quick Contact & Payment Actions */}
           <View style={styles.contactButtonsRow}>
             {member?.mobile && (
               <>
@@ -570,6 +574,35 @@ export function MemberDetailScreen() {
                 </TouchableOpacity>
               </>
             )}
+
+            {/* Collect Payment / Payment Completed Button */}
+            <TouchableOpacity
+              onPress={() => {
+                if (canCollectPayment) {
+                  haptics.medium();
+                  setShowPaymentModal(true);
+                }
+              }}
+              disabled={!canCollectPayment}
+              style={[
+                styles.contactBtn,
+                canCollectPayment ? styles.collectPayBtn : styles.payCompletedBtn,
+              ]}
+              activeOpacity={canCollectPayment ? 0.7 : 1}
+            >
+              <CreditCard
+                size={14}
+                color={canCollectPayment ? '#00E5FF' : colors.textMuted}
+              />
+              <Text
+                style={[
+                  styles.contactBtnText,
+                  { color: canCollectPayment ? '#00E5FF' : colors.textMuted },
+                ]}
+              >
+                {canCollectPayment ? 'Collect Payment' : 'Payment Completed'}
+              </Text>
+            </TouchableOpacity>
           </View>
 
           {/* Quick Info Grid */}
@@ -668,11 +701,31 @@ export function MemberDetailScreen() {
                 </TouchableOpacity>
               )}
               <TouchableOpacity
-                onPress={() => setShowPaymentModal(true)}
-                style={styles.newPayLink}
+                onPress={() => {
+                  if (canCollectPayment) {
+                    haptics.medium();
+                    setShowPaymentModal(true);
+                  }
+                }}
+                disabled={!canCollectPayment}
+                style={[
+                  styles.newPayLink,
+                  !canCollectPayment && styles.disabledPayLink,
+                ]}
+                activeOpacity={canCollectPayment ? 0.7 : 1}
               >
-                <CreditCard size={14} color={colors.gold} />
-                <Text style={styles.newPayLinkText}>+ Renew</Text>
+                <CreditCard
+                  size={14}
+                  color={canCollectPayment ? colors.gold : colors.textMuted}
+                />
+                <Text
+                  style={[
+                    styles.newPayLinkText,
+                    !canCollectPayment && styles.disabledPayLinkText,
+                  ]}
+                >
+                  {canCollectPayment ? '+ Collect Payment' : 'Payment Completed'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -707,11 +760,12 @@ export function MemberDetailScreen() {
             <View style={styles.emptyNotice}>
               <Text style={styles.emptyNoticeText}>No active membership plan.</Text>
               <FVEButton
-                title="Assign Plan & Pay"
+                title={canCollectPayment ? "Collect Payment & Assign Plan" : "Payment Completed"}
+                disabled={!canCollectPayment}
                 onPress={() => setShowPaymentModal(true)}
-                variant="gold"
+                variant={canCollectPayment ? "gold" : "outline"}
                 size="sm"
-                style={{ marginTop: 10 }}
+                style={{ marginTop: 10, opacity: canCollectPayment ? 1 : 0.6 }}
               />
             </View>
           )}
@@ -1086,8 +1140,13 @@ export function MemberDetailScreen() {
         visible={showPaymentModal}
         onClose={() => setShowPaymentModal(false)}
         onSaved={() => {
+          refetch();
+          qc.invalidateQueries({ queryKey: ['member-detail', memberId] });
           qc.invalidateQueries({ queryKey: ['member-memberships', memberId] });
           qc.invalidateQueries({ queryKey: ['member-payments', memberId] });
+          qc.invalidateQueries({ queryKey: ['mobile-members'] });
+          qc.invalidateQueries({ queryKey: ['mobile-dashboard-stats'] });
+          qc.invalidateQueries({ queryKey: ['expiring-memberships'] });
         }}
         preselectedMemberId={memberId}
       />
@@ -1412,11 +1471,27 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: colors.goldMuted,
   },
+  disabledPayLink: {
+    backgroundColor: '#1E232B',
+    opacity: 0.6,
+  },
   newPayLinkText: {
     color: colors.gold,
     fontSize: 11,
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '700',
+  },
+  disabledPayLinkText: {
+    color: colors.textMuted,
+  },
+  collectPayBtn: {
+    borderColor: 'rgba(0, 229, 255, 0.4)',
+    backgroundColor: 'rgba(0, 229, 255, 0.08)',
+  },
+  payCompletedBtn: {
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: '#12151B',
+    opacity: 0.6,
   },
   holdToggleBtn: {
     flexDirection: 'row',

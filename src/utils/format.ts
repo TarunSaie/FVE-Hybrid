@@ -140,3 +140,33 @@ export function normalizeMembershipPlan<T extends { price: unknown; features?: u
     features: parseFeatures(plan.features),
   };
 }
+
+/**
+ * Translates database and technical exceptions into clear, human-understandable messages.
+ */
+export function getFriendlyErrorMessage(
+  err: unknown,
+  fallbackMessage = 'Unable to complete the action. Please try again.'
+): string {
+  if (!err) return fallbackMessage;
+  const msg = (err as Error)?.message || String(err);
+
+  if (msg.includes('transaction_reference') && msg.includes('not-null')) {
+    return 'Transaction reference is missing. If paying with UPI, Card, or Bank Transfer, please enter the reference ID.';
+  }
+  if (msg.includes('violates not-null constraint')) {
+    return 'A required field was left blank. Please check all details and try again.';
+  }
+  if (msg.includes('duplicate key') || msg.includes('unique constraint')) {
+    return 'This record already exists or was already recorded.';
+  }
+  if (msg.includes('Network request failed') || msg.includes('Failed to fetch')) {
+    return 'Network connection error. Please check your internet connection.';
+  }
+  if (msg.includes('JWT') || msg.includes('token') || msg.includes('auth')) {
+    return 'Your session has expired. Please log in again.';
+  }
+
+  return msg;
+}
+
