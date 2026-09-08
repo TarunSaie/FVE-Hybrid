@@ -1,7 +1,7 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
-import { Payment } from '@/types';
+import { Payment, PersonalTraining } from '@/types';
 import { formatCurrency } from '@/utils/format';
 import { formatDate } from '@/utils/date';
 import { APP_NAME, TAGLINE, CHIRVEX_WEBSITE } from '@/constants/branding';
@@ -18,19 +18,69 @@ export interface ReceiptData {
   paymentDate: string;
   startDate?: string | null;
   endDate?: string | null;
+  durationDays?: number | null;
+  memberQrCode?: string | null;
   transactionReference?: string | null;
+  isPersonalTraining?: boolean;
+  trainerName?: string | null;
+  totalSessions?: number | null;
+  serviceType?: string;
 }
 
-export function buildReceiptDataFromPayment(payment: Payment): ReceiptData {
+export function buildReceiptDataFromPayment(
+  payment: Payment,
+  pt?: PersonalTraining | null
+): ReceiptData {
   const memberName = payment.members?.full_name || 'Member';
   const memberMobile = payment.members?.mobile;
   const memberId = payment.members?.member_id;
   const plan = payment.memberships?.membership_plans;
-  const planName = plan?.name || 'Gym Membership';
+
+  const isPT = Boolean(pt || payment.notes?.includes('Personal Training'));
+
+  let planName = plan?.name || 'Gym Membership';
+  let startDate = payment.memberships?.start_date ? formatDate(payment.memberships.start_date) : null;
+  let endDate = payment.memberships?.expiry_date ? formatDate(payment.memberships.expiry_date) : null;
+  let durationDays =
+    plan?.duration_days ||
+    (payment.memberships?.start_date && payment.memberships?.expiry_date
+      ? Math.max(
+          1,
+          Math.round(
+            (new Date(payment.memberships.expiry_date).getTime() -
+              new Date(payment.memberships.start_date).getTime()) /
+              (1000 * 60 * 60 * 24)
+          )
+        )
+      : null);
+
+  let trainerName: string | null = null;
+  let totalSessions: number | null = null;
+
+  if (isPT) {
+    if (pt) {
+      planName = `Personal Training — ${pt.package_name}`;
+      trainerName = pt.trainer?.full_name || null;
+      totalSessions = pt.total_sessions;
+      if (pt.start_date) startDate = formatDate(pt.start_date);
+      if (pt.expiry_date) endDate = formatDate(pt.expiry_date);
+      if (pt.start_date && pt.expiry_date) {
+        durationDays = Math.max(
+          1,
+          Math.round(
+            (new Date(pt.expiry_date).getTime() - new Date(pt.start_date).getTime()) /
+              (1000 * 60 * 60 * 24)
+          )
+        );
+      }
+    } else {
+      planName = 'Personal Training Add-On';
+    }
+  }
+
   const receiptNo = payment.receipt_number || 'FVE-N/A';
   const dateStr = formatDate(payment.payment_date || payment.created_at);
-  const startDate = payment.memberships?.start_date ? formatDate(payment.memberships.start_date) : null;
-  const endDate = payment.memberships?.expiry_date ? formatDate(payment.memberships.expiry_date) : null;
+  const memberQrCode = payment.members?.qr_code || payment.members?.id || null;
 
   return {
     receiptNumber: receiptNo,
@@ -43,12 +93,23 @@ export function buildReceiptDataFromPayment(payment: Payment): ReceiptData {
     paymentDate: dateStr,
     startDate,
     endDate,
+    durationDays,
+    memberQrCode,
     transactionReference: payment.transaction_reference,
+    isPersonalTraining: isPT,
+    trainerName,
+    totalSessions,
+    serviceType: isPT ? 'PERSONAL TRAINING ADD-ON' : 'GYM MEMBERSHIP',
   };
 }
 
 export function generateReceiptHtml(data: ReceiptData): string {
   const formattedAmount = formatCurrency(data.amount);
+  const qrUrl = data.memberQrCode
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(
+        data.memberQrCode
+      )}&bgcolor=141820&color=EFA100`
+    : '';
 
   return `
 <!DOCTYPE html>
@@ -223,6 +284,79 @@ export function generateReceiptHtml(data: ReceiptData): string {
       color: #EFA100;
       font-weight: 700;
     }
+    .duration-tag {
+      font-size: 11px;
+      color: #8A92A6;
+    }
+    .qr-attendance-panel {
+      background: rgba(239, 161, 0, 0.04);
+      border: 1.5px dashed rgba(239, 161, 0, 0.35);
+      border-radius: 14px;
+      padding: 16px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      gap: 16px;
+    }
+    .qr-attendance-info {
+      flex: 1;
+    }
+    .qr-attendance-title {
+      font-size: 13px;
+      font-weight: 800;
+      color: #EFA100;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .qr-attendance-sub {
+      font-size: 11px;
+      color: #8A92A6;
+      line-height: 1.4;
+      margin-bottom: 6px;
+    }
+    .qr-validity-badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      color: #4ADE80;
+      background: rgba(34, 197, 94, 0.12);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      border-radius: 4px;
+      padding: 2px 8px;
+      letter-spacing: 0.5px;
+    }
+    .qr-box-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .qr-box {
+      width: 86px;
+      height: 86px;
+      border-radius: 10px;
+      border: 1.5px solid #EFA100;
+      background: #141820;
+      padding: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .qr-img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    .qr-label {
+      font-size: 9px;
+      color: #EFA100;
+      font-weight: 700;
+      font-family: monospace;
+      margin-top: 4px;
+      letter-spacing: 0.5px;
+    }
     .footer-note {
       text-align: center;
       padding-top: 20px;
@@ -255,9 +389,13 @@ export function generateReceiptHtml(data: ReceiptData): string {
         </div>
       </div>
       <div class="invoice-title-block">
-        <div class="invoice-title">PAYMENT RECEIPT</div>
+        <div class="invoice-title">${data.isPersonalTraining ? 'PERSONAL TRAINING RECEIPT' : 'PAYMENT RECEIPT'}</div>
         <div class="receipt-no">#${data.receiptNumber}</div>
-        <div><span class="paid-badge">PAID • VERIFIED</span></div>
+        <div>
+          <span class="paid-badge" style="${data.isPersonalTraining ? 'background-color: rgba(239, 161, 0, 0.15); border: 1px solid #EFA100; color: #EFA100;' : ''}">
+            ${data.isPersonalTraining ? 'PT ADD-ON • VERIFIED' : 'PAID • VERIFIED'}
+          </span>
+        </div>
       </div>
     </div>
 
@@ -289,22 +427,58 @@ export function generateReceiptHtml(data: ReceiptData): string {
         </div>` : ''}
       </div>
 
-      <!-- Membership & Plan Panel -->
+      <!-- Membership / PT Plan Panel -->
       <div class="panel">
-        <div class="panel-header">SUBSCRIPTION & TRANSACTION</div>
+        <div class="panel-header">${data.isPersonalTraining ? 'PERSONAL TRAINING DETAILS' : 'SUBSCRIPTION & TRANSACTION'}</div>
+        ${data.isPersonalTraining ? `
+        <div class="row">
+          <span class="label">Service:</span>
+          <span class="val val-gold">Personal Training Add-On</span>
+        </div>
+        <div class="row">
+          <span class="label">Package:</span>
+          <span class="val val-gold">${data.planName}</span>
+        </div>
+        ${data.trainerName ? `
+        <div class="row">
+          <span class="label">Assigned Trainer:</span>
+          <span class="val">${data.trainerName}</span>
+        </div>` : ''}
+        ${data.totalSessions ? `
+        <div class="row">
+          <span class="label">Sessions:</span>
+          <span class="val val-gold">${data.totalSessions} Guided Sessions</span>
+        </div>` : ''}
+        ${data.startDate && data.endDate ? `
+        <div class="row">
+          <span class="label">PT Validity:</span>
+          <span class="val">${data.startDate} to ${data.endDate}</span>
+        </div>` : ''}
+        ${data.durationDays ? `
+        <div class="row">
+          <span class="label">Duration:</span>
+          <span class="val duration-tag">${data.durationDays} Days PT Validity</span>
+        </div>` : ''}
+        ` : `
         <div class="row">
           <span class="label">Plan:</span>
           <span class="val val-gold">${data.planName}</span>
-        </div>
-        <div class="row">
-          <span class="label">Payment Mode:</span>
-          <span class="val">${data.paymentMethod}</span>
         </div>
         ${data.startDate && data.endDate ? `
         <div class="row">
           <span class="label">Validity:</span>
           <span class="val">${data.startDate} to ${data.endDate}</span>
         </div>` : ''}
+        ${data.durationDays ? `
+        <div class="row">
+          <span class="label">Duration:</span>
+          <span class="val duration-tag">${data.durationDays} Days Membership</span>
+        </div>` : ''}
+        `}
+        <div class="row">
+          <span class="label">Payment Mode:</span>
+          <span class="val">${data.paymentMethod}</span>
+        </div>
         ${data.transactionReference ? `
         <div class="row">
           <span class="label">Txn Ref:</span>
@@ -313,9 +487,25 @@ export function generateReceiptHtml(data: ReceiptData): string {
       </div>
     </div>
 
+    ${qrUrl ? `
+    <div class="qr-attendance-panel">
+      <div class="qr-attendance-info">
+        <div class="qr-attendance-title">${data.isPersonalTraining ? 'MEMBER ATTENDANCE & PT QR CODE' : 'MEMBER ATTENDANCE QR CODE'}</div>
+        <div class="qr-attendance-sub">${data.isPersonalTraining ? 'Present this digital QR code at the gym front-desk kiosk to verify subscription and 1-on-1 personal training validity.' : 'Present this digital QR code at the gym front-desk kiosk to verify subscription validity and record daily attendance.'}</div>
+        ${data.startDate && data.endDate ? `<div class="qr-validity-badge">VALIDITY: ${data.startDate} — ${data.endDate}</div>` : ''}
+      </div>
+      <div class="qr-box-wrap">
+        <div class="qr-box">
+          <img src="${qrUrl}" class="qr-img" alt="Member QR Code" />
+        </div>
+        <div class="qr-label">${data.memberId || 'ATTENDANCE QR'}</div>
+      </div>
+    </div>
+    ` : ''}
+
     <div class="footer-note">
-      This is an authentic computer-generated payment voucher and official proof of gym subscription fee payment at FitVerse Elite.<br>
-      No signature required. Valid for entrance access during the active subscription period.
+      This is an authentic computer-generated payment voucher and official proof of ${data.isPersonalTraining ? 'personal training add-on service fee payment' : 'gym subscription fee payment'} at FitVerse Elite.<br>
+      No signature required. Valid for entrance access and session tracking during the active period.
     </div>
   </div>
 

@@ -10,14 +10,16 @@ import {
   Alert,
 } from 'react-native';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
+import { useQuery } from '@tanstack/react-query';
 import QRCode from 'react-native-qrcode-svg';
-import { Share2, ArrowLeft, CheckCircle2, FileText, Printer, Sparkles } from 'lucide-react-native';
+import { Share2, ArrowLeft, CheckCircle2, FileText, Printer, Sparkles, Dumbbell, UserCheck } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEButton } from '@/components/common/FVEButton';
 import { FVEModal } from '@/components/common/FVEModal';
 import { haptics } from '@/utils/haptics';
-import { Payment } from '@/types';
+import { Payment, PersonalTraining } from '@/types';
+import { supabase } from '@/api/supabase';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { formatCurrency, openWhatsAppLink } from '@/utils/format';
@@ -43,25 +45,103 @@ export function PaymentReceiptScreen() {
     );
   }
 
+  // Query linked personal training record if any
+  const { data: ptRecord } = useQuery<PersonalTraining | null>({
+    queryKey: ['payment-pt-addon', payment.id],
+    queryFn: async () => {
+      if (!payment.id) return null;
+
+      // 1. Direct payment_id lookup
+      const { data: pt1 } = await supabase
+        .from('personal_training')
+        .select('*, trainer:user_profiles!personal_training_trainer_id_fkey(*)')
+        .eq('payment_id', payment.id)
+        .maybeSingle();
+
+      if (pt1) return pt1 as PersonalTraining;
+
+      // 2. Try with trainer_id FK
+      const { data: pt2 } = await supabase
+        .from('personal_training')
+        .select('*, trainer:user_profiles!trainer_id(*)')
+        .eq('payment_id', payment.id)
+        .maybeSingle();
+
+      if (pt2) return pt2 as PersonalTraining;
+
+      // 3. Fallback by member_id if notes indicate Personal Training
+      if (payment.notes?.includes('Personal Training') && payment.member_id) {
+        const { data: pt3 } = await supabase
+          .from('personal_training')
+          .select('*, trainer:user_profiles!personal_training_trainer_id_fkey(*)')
+          .eq('member_id', payment.member_id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (pt3) return pt3 as PersonalTraining;
+      }
+
+      return null;
+    },
+    enabled: !!payment.id,
+  });
+
+  const isPT = Boolean(ptRecord || payment.notes?.includes('Personal Training'));
   const memberName = payment.members?.full_name || 'Member';
   const memberMobile = payment.members?.mobile;
   const memberId = payment.members?.member_id;
   const plan = payment.memberships?.membership_plans;
-  const planName = plan?.name || 'Gym Subscription';
+  const displayPlanName = isPT
+    ? (ptRecord?.package_name ? `Personal Training — ${ptRecord.package_name}` : 'Personal Training Add-On')
+    : (plan?.name || 'Gym Subscription');
+
   const receiptNo = payment.receipt_number || 'FVE-N/A';
   const dateStr = formatDate(payment.payment_date || payment.created_at);
+  const startDate = isPT && ptRecord?.start_date
+    ? formatDate(ptRecord.start_date)
+    : (payment.memberships?.start_date ? formatDate(payment.memberships.start_date) : null);
+  const endDate = isPT && ptRecord?.expiry_date
+    ? formatDate(ptRecord.expiry_date)
+    : (payment.memberships?.expiry_date ? formatDate(payment.memberships.expiry_date) : null);
+  const validityLine = startDate && endDate ? `Validity: ${startDate} TO ${endDate}\n` : '';
 
   const [pdfGenerating, setPdfGenerating] = useState(false);
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
 
-  const whatsAppReceiptText = `*FitVerse Elite Official Receipt*\nReceipt No: #${receiptNo}\nMember: ${memberName}${memberId ? ` (${memberId})` : ''}\nPlan: ${planName}\nAmount Paid: ${formatCurrency(payment.amount)}\nPayment Method: ${payment.payment_method}\nDate: ${dateStr}\n\n*DISCIPLINE • STRENGTH • TRANSFORMATION*\nFitVerse Elite Gym Management\nPowered by Chirvex (https://chirvex.in/)`;
+  const whatsAppReceiptText = isPT
+    ? `*FitVerse Elite Official Receipt*\n` +
+      `Receipt No: #${receiptNo}\n` +
+      `Member: ${memberName}${memberId ? ` (${memberId})` : ''}\n` +
+      `Service: Personal Training Add-On\n` +
+      `Package: ${displayPlanName}\n` +
+      (ptRecord?.trainer?.full_name ? `Trainer: ${ptRecord.trainer.full_name}\n` : '') +
+      (ptRecord?.total_sessions ? `Sessions: ${ptRecord.total_sessions} Guided Sessions\n` : '') +
+      (startDate && endDate ? `Validity: ${startDate} TO ${endDate}\n` : '') +
+      `Amount Paid: ${formatCurrency(payment.amount)}\n` +
+      `Payment Method: ${payment.payment_method}\n` +
+      `Date: ${dateStr}\n\n` +
+      `*DISCIPLINE • STRENGTH • TRANSFORMATION*\n` +
+      `FitVerse Elite Gym Management\n` +
+      `Powered by Chirvex (https://chirvex.in/)`
+    : `*FitVerse Elite Official Receipt*\n` +
+      `Receipt No: #${receiptNo}\n` +
+      `Member: ${memberName}${memberId ? ` (${memberId})` : ''}\n` +
+      `Plan: ${displayPlanName}\n` +
+      validityLine +
+      `Amount Paid: ${formatCurrency(payment.amount)}\n` +
+      `Payment Method: ${payment.payment_method}\n` +
+      `Date: ${dateStr}\n\n` +
+      `*DISCIPLINE • STRENGTH • TRANSFORMATION*\n` +
+      `FitVerse Elite Gym Management\n` +
+      `Powered by Chirvex (https://chirvex.in/)`;
 
   const handleSharePdf = async () => {
     if (!payment) return;
     haptics.medium();
     setPdfGenerating(true);
     try {
-      const receiptData = buildReceiptDataFromPayment(payment);
+      const receiptData = buildReceiptDataFromPayment(payment, ptRecord);
       await sharePdfReceipt(receiptData);
     } catch (err: unknown) {
       haptics.error();
@@ -81,7 +161,7 @@ export function PaymentReceiptScreen() {
       await Clipboard.setStringAsync(whatsAppReceiptText);
 
       // 2. Generate and open PDF sharing
-      const receiptData = buildReceiptDataFromPayment(payment);
+      const receiptData = buildReceiptDataFromPayment(payment, ptRecord);
       await sharePdfReceipt(receiptData);
 
       // 3. User feedback
@@ -102,7 +182,7 @@ export function PaymentReceiptScreen() {
     if (!payment) return;
     haptics.light();
     try {
-      const receiptData = buildReceiptDataFromPayment(payment);
+      const receiptData = buildReceiptDataFromPayment(payment, ptRecord);
       await printPdfReceipt(receiptData);
     } catch (err: unknown) {
       haptics.error();
@@ -114,7 +194,10 @@ export function PaymentReceiptScreen() {
     if (memberMobile) {
       openWhatsAppLink(memberMobile, whatsAppReceiptText);
     } else {
-      openWhatsAppLink('91', whatsAppReceiptText);
+      Alert.alert(
+        'No Mobile Number',
+        'This member does not have a registered mobile number. Please update their profile with a valid WhatsApp phone.'
+      );
     }
   };
 
@@ -132,7 +215,7 @@ export function PaymentReceiptScreen() {
   return (
     <View style={styles.container}>
       <FVEHeader
-        title="PAYMENT RECEIPT"
+        title={isPT ? "PT RECEIPT" : "PAYMENT RECEIPT"}
         showBack
         onBack={() => navigation.goBack()}
         rightAction={
@@ -160,6 +243,14 @@ export function PaymentReceiptScreen() {
             />
             <Text style={styles.brandTitle}>FITVERSE ELITE</Text>
             <Text style={styles.brandTagline}>DISCIPLINE • STRENGTH • TRANSFORMATION</Text>
+            
+            {isPT ? (
+              <View style={styles.ptTag}>
+                <Dumbbell size={12} color={colors.gold} />
+                <Text style={styles.ptTagText}>PERSONAL TRAINING ADD-ON</Text>
+              </View>
+            ) : null}
+
             <View style={styles.successTag}>
               <CheckCircle2 size={14} color={colors.success} />
               <Text style={styles.successTagText}>PAYMENT COMPLETED</Text>
@@ -191,18 +282,58 @@ export function PaymentReceiptScreen() {
               </View>
             )}
 
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>MEMBERSHIP PLAN</Text>
-              <Text style={styles.detailValue}>{planName}</Text>
-            </View>
-
-            {payment.memberships?.start_date && (
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>VALIDITY</Text>
-                <Text style={styles.detailValue}>
-                  {formatDate(payment.memberships.start_date)} - {formatDate(payment.memberships.expiry_date)}
-                </Text>
-              </View>
+            {isPT ? (
+              <>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>SERVICE</Text>
+                  <Text style={[styles.detailValue, { color: colors.gold, fontWeight: '700' }]}>
+                    Personal Training Add-On
+                  </Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>PACKAGE</Text>
+                  <Text style={styles.detailValue}>{displayPlanName}</Text>
+                </View>
+                {ptRecord?.trainer?.full_name && (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>TRAINER</Text>
+                    <Text style={[styles.detailValue, { color: colors.gold, fontWeight: '700' }]}>
+                      {ptRecord.trainer.full_name}
+                    </Text>
+                  </View>
+                )}
+                {ptRecord?.total_sessions != null && (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>TOTAL SESSIONS</Text>
+                    <Text style={styles.detailValue}>
+                      {ptRecord.total_sessions} Guided Sessions
+                    </Text>
+                  </View>
+                )}
+                {startDate && endDate && (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>PT VALIDITY</Text>
+                    <Text style={styles.detailValue}>
+                      {startDate} - {endDate}
+                    </Text>
+                  </View>
+                )}
+              </>
+            ) : (
+              <>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>MEMBERSHIP PLAN</Text>
+                  <Text style={styles.detailValue}>{displayPlanName}</Text>
+                </View>
+                {startDate && endDate && (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>VALIDITY</Text>
+                    <Text style={styles.detailValue}>
+                      {startDate} - {endDate}
+                    </Text>
+                  </View>
+                )}
+              </>
             )}
 
             <View style={styles.detailRow}>
@@ -335,9 +466,9 @@ export function PaymentReceiptScreen() {
               <Share2 size={20} color="#25D366" />
             </View>
             <View style={styles.modalOptionTextContainer}>
-              <Text style={styles.modalOptionTitle}>Send WhatsApp Text Only</Text>
+              <Text style={styles.modalOptionTitle}>Send WhatsApp Text to Member</Text>
               <Text style={styles.modalOptionDesc}>
-                Opens chat directly with {memberMobile || 'member'} and pre-fills payment receipt text.
+                Opens chat directly with registered WhatsApp mobile ({memberMobile || 'N/A'}) and pre-fills payment receipt & validity text.
               </Text>
             </View>
           </TouchableOpacity>
@@ -405,6 +536,25 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginTop: 2,
   },
+  ptTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(239, 161, 0, 0.15)',
+    borderColor: 'rgba(239, 161, 0, 0.4)',
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginTop: 8,
+  },
+  ptTagText: {
+    color: colors.gold,
+    fontSize: 10,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
   successTag: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -415,7 +565,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     paddingHorizontal: 10,
     paddingVertical: 4,
-    marginTop: 10,
+    marginTop: 8,
   },
   successTagText: {
     color: colors.success,

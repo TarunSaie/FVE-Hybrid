@@ -12,6 +12,7 @@ import { ExpensesScreen } from '@/screens/expenses/ExpensesScreen';
 import { ReportsScreen } from '@/screens/reports/ReportsScreen';
 import { StaffScreen } from '@/screens/staff/StaffScreen';
 import { NotificationsScreen } from '@/screens/notifications/NotificationsScreen';
+import { PersonalTrainingScreen } from '@/screens/pt/PersonalTrainingScreen';
 import { RootStackParamList } from './types';
 import { useNotificationSoundListener } from '@/hooks/useNotificationSoundListener';
 
@@ -46,6 +47,7 @@ export function RootNavigator() {
           <Stack.Screen name="Reports" component={ReportsScreen} />
           <Stack.Screen name="Staff" component={StaffScreen} />
           <Stack.Screen name="Notifications" component={NotificationsScreen} />
+          <Stack.Screen name="PersonalTraining" component={PersonalTrainingScreen} />
         </>
       )}
     </Stack.Navigator>

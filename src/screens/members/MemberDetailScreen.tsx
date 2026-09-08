@@ -32,6 +32,7 @@ import {
   PlayCircle,
   Cake,
   MessageCircle,
+  CheckCircle2,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEBadge } from '@/components/common/FVEBadge';
@@ -40,7 +41,12 @@ import { MemberFormModal } from '@/components/features/MemberFormModal';
 import { PaymentFormModal } from '@/components/features/PaymentFormModal';
 import { AttendanceCalendarModal } from '@/components/features/AttendanceCalendarModal';
 import { WorkoutPlanModal } from '@/components/features/WorkoutPlanModal';
-import { Member, Membership, Payment, Attendance, WorkoutPlan } from '@/types';
+import { PTRequestModal } from '@/components/features/PTRequestModal';
+import { PTAssignmentModal } from '@/components/features/PTAssignmentModal';
+import { PTPaymentModal } from '@/components/features/PTPaymentModal';
+import { PTSessionModal } from '@/components/features/PTSessionModal';
+import { Member, Membership, Payment, Attendance, WorkoutPlan, PersonalTraining, PTSession } from '@/types';
+import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/api/supabase';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
@@ -65,10 +71,17 @@ export function MemberDetailScreen() {
   const qc = useQueryClient();
   const { memberId, initialMember } = route.params;
 
+  const { user } = useAuth();
   const [showEditModal, setShowEditModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [showWorkoutModal, setShowWorkoutModal] = useState(false);
+  const [showPTRequestModal, setShowPTRequestModal] = useState(false);
+  const [showPTAssignModal, setShowPTAssignModal] = useState(false);
+  const [showPTPayModal, setShowPTPayModal] = useState(false);
+  const [showPTSessionModal, setShowPTSessionModal] = useState(false);
+  const [ptSessionModalMode, setPtSessionModalMode] = useState<'schedule' | 'complete'>('schedule');
+  const [activePTSession, setActivePTSession] = useState<PTSession | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   // Fetch Member Details
@@ -140,6 +153,54 @@ export function MemberDetailScreen() {
     },
   });
 
+  // Fetch Personal Training Add-on
+  const { data: personalTraining, refetch: refetchPT } = useQuery({
+    queryKey: ['member-pt', memberId],
+    queryFn: async () => {
+      try {
+        const { data, error } = await supabase
+          .from('personal_training')
+          .select('*, trainer:user_profiles!personal_training_trainer_id_fkey(*), members(*)')
+          .eq('member_id', memberId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (error && error.code !== 'PGRST116') {
+          console.warn('Personal training query note:', error.message);
+          return null;
+        }
+        return data as PersonalTraining | null;
+      } catch (err) {
+        console.warn('Personal training query error:', err);
+        return null;
+      }
+    },
+  });
+
+  // Fetch PT Sessions
+  const { data: ptSessions, refetch: refetchSessions } = useQuery({
+    queryKey: ['member-pt-sessions', personalTraining?.id],
+    queryFn: async () => {
+      if (!personalTraining?.id) return [];
+      try {
+        const { data, error } = await supabase
+          .from('pt_sessions')
+          .select('*, trainer:user_profiles!pt_sessions_trainer_id_fkey(*)')
+          .eq('personal_training_id', personalTraining.id)
+          .order('session_date', { ascending: false });
+        if (error) {
+          console.warn('PT sessions query note:', error.message);
+          return [];
+        }
+        return data as PTSession[];
+      } catch (err) {
+        console.warn('PT sessions query error:', err);
+        return [];
+      }
+    },
+    enabled: !!personalTraining?.id,
+  });
+
   const activeMembership = memberships?.[0];
   const initial = member?.full_name?.charAt(0)?.toUpperCase() || '?';
 
@@ -148,10 +209,14 @@ export function MemberDetailScreen() {
     setRefreshing(true);
     await Promise.all([
       refetch(),
+      refetchPT(),
+      refetchSessions(),
       qc.invalidateQueries({ queryKey: ['member-memberships', memberId] }),
       qc.invalidateQueries({ queryKey: ['member-payments', memberId] }),
       qc.invalidateQueries({ queryKey: ['member-attendance', memberId] }),
       qc.invalidateQueries({ queryKey: ['member-workouts', memberId] }),
+      qc.invalidateQueries({ queryKey: ['member-pt', memberId] }),
+      qc.invalidateQueries({ queryKey: ['member-pt-sessions', personalTraining?.id] }),
     ]);
     setRefreshing(false);
   };
@@ -184,6 +249,49 @@ export function MemberDetailScreen() {
             } catch (err: unknown) {
               haptics.error();
               Alert.alert('Error', (err as Error).message || 'Failed to update status');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleCancelPT = () => {
+    if (!personalTraining) return;
+    const isPaid = !!personalTraining.payment_id;
+    const confirmMsg = isPaid
+      ? `Cancel Personal Training for ${member?.full_name}?\n\nThis will DELETE the Personal Training add-on payment (${formatCurrency(personalTraining.price || 0)}) and remove all scheduled sessions.`
+      : `Cancel this Personal Training request for ${member?.full_name}?`;
+
+    Alert.alert(
+      'Cancel Personal Training',
+      confirmMsg,
+      [
+        { text: 'Keep Program', style: 'cancel' },
+        {
+          text: 'Yes, Cancel & Refund',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              if (personalTraining.payment_id) {
+                await supabase.from('payments').delete().eq('id', personalTraining.payment_id);
+              }
+              await supabase.from('pt_sessions').delete().eq('personal_training_id', personalTraining.id);
+              const { error } = await supabase.from('personal_training').delete().eq('id', personalTraining.id);
+              if (error) throw error;
+
+              haptics.success();
+              Alert.alert('Cancelled', 'Personal Training cancelled and payment removed.');
+              refetchPT();
+              refetchSessions();
+              qc.invalidateQueries({ queryKey: ['member-pt', memberId] });
+              qc.invalidateQueries({ queryKey: ['member-payments', memberId] });
+              qc.invalidateQueries({ queryKey: ['mobile-payments'] });
+              qc.invalidateQueries({ queryKey: ['mobile-pt-list'] });
+              qc.invalidateQueries({ queryKey: ['mobile-dashboard-stats'] });
+            } catch (err: unknown) {
+              haptics.error();
+              Alert.alert('Error', (err as Error).message || 'Failed to cancel');
             }
           },
         },
@@ -282,7 +390,21 @@ export function MemberDetailScreen() {
               try {
                 const latestPayment = payments[0];
                 const receiptData = buildReceiptDataFromPayment(latestPayment);
-                const receiptText = `*FitVerse Elite Official Receipt*\nReceipt No: #${receiptData.receiptNumber}\nMember: ${receiptData.memberName}${receiptData.memberId ? ` (${receiptData.memberId})` : ''}\nPlan: ${receiptData.planName}\nAmount Paid: ${formatCurrency(receiptData.amount)}\nPayment Method: ${receiptData.paymentMethod}\nDate: ${receiptData.paymentDate}\n\n*DISCIPLINE • STRENGTH • TRANSFORMATION*\nFitVerse Elite Gym`;
+                const startDate = latestPayment.memberships?.start_date ? formatDate(latestPayment.memberships.start_date) : null;
+                const endDate = latestPayment.memberships?.expiry_date ? formatDate(latestPayment.memberships.expiry_date) : null;
+                const validityLine = startDate && endDate ? `Validity: ${startDate} TO ${endDate}\n` : '';
+                const receiptText =
+                  `*FitVerse Elite Official Receipt*\n` +
+                  `Receipt No: #${receiptData.receiptNumber}\n` +
+                  `Member: ${receiptData.memberName}${receiptData.memberId ? ` (${receiptData.memberId})` : ''}\n` +
+                  `Plan: ${receiptData.planName}\n` +
+                  validityLine +
+                  `Amount Paid: ${formatCurrency(receiptData.amount)}\n` +
+                  `Payment Method: ${receiptData.paymentMethod}\n` +
+                  `Date: ${receiptData.paymentDate}\n\n` +
+                  `*DISCIPLINE • STRENGTH • TRANSFORMATION*\n` +
+                  `FitVerse Elite Gym Management\n` +
+                  `Powered by Chirvex (https://chirvex.in/)`;
                 await Clipboard.setStringAsync(receiptText);
 
                 await sharePdfReceipt(receiptData);
@@ -587,6 +709,252 @@ export function MemberDetailScreen() {
           )}
         </View>
 
+        {/* Personal Training Add-On Section */}
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeaderRow}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Dumbbell size={15} color="#C084FC" />
+              <Text style={styles.cardHeaderTitle}>PERSONAL TRAINING (ADD-ON)</Text>
+            </View>
+            {personalTraining ? (
+              <FVEBadge
+                label={personalTraining.status.replace('_', ' ')}
+                color={
+                  personalTraining.status === 'ACTIVE'
+                    ? colors.success
+                    : personalTraining.status === 'PENDING_PAYMENT'
+                    ? colors.warning
+                    : personalTraining.status === 'COMPLETED'
+                    ? colors.info
+                    : colors.gold
+                }
+                bgColor={
+                  personalTraining.status === 'ACTIVE'
+                    ? colors.successMuted
+                    : personalTraining.status === 'PENDING_PAYMENT'
+                    ? colors.warningMuted
+                    : personalTraining.status === 'COMPLETED'
+                    ? colors.infoMuted
+                    : colors.goldMuted
+                }
+                borderColor={
+                  personalTraining.status === 'ACTIVE'
+                    ? colors.successBorder
+                    : personalTraining.status === 'PENDING_PAYMENT'
+                    ? colors.warningBorder
+                    : personalTraining.status === 'COMPLETED'
+                    ? colors.infoBorder
+                    : colors.goldBorder
+                }
+              />
+            ) : null}
+          </View>
+
+          {personalTraining ? (
+            <View style={styles.ptCardContent}>
+              <View style={styles.ptHeaderRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.ptPlanTitle}>{personalTraining.package_name}</Text>
+                  <Text style={styles.ptTrainerSubtitle}>
+                    Trainer: <Text style={{ color: '#D8B4FE', fontWeight: '700' }}>{personalTraining.trainer?.full_name || 'Not yet assigned'}</Text>
+                  </Text>
+                </View>
+                <Text style={styles.ptPriceTag}>
+                  {personalTraining.price ? formatCurrency(personalTraining.price) : 'Custom'}
+                </Text>
+              </View>
+
+              {/* Progress gauge */}
+              {personalTraining.status !== 'REQUESTED' && (
+                <View style={styles.ptProgressContainer}>
+                  <View style={styles.ptProgressHeader}>
+                    <Text style={styles.ptProgressLabel}>Sessions Progress</Text>
+                    <Text style={styles.ptProgressVal}>
+                      {personalTraining.sessions_completed || 0} / {personalTraining.total_sessions} ({Math.round(((personalTraining.sessions_completed || 0) / (personalTraining.total_sessions || 1)) * 100)}%)
+                    </Text>
+                  </View>
+                  <View style={styles.progressBarTrack}>
+                    <View
+                      style={[
+                        styles.progressBarFill,
+                        {
+                          width: `${Math.min(100, Math.round(((personalTraining.sessions_completed || 0) / (personalTraining.total_sessions || 1)) * 100))}%`,
+                        },
+                      ]}
+                    />
+                  </View>
+                </View>
+              )}
+
+              {/* Status Specific Actions */}
+              {personalTraining.status === 'REQUESTED' && (
+                <View style={styles.ptStatusBox}>
+                  <Text style={styles.ptStatusPrompt}>
+                    Request submitted. Assign a trainer and confirm pricing to proceed.
+                  </Text>
+                  {['OWNER', 'ADMIN'].includes(user?.role || '') && (
+                    <FVEButton
+                      title="Assign Trainer & Pricing"
+                      onPress={() => setShowPTAssignModal(true)}
+                      variant="gold"
+                      size="sm"
+                      style={{ marginTop: 8 }}
+                    />
+                  )}
+                </View>
+              )}
+
+              {personalTraining.status === 'PENDING_PAYMENT' && (
+                <View style={[styles.ptStatusBox, { borderColor: 'rgba(239, 161, 0, 0.3)', backgroundColor: 'rgba(239, 161, 0, 0.06)' }]}>
+                  <Text style={styles.ptStatusPrompt}>
+                    Trainer assigned. Collect add-on payment to activate sessions.
+                  </Text>
+                  <FVEButton
+                    title={`Collect Payment (${personalTraining.price ? formatCurrency(personalTraining.price) : 'Add-on'})`}
+                    onPress={() => setShowPTPayModal(true)}
+                    variant="gold"
+                    size="sm"
+                    style={{ marginTop: 8 }}
+                  />
+                </View>
+              )}
+
+              {personalTraining.status === 'ACTIVE' && (
+                <View style={{ marginTop: 10 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <Text style={styles.ptSessionsTitle}>SCHEDULED & RECENT SESSIONS</Text>
+                    <TouchableOpacity
+                      onPress={() => {
+                        haptics.selection();
+                        setActivePTSession(null);
+                        setPtSessionModalMode('schedule');
+                        setShowPTSessionModal(true);
+                      }}
+                      style={styles.scheduleSessionBtn}
+                    >
+                      <Calendar size={12} color={colors.gold} />
+                      <Text style={styles.scheduleSessionBtnText}>+ Schedule</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {(!ptSessions || ptSessions.length === 0) ? (
+                    <Text style={styles.emptyText}>No sessions scheduled yet. Tap "+ Schedule" above.</Text>
+                  ) : (
+                    ptSessions.map(s => (
+                      <View key={s.id} style={styles.sessionItem}>
+                        <View style={{ flex: 1 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text style={styles.sessionDateText}>{formatDate(s.session_date)} · {s.start_time}</Text>
+                            <FVEBadge
+                              label={s.status}
+                              color={s.status === 'COMPLETED' ? colors.success : colors.gold}
+                              bgColor={s.status === 'COMPLETED' ? colors.successMuted : colors.goldMuted}
+                              borderColor={s.status === 'COMPLETED' ? colors.successBorder : colors.goldBorder}
+                            />
+                          </View>
+                          {s.workout_notes ? (
+                            <Text style={styles.sessionNotesText} numberOfLines={2}>
+                              {s.workout_notes}
+                            </Text>
+                          ) : null}
+                          {s.feedback ? (
+                            <Text style={styles.sessionFeedbackText} numberOfLines={1}>
+                              Feedback: {s.feedback}
+                            </Text>
+                          ) : null}
+                        </View>
+                        {s.status === 'SCHEDULED' && (
+                          <TouchableOpacity
+                            onPress={() => {
+                              haptics.selection();
+                              setActivePTSession(s);
+                              setPtSessionModalMode('complete');
+                              setShowPTSessionModal(true);
+                            }}
+                            style={styles.completeSessionBtn}
+                          >
+                            <CheckCircle2 size={13} color={colors.success} />
+                            <Text style={styles.completeSessionBtnText}>Complete</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    ))
+                  )}
+                </View>
+              )}
+
+              {personalTraining.status === 'COMPLETED' && (
+                <View style={[styles.ptStatusBox, { borderColor: 'rgba(34, 197, 94, 0.3)', backgroundColor: 'rgba(34, 197, 94, 0.06)' }]}>
+                  <Text style={[styles.ptStatusPrompt, { color: colors.success }]}>
+                    All {personalTraining.total_sessions} sessions completed successfully!
+                  </Text>
+                  <FVEButton
+                    title="+ Request New PT Package"
+                    onPress={() => setShowPTRequestModal(true)}
+                    variant="outline"
+                    size="sm"
+                    style={{ marginTop: 8 }}
+                  />
+                </View>
+              )}
+
+              {/* Cancel PT Option */}
+              {['OWNER', 'ADMIN'].includes(user?.role || '') && (
+                <TouchableOpacity
+                  onPress={handleCancelPT}
+                  style={{
+                    marginTop: 12,
+                    paddingVertical: 8,
+                    paddingHorizontal: 12,
+                    borderRadius: 8,
+                    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+                    borderWidth: 1,
+                    borderColor: 'rgba(239, 68, 68, 0.25)',
+                    alignItems: 'center',
+                    flexDirection: 'row',
+                    justifyContent: 'center',
+                    gap: 6,
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Trash2 size={13} color={colors.error} />
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.error, fontFamily: typography.fonts.rajdhani }}>
+                    Cancel PT & Delete Payment
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          ) : (
+            <View style={styles.emptyNotice}>
+              <Text style={styles.emptyNoticeText}>
+                No Personal Training package currently active.
+              </Text>
+              <Text style={[styles.emptyNoticeText, { fontSize: 11, color: colors.textMuted, marginTop: 2, marginBottom: 8 }]}>
+                Add 1-on-1 coaching at any time linked to active membership.
+              </Text>
+              <FVEButton
+                title="+ Request Personal Training"
+                onPress={() => {
+                  if (!activeMembership || activeMembership.status !== 'ACTIVE') {
+                    Alert.alert(
+                      'Membership Status',
+                      'Personal Training requires an active gym membership. Would you like to proceed with requesting PT now?',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Proceed', onPress: () => setShowPTRequestModal(true) },
+                      ]
+                    );
+                  } else {
+                    setShowPTRequestModal(true);
+                  }
+                }}
+                variant="gold"
+                size="sm"
+              />
+            </View>
+          )}
+        </View>
+
         {/* Payment History */}
         <View style={styles.sectionCard}>
           <Text style={styles.cardHeaderTitle}>PAYMENT HISTORY</Text>
@@ -737,6 +1105,66 @@ export function MemberDetailScreen() {
           }}
           memberId={member.id}
           memberName={member.full_name}
+        />
+      )}
+
+      {/* Personal Training Modals */}
+      {member && (
+        <PTRequestModal
+          visible={showPTRequestModal}
+          onClose={() => setShowPTRequestModal(false)}
+          onSaved={() => {
+            refetchPT();
+            qc.invalidateQueries({ queryKey: ['member-pt', memberId] });
+          }}
+          memberId={member.id}
+          memberName={member.full_name}
+          membershipId={activeMembership?.id}
+          planName={activeMembership?.membership_plans?.name}
+        />
+      )}
+
+      {personalTraining && (
+        <PTAssignmentModal
+          visible={showPTAssignModal}
+          onClose={() => setShowPTAssignModal(false)}
+          onSaved={() => {
+            refetchPT();
+            qc.invalidateQueries({ queryKey: ['member-pt', memberId] });
+          }}
+          pt={personalTraining}
+        />
+      )}
+
+      {personalTraining && (
+        <PTPaymentModal
+          visible={showPTPayModal}
+          onClose={() => setShowPTPayModal(false)}
+          onSaved={() => {
+            refetchPT();
+            qc.invalidateQueries({ queryKey: ['member-pt', memberId] });
+            qc.invalidateQueries({ queryKey: ['member-payments', memberId] });
+          }}
+          pt={personalTraining}
+        />
+      )}
+
+      {personalTraining && (
+        <PTSessionModal
+          visible={showPTSessionModal}
+          onClose={() => {
+            setShowPTSessionModal(false);
+            setActivePTSession(null);
+          }}
+          onSaved={() => {
+            refetchPT();
+            refetchSessions();
+            qc.invalidateQueries({ queryKey: ['member-pt', memberId] });
+            qc.invalidateQueries({ queryKey: ['member-pt-sessions', personalTraining.id] });
+          }}
+          pt={personalTraining}
+          session={activePTSession}
+          mode={ptSessionModalMode}
         />
       )}
     </View>
@@ -1150,5 +1578,152 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 10,
     fontFamily: typography.fonts.inter,
+  },
+  ptCardContent: {
+    marginTop: 4,
+  },
+  ptHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  ptPlanTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    fontFamily: typography.fonts.rajdhani,
+  },
+  ptTrainerSubtitle: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 2,
+    fontFamily: typography.fonts.inter,
+  },
+  ptPriceTag: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.gold,
+    fontFamily: typography.fonts.rajdhani,
+  },
+  ptProgressContainer: {
+    marginVertical: 10,
+    padding: 10,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  ptProgressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  ptProgressLabel: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    fontFamily: typography.fonts.inter,
+  },
+  ptProgressVal: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    fontFamily: typography.fonts.rajdhani,
+  },
+  progressBarTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: colors.gold,
+    borderRadius: 3,
+  },
+  ptStatusBox: {
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: 'rgba(168, 85, 247, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(168, 85, 247, 0.25)',
+    marginVertical: 8,
+  },
+  ptStatusPrompt: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    lineHeight: 16,
+    fontFamily: typography.fonts.inter,
+  },
+  ptSessionsTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    letterSpacing: 0.5,
+    fontFamily: typography.fonts.rajdhani,
+  },
+  scheduleSessionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: 'rgba(239, 161, 0, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 161, 0, 0.3)',
+  },
+  scheduleSessionBtnText: {
+    fontSize: 11,
+    color: colors.gold,
+    fontWeight: '700',
+    fontFamily: typography.fonts.rajdhani,
+  },
+  sessionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 10,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    marginBottom: 6,
+    gap: 10,
+  },
+  sessionDateText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    fontFamily: typography.fonts.rajdhani,
+  },
+  sessionNotesText: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 2,
+    fontFamily: typography.fonts.inter,
+  },
+  sessionFeedbackText: {
+    fontSize: 10,
+    color: '#86EFAC',
+    marginTop: 2,
+    fontFamily: typography.fonts.inter,
+  },
+  completeSessionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: 'rgba(34, 197, 94, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(34, 197, 94, 0.3)',
+  },
+  completeSessionBtnText: {
+    fontSize: 11,
+    color: colors.success,
+    fontWeight: '700',
+    fontFamily: typography.fonts.rajdhani,
   },
 });

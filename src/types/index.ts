@@ -146,3 +146,62 @@ export const EXPENSE_CATEGORIES = ['Rent', 'Electricity', 'Equipment', 'Salaries
 export const MEMBERSHIP_STATUSES = ['ACTIVE', 'EXPIRING_SOON', 'EXPIRED', 'HOLD'] as const;
 export const USER_ROLES: UserRole[] = ['OWNER', 'ADMIN', 'RECEPTIONIST', 'TRAINER', 'ATTENDANCE_SCANNER'];
 export const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] as const;
+
+export type PersonalTrainingStatus = 'REQUESTED' | 'PENDING_PAYMENT' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
+
+export interface PersonalTrainingPlan {
+  id: string;
+  name: string;
+  total_sessions: number;
+  duration_days: number;
+  price: string | number;
+  description?: string | null;
+  features?: string[] | string | null;
+  active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PersonalTraining {
+  id: string;
+  member_id: string;
+  membership_id: string | null;
+  trainer_id: string | null;
+  package_name: string;
+  total_sessions: number;
+  sessions_completed: number;
+  price: string | number;
+  status: PersonalTrainingStatus;
+  start_date: string | null;
+  expiry_date: string | null;
+  special_goals: string | null;
+  notes: string | null;
+  payment_id: string | null;
+  created_at: string;
+  updated_at?: string | null;
+  members?: Member;
+  memberships?: Membership & { membership_plans?: MembershipPlan };
+  trainer?: UserProfile;
+  payments?: Payment;
+}
+
+export type PTSessionStatus = 'SCHEDULED' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
+
+export interface PTSession {
+  id: string;
+  personal_training_id: string;
+  member_id: string;
+  trainer_id: string;
+  session_date: string;
+  start_time: string;
+  end_time?: string | null;
+  status: PTSessionStatus;
+  workout_notes?: string | null;
+  feedback?: string | null;
+  completed_at?: string | null;
+  created_by?: string | null;
+  created_at: string;
+  members?: Member;
+  trainer?: UserProfile;
+  personal_training?: PersonalTraining;
+}

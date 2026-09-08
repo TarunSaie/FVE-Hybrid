@@ -30,6 +30,7 @@ import {
   CheckCircle,
   AlertTriangle,
   XCircle,
+  Dumbbell,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEInput } from '@/components/common/FVEInput';
@@ -251,6 +252,17 @@ export function SettingsScreen() {
               </TouchableOpacity>
             </>
           )}
+
+          <TouchableOpacity
+            onPress={() => navigation.navigate('PersonalTraining')}
+            style={styles.menuItem}
+          >
+            <View style={styles.menuLeft}>
+              <Dumbbell size={18} color="#C084FC" />
+              <Text style={styles.menuTitle}>Personal Training (Coaching)</Text>
+            </View>
+            <ChevronRight size={18} color={colors.textMuted} />
+          </TouchableOpacity>
 
           <TouchableOpacity
             onPress={() => navigation.navigate('Notifications')}

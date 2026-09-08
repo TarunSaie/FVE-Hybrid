@@ -116,7 +116,21 @@ export function PaymentsScreen() {
       const receiptData = buildReceiptDataFromPayment(p);
       const memberName = p.members?.full_name || 'Member';
       const planName = p.memberships?.membership_plans?.name || 'Membership';
-      const text = `*FitVerse Elite Official Receipt*\nReceipt No: #${p.receipt_number || 'N/A'}\nMember: ${memberName}${p.members?.member_id ? ` (${p.members.member_id})` : ''}\nPlan: ${planName}\nAmount Paid: ${formatCurrency(p.amount)}\nPayment Method: ${p.payment_method}\nDate: ${formatDate(p.payment_date || p.created_at)}\n\n*DISCIPLINE • STRENGTH • TRANSFORMATION*\nFitVerse Elite Gym`;
+      const startDate = p.memberships?.start_date ? formatDate(p.memberships.start_date) : null;
+      const endDate = p.memberships?.expiry_date ? formatDate(p.memberships.expiry_date) : null;
+      const validityLine = startDate && endDate ? `Validity: ${startDate} TO ${endDate}\n` : '';
+      const text =
+        `*FitVerse Elite Official Receipt*\n` +
+        `Receipt No: #${p.receipt_number || 'N/A'}\n` +
+        `Member: ${memberName}${p.members?.member_id ? ` (${p.members.member_id})` : ''}\n` +
+        `Plan: ${planName}\n` +
+        validityLine +
+        `Amount Paid: ${formatCurrency(p.amount)}\n` +
+        `Payment Method: ${p.payment_method}\n` +
+        `Date: ${formatDate(p.payment_date || p.created_at)}\n\n` +
+        `*DISCIPLINE • STRENGTH • TRANSFORMATION*\n` +
+        `FitVerse Elite Gym Management\n` +
+        `Powered by Chirvex (https://chirvex.in/)`;
 
       // Copy summary text to clipboard so it can be pasted into WhatsApp if desired
       await Clipboard.setStringAsync(text);
