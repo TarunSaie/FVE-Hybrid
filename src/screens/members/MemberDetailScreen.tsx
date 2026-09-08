@@ -47,12 +47,14 @@ import { PTPaymentModal } from '@/components/features/PTPaymentModal';
 import { PTSessionModal } from '@/components/features/PTSessionModal';
 import { Member, Membership, Payment, Attendance, WorkoutPlan, PersonalTraining, PTSession } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
+import { useDialog } from '@/contexts/DialogContext';
 import { supabase } from '@/api/supabase';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { formatDate, calculateAge, getLocalDateStr } from '@/utils/date';
 import { formatCurrency, openWhatsAppLink, buildExpiredAlertMessage } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
+import { cleanupPTNotifications } from '@/utils/personalTraining';
 import { RootStackParamList } from '@/navigation/types';
 import * as Clipboard from 'expo-clipboard';
 import {
@@ -72,6 +74,7 @@ export function MemberDetailScreen() {
   const { memberId, initialMember } = route.params;
 
   const { user } = useAuth();
+  const dialog = useDialog();
   const [showEditModal, setShowEditModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
@@ -259,73 +262,78 @@ export function MemberDetailScreen() {
   const handleCancelPT = () => {
     if (!personalTraining) return;
     const isPaid = !!personalTraining.payment_id;
+    const memberName = member?.full_name || 'Member';
     const confirmMsg = isPaid
-      ? `Cancel Personal Training for ${member?.full_name}?\n\nThis will DELETE the Personal Training add-on payment (${formatCurrency(personalTraining.price || 0)}) and remove all scheduled sessions.`
-      : `Cancel this Personal Training request for ${member?.full_name}?`;
+      ? `Cancel Personal Training for ${memberName}?\n\nThis will DELETE the Personal Training add-on payment (${formatCurrency(personalTraining.price || 0)}) and remove all scheduled sessions.`
+      : `Cancel this Personal Training request for ${memberName}?`;
 
-    Alert.alert(
+    dialog.danger(
       'Cancel Personal Training',
       confirmMsg,
-      [
-        { text: 'Keep Program', style: 'cancel' },
-        {
-          text: 'Yes, Cancel & Refund',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              if (personalTraining.payment_id) {
-                await supabase.from('payments').delete().eq('id', personalTraining.payment_id);
-              }
-              await supabase.from('pt_sessions').delete().eq('personal_training_id', personalTraining.id);
-              const { error } = await supabase.from('personal_training').delete().eq('id', personalTraining.id);
-              if (error) throw error;
+      isPaid ? 'Yes, Cancel & Refund' : 'Yes, Cancel Request',
+      async () => {
+        try {
+          if (personalTraining.payment_id) {
+            await supabase.from('payments').delete().eq('id', personalTraining.payment_id);
+          }
+          await supabase.from('pt_sessions').delete().eq('personal_training_id', personalTraining.id);
+          const { error } = await supabase.from('personal_training').delete().eq('id', personalTraining.id);
+          if (error) throw error;
 
-              haptics.success();
-              Alert.alert('Cancelled', 'Personal Training cancelled and payment removed.');
-              refetchPT();
-              refetchSessions();
-              qc.invalidateQueries({ queryKey: ['member-pt', memberId] });
-              qc.invalidateQueries({ queryKey: ['member-payments', memberId] });
-              qc.invalidateQueries({ queryKey: ['mobile-payments'] });
-              qc.invalidateQueries({ queryKey: ['mobile-pt-list'] });
-              qc.invalidateQueries({ queryKey: ['mobile-dashboard-stats'] });
-            } catch (err: unknown) {
-              haptics.error();
-              Alert.alert('Error', (err as Error).message || 'Failed to cancel');
-            }
-          },
-        },
-      ]
+          // Remove all notifications related to this specific member's Personal Training
+          await cleanupPTNotifications(memberId, memberName);
+
+          haptics.success();
+          refetchPT();
+          refetchSessions();
+          qc.invalidateQueries({ queryKey: ['member-pt', memberId] });
+          qc.invalidateQueries({ queryKey: ['member-payments', memberId] });
+          qc.invalidateQueries({ queryKey: ['mobile-payments'] });
+          qc.invalidateQueries({ queryKey: ['mobile-pt-list'] });
+          qc.invalidateQueries({ queryKey: ['mobile-dashboard-stats'] });
+          qc.invalidateQueries({ queryKey: ['notifications'] });
+          qc.invalidateQueries({ queryKey: ['notifications-unread'] });
+
+          setTimeout(() => {
+            dialog.alert('Cancelled', 'Personal Training cancelled and payment removed.');
+          }, 200);
+        } catch (err: unknown) {
+          haptics.error();
+          setTimeout(() => {
+            dialog.alert('Error', (err as Error).message || 'Failed to cancel');
+          }, 200);
+        }
+      },
+      'Keep Program'
     );
   };
 
   const handleDelete = () => {
     haptics.heavy();
-    Alert.alert(
+    dialog.danger(
       'Delete Member',
       `Are you sure you want to remove ${member?.full_name}? This cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const { error } = await supabase
-                .from('members')
-                .delete()
-                .eq('id', memberId);
-              if (error) throw error;
-              haptics.success();
-              qc.invalidateQueries({ queryKey: ['mobile-members'] });
-              navigation.goBack();
-            } catch (err: unknown) {
-              haptics.error();
-              Alert.alert('Error', (err as Error).message || 'Failed to delete');
-            }
-          },
-        },
-      ]
+      'Delete',
+      async () => {
+        try {
+          await cleanupPTNotifications(memberId, member?.full_name);
+          const { error } = await supabase
+            .from('members')
+            .delete()
+            .eq('id', memberId);
+          if (error) throw error;
+          haptics.success();
+          qc.invalidateQueries({ queryKey: ['mobile-members'] });
+          qc.invalidateQueries({ queryKey: ['notifications'] });
+          qc.invalidateQueries({ queryKey: ['notifications-unread'] });
+          navigation.goBack();
+        } catch (err: unknown) {
+          haptics.error();
+          setTimeout(() => {
+            dialog.alert('Error', (err as Error).message || 'Failed to delete');
+          }, 200);
+        }
+      }
     );
   };
 
