@@ -19,12 +19,15 @@ export function FVELogoLoader({
 }: FVELogoLoaderProps) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
+  const loaderSource = isDark
+    ? require('@/../assets/fitverse_loader.gif')
+    : require('@/../assets/fitverse_loader_light.gif');
 
   return (
     <View style={[fullScreen ? styles.fullScreen : styles.inlineContainer, style]}>
       <View style={[styles.loaderBox, { width: size, height: size }]}>
         <Image
-          source={require('@/../assets/fitverse_loader.gif')}
+          source={loaderSource}
           style={{ width: size, height: size }}
           resizeMode="contain"
         />
