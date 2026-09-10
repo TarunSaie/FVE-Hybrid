@@ -6,6 +6,9 @@ import {
   ScrollView,
   Pressable,
   RefreshControl,
+  TouchableOpacity,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
@@ -19,19 +22,25 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
+  Share2,
+  PauseCircle,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { supabase } from '@/api/supabase';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
+import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { formatCurrency } from '@/utils/format';
-import { getLocalDateStr, getLocalMonthStr } from '@/utils/date';
+import { getLocalDateStr, getLocalMonthStr, formatDate, normalizeMembershipStatus } from '@/utils/date';
 import { haptics } from '@/utils/haptics';
+import { shareReportPdf } from '@/utils/reportPdf';
 
 type Period = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
 export function ReportsScreen() {
   const navigation = useNavigation();
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => getReportsStyles(colors, isDark), [colors, isDark]);
   const [period, setPeriod] = useState<Period>('monthly');
 
   // Revenue Inflow Trend Query
@@ -108,21 +117,35 @@ export function ReportsScreen() {
     },
   });
 
-  // Membership Health Statistics (Active, Expiring Soon, Expired, Total)
+  // Membership Health Statistics (Active, Expiring Soon, Expired, Hold, Total)
   const { data: memberStats } = useQuery({
     queryKey: ['mobile-reports-member-stats'],
     queryFn: async () => {
-      const [active, expiring, expired, total] = await Promise.all([
-        supabase.from('memberships').select('*', { count: 'exact', head: true }).eq('status', 'ACTIVE'),
-        supabase.from('memberships').select('*', { count: 'exact', head: true }).eq('status', 'EXPIRING_SOON'),
-        supabase.from('memberships').select('*', { count: 'exact', head: true }).eq('status', 'EXPIRED'),
-        supabase.from('members').select('*', { count: 'exact', head: true }),
-      ]);
+      const { data: memberships, error } = await supabase
+        .from('memberships')
+        .select('status, expiry_date');
+
+      if (error) throw error;
+
+      const summary = { active: 0, expiring: 0, expired: 0, hold: 0 };
+      for (const ms of memberships || []) {
+        const normalized = normalizeMembershipStatus(ms.status, ms.expiry_date);
+        if (normalized === 'ACTIVE') summary.active += 1;
+        else if (normalized === 'EXPIRING_SOON') summary.expiring += 1;
+        else if (normalized === 'EXPIRED') summary.expired += 1;
+        else if (normalized === 'HOLD') summary.hold += 1;
+      }
+
+      const { count: total } = await supabase
+        .from('members')
+        .select('*', { count: 'exact', head: true });
+
       return {
-        active: active.count || 0,
-        expiring: expiring.count || 0,
-        expired: expired.count || 0,
-        total: total.count || 0,
+        active: summary.active,
+        expiring: summary.expiring,
+        expired: summary.expired,
+        hold: summary.hold,
+        total: total || 0,
       };
     },
   });
@@ -161,11 +184,63 @@ export function ReportsScreen() {
     setPeriod(p);
   };
 
+  const [sharing, setSharing] = useState(false);
+
+  const handleShareReport = async () => {
+    if (!reportData) return;
+    haptics.medium();
+    setSharing(true);
+    try {
+      const periodMap: Record<Period, string> = {
+        daily: 'Daily Performance Report',
+        weekly: 'Weekly Performance Report',
+        monthly: 'Monthly Performance Report',
+        yearly: 'Yearly Performance Report',
+      };
+      await shareReportPdf({
+        periodLabel: periodMap[period],
+        generatedDate: formatDate(getLocalDateStr()),
+        totalRevenue: reportData.totalRevenue,
+        averageRevenue: reportData.averageRevenue,
+        bars: reportData.bars,
+        memberStats,
+        popularPlans,
+      });
+      haptics.success();
+    } catch (err: unknown) {
+      haptics.error();
+      Alert.alert('Share Error', (err as Error).message || 'Failed to export report');
+    } finally {
+      setSharing(false);
+    }
+  };
+
   const maxPlanCount = Math.max(...(popularPlans || []).map(p => p.count), 1);
 
   return (
     <View style={styles.container}>
-      <FVEHeader title="ANALYTICS & REPORTS" showBack onBack={() => navigation.goBack()} />
+      <FVEHeader
+        title="ANALYTICS & REPORTS"
+        showBack
+        onBack={() => navigation.goBack()}
+        rightAction={
+          <TouchableOpacity
+            onPress={handleShareReport}
+            disabled={sharing || !reportData}
+            style={styles.shareBtn}
+            activeOpacity={0.7}
+          >
+            {sharing ? (
+              <ActivityIndicator size={14} color={colors.gold} />
+            ) : (
+              <>
+                <Share2 size={15} color={colors.gold} />
+                <Text style={styles.shareBtnText}>PDF</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        }
+      />
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -290,6 +365,14 @@ export function ReportsScreen() {
               <Text style={styles.healthLabel}>EXPIRED</Text>
             </View>
 
+            <View style={[styles.healthItem, { borderColor: 'rgba(168, 85, 247, 0.3)' }]}>
+              <PauseCircle size={16} color="#C084FC" />
+              <Text style={[styles.healthVal, { color: '#C084FC' }]}>
+                {memberStats?.hold ?? 0}
+              </Text>
+              <Text style={styles.healthLabel}>ON HOLD</Text>
+            </View>
+
             <View style={[styles.healthItem, { borderColor: 'rgba(239, 161, 0, 0.3)' }]}>
               <Users size={16} color={colors.gold} />
               <Text style={[styles.healthVal, { color: colors.gold }]}>
@@ -346,230 +429,268 @@ export function ReportsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#050505',
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  periodRow: {
-    flexDirection: 'row',
-    gap: 6,
-    marginBottom: 16,
-  },
-  periodBtn: {
-    flex: 1,
-    backgroundColor: '#12161C',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    paddingVertical: 10,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  selectedPeriodBtn: {
-    backgroundColor: colors.gold,
-    borderColor: colors.gold,
-  },
-  periodBtnText: {
-    fontFamily: typography.fonts.inter,
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.textSecondary,
-    letterSpacing: 0.5,
-  },
-  selectedPeriodBtnText: {
-    color: '#050505',
-  },
-  kpiRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 16,
-  },
-  kpiCard: {
-    flex: 1,
-    backgroundColor: '#12161D',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.2)',
-    padding: 14,
-    borderRadius: 14,
-  },
-  kpiLabel: {
-    fontFamily: typography.fonts.inter,
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.textSecondary,
-    letterSpacing: 0.5,
-    marginBottom: 4,
-  },
-  kpiValue: {
-    fontFamily: typography.fonts.rajdhani,
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.gold,
-  },
-  chartCard: {
-    backgroundColor: '#12161D',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-  },
-  chartHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 16,
-  },
-  chartTitle: {
-    fontFamily: typography.fonts.rajdhani,
-    fontSize: typography.sizes.md,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    letterSpacing: 0.5,
-  },
-  chartContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    height: 150,
-    paddingTop: 10,
-  },
-  barColumn: {
-    flex: 1,
-    alignItems: 'center',
-    height: '100%',
-    justifyContent: 'flex-end',
-  },
-  barValueText: {
-    fontFamily: typography.fonts.inter,
-    fontSize: 9,
-    fontWeight: '600',
-    color: colors.textMuted,
-    marginBottom: 4,
-  },
-  barTrack: {
-    width: 20,
-    height: 100,
-    backgroundColor: '#161A22',
-    borderRadius: 6,
-    justifyContent: 'flex-end',
-    overflow: 'hidden',
-  },
-  barFill: {
-    width: '100%',
-    borderRadius: 6,
-  },
-  barLabel: {
-    fontFamily: typography.fonts.inter,
-    fontSize: 10,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    marginTop: 6,
-  },
-  sectionCard: {
-    backgroundColor: '#12161D',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 14,
-  },
-  sectionTitle: {
-    fontFamily: typography.fonts.rajdhani,
-    fontSize: typography.sizes.md,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    letterSpacing: 0.5,
-  },
-  healthGrid: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  healthItem: {
-    flex: 1,
-    backgroundColor: '#0E1116',
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 4,
-    alignItems: 'center',
-    gap: 4,
-  },
-  healthVal: {
-    fontFamily: typography.fonts.rajdhani,
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  healthLabel: {
-    fontFamily: typography.fonts.inter,
-    fontSize: 9,
-    fontWeight: '600',
-    color: colors.textMuted,
-    letterSpacing: 0.3,
-  },
-  emptyPlansText: {
-    fontFamily: typography.fonts.inter,
-    fontSize: 12,
-    color: colors.textMuted,
-    textAlign: 'center',
-    paddingVertical: 10,
-  },
-  planRankRow: {
-    marginBottom: 12,
-  },
-  planRankTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 5,
-  },
-  planNameWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  planRankBadge: {
-    fontFamily: typography.fonts.rajdhani,
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.gold,
-    backgroundColor: 'rgba(239, 161, 0, 0.15)',
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 4,
-  },
-  planNameText: {
-    fontFamily: typography.fonts.inter,
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  planCountText: {
-    fontFamily: typography.fonts.rajdhani,
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.gold,
-  },
-  planProgressTrack: {
-    height: 6,
-    backgroundColor: '#181C24',
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  planProgressFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-});
+const getReportsStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.bgPrimary,
+    },
+    scrollContent: {
+      padding: 16,
+      paddingBottom: 40,
+    },
+    periodRow: {
+      flexDirection: 'row',
+      gap: 6,
+      marginBottom: 16,
+    },
+    periodBtn: {
+      flex: 1,
+      backgroundColor: colors.bgSecondary,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+      paddingVertical: 10,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden',
+    },
+    selectedPeriodBtn: {
+      backgroundColor: colors.gold,
+      borderColor: colors.gold,
+    },
+    periodBtnText: {
+      fontFamily: typography.fonts.inter,
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.textSecondary,
+      letterSpacing: 0.5,
+    },
+    selectedPeriodBtnText: {
+      color: '#050505',
+    },
+    kpiRow: {
+      flexDirection: 'row',
+      gap: 12,
+      marginBottom: 16,
+    },
+    kpiCard: {
+      flex: 1,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.2)' : colors.goldBorder,
+      padding: 14,
+      borderRadius: 14,
+      elevation: isDark ? 0 : 2,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: isDark ? 0 : 0.06,
+      shadowRadius: 3,
+    },
+    kpiLabel: {
+      fontFamily: typography.fonts.inter,
+      fontSize: 10,
+      fontWeight: '700',
+      color: colors.textSecondary,
+      letterSpacing: 0.5,
+      marginBottom: 4,
+    },
+    kpiValue: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 20,
+      fontWeight: '700',
+      color: colors.gold,
+    },
+    chartCard: {
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+      borderRadius: 16,
+      padding: 16,
+      marginBottom: 16,
+      elevation: isDark ? 0 : 2,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: isDark ? 0 : 0.06,
+      shadowRadius: 3,
+    },
+    chartHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 16,
+    },
+    chartTitle: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: typography.sizes.md,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      letterSpacing: 0.5,
+    },
+    chartContainer: {
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      justifyContent: 'space-between',
+      height: 150,
+      paddingTop: 10,
+    },
+    barColumn: {
+      flex: 1,
+      alignItems: 'center',
+      height: '100%',
+      justifyContent: 'flex-end',
+    },
+    barValueText: {
+      fontFamily: typography.fonts.inter,
+      fontSize: 9,
+      fontWeight: '600',
+      color: colors.textMuted,
+      marginBottom: 4,
+    },
+    barTrack: {
+      width: 20,
+      height: 100,
+      backgroundColor: colors.bgTertiary,
+      borderRadius: 6,
+      justifyContent: 'flex-end',
+      overflow: 'hidden',
+    },
+    barFill: {
+      width: '100%',
+      borderRadius: 6,
+    },
+    barLabel: {
+      fontFamily: typography.fonts.inter,
+      fontSize: 10,
+      fontWeight: '600',
+      color: colors.textSecondary,
+      marginTop: 6,
+    },
+    sectionCard: {
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+      borderRadius: 16,
+      padding: 16,
+      marginBottom: 16,
+      elevation: isDark ? 0 : 2,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: isDark ? 0 : 0.06,
+      shadowRadius: 3,
+    },
+    sectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 14,
+    },
+    sectionTitle: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: typography.sizes.md,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      letterSpacing: 0.5,
+    },
+    healthGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    healthItem: {
+      minWidth: '28%',
+      flexGrow: 1,
+      backgroundColor: colors.bgSecondary,
+      borderWidth: 1,
+      borderRadius: 12,
+      paddingVertical: 12,
+      paddingHorizontal: 8,
+      alignItems: 'center',
+      gap: 4,
+    },
+    healthVal: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 18,
+      fontWeight: '700',
+    },
+    healthLabel: {
+      fontFamily: typography.fonts.inter,
+      fontSize: 9,
+      fontWeight: '600',
+      color: colors.textMuted,
+      letterSpacing: 0.3,
+    },
+    emptyPlansText: {
+      fontFamily: typography.fonts.inter,
+      fontSize: 12,
+      color: colors.textMuted,
+      textAlign: 'center',
+      paddingVertical: 10,
+    },
+    planRankRow: {
+      marginBottom: 12,
+    },
+    planRankTop: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 5,
+    },
+    planNameWrap: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      flex: 1,
+      marginRight: 8,
+    },
+    planRankBadge: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.gold,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.15)' : 'rgba(239, 161, 0, 0.12)',
+      paddingHorizontal: 5,
+      paddingVertical: 1,
+      borderRadius: 4,
+    },
+    planNameText: {
+      fontFamily: typography.fonts.inter,
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.textPrimary,
+      flexShrink: 1,
+    },
+    planCountText: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.gold,
+    },
+    planProgressTrack: {
+      height: 6,
+      backgroundColor: colors.bgTertiary,
+      borderRadius: 3,
+      overflow: 'hidden',
+    },
+    planProgressFill: {
+      height: '100%',
+      borderRadius: 3,
+    },
+    shareBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      backgroundColor: isDark ? colors.goldMuted : 'rgba(239, 161, 0, 0.1)',
+      borderWidth: 1,
+      borderColor: colors.goldBorder,
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    shareBtnText: {
+      color: colors.gold,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+  });

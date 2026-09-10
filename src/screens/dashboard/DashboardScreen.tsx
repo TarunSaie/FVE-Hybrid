@@ -6,6 +6,7 @@ import {
   ScrollView,
   RefreshControl,
   TouchableOpacity,
+  Image,
   Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
@@ -28,21 +29,28 @@ import {
   Shield,
   Bell,
   ChevronRight,
+  ChevronLeft,
   TrendingUp,
   Activity,
   Sun,
   Moon,
   CheckCircle2,
   Sparkles,
+  PauseCircle,
+  Layers,
+  MessageCircle,
+  Clock,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { MemberFormModal } from '@/components/features/MemberFormModal';
 import { PaymentFormModal } from '@/components/features/PaymentFormModal';
 import { FVEBadge } from '@/components/common/FVEBadge';
-import { colors } from '@/constants/colors';
+import { FVELogoLoader } from '@/components/common/FVELogoLoader';
+import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { supabase } from '@/api/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { formatCurrency, openWhatsAppLink } from '@/utils/format';
 import { getLocalDateStr, getLocalMonthStr, formatDate } from '@/utils/date';
 import { useRenewalAlerts } from '@/hooks/useRenewalAlerts';
@@ -56,6 +64,8 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 export function DashboardScreen() {
   const navigation = useNavigation<NavigationProp>();
   const { user } = useAuth();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => getDashboardStyles(colors, isDark), [colors, isDark]);
   const qc = useQueryClient();
 
   // Background renewal, birthday, and status sync
@@ -70,6 +80,31 @@ export function DashboardScreen() {
   const todayStr = getLocalDateStr();
   const currentMonthStr = getLocalMonthStr();
 
+  const [filterMonth, setFilterMonth] = useState(() => getLocalMonthStr());
+  const [checkInDate, setCheckInDate] = useState(() => getLocalDateStr());
+
+  const formattedMonthLabel = useMemo(() => {
+    if (!filterMonth) return '';
+    const [y, m] = filterMonth.split('-');
+    const d = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
+    return d.toLocaleString('en-IN', { month: 'short', year: 'numeric' });
+  }, [filterMonth]);
+
+  const handlePrevMonth = () => {
+    haptics.light();
+    const [y, m] = filterMonth.split('-').map(Number);
+    const d = new Date(y, m - 2, 1);
+    setFilterMonth(getLocalMonthStr(d));
+  };
+
+  const handleNextMonth = () => {
+    if (filterMonth >= currentMonthStr) return;
+    haptics.light();
+    const [y, m] = filterMonth.split('-').map(Number);
+    const d = new Date(y, m, 1);
+    setFilterMonth(getLocalMonthStr(d));
+  };
+
   // Dynamic greeting by time of day
   const greetingTime = useMemo(() => {
     const hour = new Date().getHours();
@@ -80,12 +115,12 @@ export function DashboardScreen() {
 
   // Fetch Dashboard Statistics
   const { data: stats, isLoading, refetch } = useQuery({
-    queryKey: ['mobile-dashboard-stats', todayStr, currentMonthStr],
+    queryKey: ['mobile-dashboard-stats', checkInDate, filterMonth],
     queryFn: async () => {
-      const [year, month] = currentMonthStr.split('-');
+      const [year, month] = filterMonth.split('-');
       const lastDayOfMonth = new Date(parseInt(year, 10), parseInt(month, 10), 0).getDate();
-      const monthStart = `${currentMonthStr}-01`;
-      const monthEnd = `${currentMonthStr}-${String(lastDayOfMonth).padStart(2, '0')}`;
+      const monthStart = `${filterMonth}-01`;
+      const monthEnd = `${filterMonth}-${String(lastDayOfMonth).padStart(2, '0')}`;
 
       const [
         activeRes,
@@ -105,7 +140,7 @@ export function DashboardScreen() {
         supabase
           .from('attendance')
           .select('*', { count: 'exact', head: true })
-          .eq('date', todayStr),
+          .eq('date', checkInDate),
 
         supabase
           .from('payments')
@@ -168,6 +203,66 @@ export function DashboardScreen() {
     },
   });
 
+  // Fetch On-Hold Members
+  const { data: holdMembers = [] } = useQuery({
+    queryKey: ['mobile-hold-members'],
+    queryFn: async () => {
+      try {
+        const { data, error } = await supabase
+          .from('members_with_membership')
+          .select('id, member_id, full_name, mobile, profile_photo, plan_name, membership_expiry_date, membership_status')
+          .eq('membership_status', 'HOLD')
+          .order('membership_expiry_date', { ascending: false })
+          .limit(8);
+
+        if (!error && data && data.length > 0) {
+          return data;
+        }
+      } catch {}
+
+      const { data } = await supabase
+        .from('memberships')
+        .select('*, members(id, full_name, mobile, profile_photo, member_id), membership_plans(name)')
+        .eq('status', 'HOLD')
+        .order('expiry_date', { ascending: false })
+        .limit(8);
+
+      return (data || []).map((m: any) => ({
+        id: m.members?.id || m.id,
+        member_id: m.members?.member_id,
+        full_name: m.members?.full_name || 'Member',
+        mobile: m.members?.mobile,
+        profile_photo: m.members?.profile_photo,
+        plan_name: m.membership_plans?.name || 'Standard Plan',
+        membership_expiry_date: m.expiry_date,
+      }));
+    },
+  });
+
+  // Fetch Plan Distribution
+  const { data: planDistribution = [] } = useQuery({
+    queryKey: ['mobile-plan-distribution'],
+    queryFn: async () => {
+      const { data: plans } = await supabase
+        .from('membership_plans')
+        .select('id, name')
+        .eq('active', true);
+      if (!plans) return [];
+      const result: { name: string; count: number }[] = [];
+      for (const plan of plans.slice(0, 6)) {
+        const { count } = await supabase
+          .from('memberships')
+          .select('*', { count: 'exact', head: true })
+          .eq('plan_id', plan.id)
+          .eq('status', 'ACTIVE');
+        if ((count || 0) > 0) {
+          result.push({ name: plan.name, count: count || 0 });
+        }
+      }
+      return result;
+    },
+  });
+
   // Fetch recent payments
   const { data: recentPayments } = useQuery({
     queryKey: ['mobile-recent-payments'],
@@ -207,14 +302,19 @@ export function DashboardScreen() {
 
   // Unread notifications
   const { data: unreadNotifs } = useQuery({
-    queryKey: ['unread-notifications'],
+    queryKey: ['unread-notifications', user?.id],
     queryFn: async () => {
+      if (!user?.id) return 0;
       const { count } = await supabase
         .from('notifications')
         .select('*', { count: 'exact', head: true })
-        .eq('read', false);
+        .eq('read', false)
+        .or(`user_id.eq.${user.id},user_id.is.null`);
+
       return count || 0;
     },
+    enabled: !!user?.id,
+    refetchInterval: 15000,
   });
 
   const onRefresh = useCallback(() => {
@@ -224,6 +324,8 @@ export function DashboardScreen() {
     qc.invalidateQueries({ queryKey: ['mobile-recent-payments'] });
     qc.invalidateQueries({ queryKey: ['mobile-weekly-attendance'] });
     qc.invalidateQueries({ queryKey: ['unread-notifications'] });
+    qc.invalidateQueries({ queryKey: ['unread-notifications-count'] });
+    qc.invalidateQueries({ queryKey: ['mobile-notifications'] });
   }, [qc]);
 
   const handleWhatsAppReminder = (
@@ -244,8 +346,56 @@ export function DashboardScreen() {
     openWhatsAppLink(member.mobile, msg);
   };
 
+  const handleNotifyAll = () => {
+    if (!expiringList?.length) return;
+    const withMobile = expiringList.filter((m: any) => {
+      const mob = m.members?.mobile;
+      return Boolean(mob?.trim());
+    });
+
+    if (withMobile.length === 0) {
+      Alert.alert('No Mobile Numbers', 'No expiring members have a mobile phone number recorded.');
+      return;
+    }
+
+    Alert.alert(
+      'Notify All Expiring Members',
+      `Send WhatsApp renewal reminders to ${withMobile.length} member${withMobile.length > 1 ? 's' : ''}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send Reminders',
+          onPress: () => {
+            const first = withMobile[0];
+            const member = first.members as any;
+            const plan = first.membership_plans as any;
+            handleWhatsAppReminder(member || {}, first.expiry_date, plan?.name);
+            if (withMobile.length > 1) {
+              Alert.alert(
+                'Sequential Reminders',
+                `Reminder opened for ${member?.full_name || 'Member'}. Tap the WhatsApp icon on each member below to notify the rest.`
+              );
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const isFinancialVisible = user?.role === 'OWNER' || user?.role === 'ADMIN';
   const maxAttendance = Math.max(...(weeklyAttendance?.map((w) => w.count) || [1]), 1);
+
+  if (isLoading && !stats) {
+    return (
+      <View style={styles.container}>
+        <FVEHeader
+          onNotificationsPress={() => navigation.navigate('Notifications')}
+          unreadCount={unreadNotifs || 0}
+        />
+        <FVELogoLoader message="Syncing Dashboard..." fullScreen />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -266,33 +416,84 @@ export function DashboardScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
-        {/* ── HERO EXECUTIVE STATUS BANNER ── */}
-        <View style={styles.heroBanner}>
-          <View style={styles.heroLeft}>
-            <View style={styles.greetingRow}>
-              <greetingTime.icon size={15} color={colors.gold} />
-              <Text style={styles.greetingTimeText}>{greetingTime.text},</Text>
-            </View>
-            <Text numberOfLines={1} style={styles.heroUserName}>
-              {user?.full_name || user?.username || 'Commander'}
-            </Text>
+        {/* ── HERO EXECUTIVE STATUS BANNER / OWNER CARD ── */}
+        <LinearGradient
+          colors={
+            isDark
+              ? ['#181D2A', '#10141E', '#0B0D13']
+              : ['#FFFFFF', '#FAF8F5', '#F5EFE6']
+          }
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.heroBanner}
+        >
+          {/* Top Gold Horizon Hairline */}
+          <LinearGradient
+            colors={['transparent', colors.goldBright, colors.gold, 'transparent']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.heroTopHighlight}
+          />
 
-            {/* Pulsing Operations Beacon */}
-            <View style={styles.statusBeaconRow}>
-              <View style={styles.statusBeaconDot} />
-              <Text style={styles.statusBeaconText}>OPERATIONS LIVE · DESK READY</Text>
-            </View>
-          </View>
+          <View style={styles.heroContentRow}>
+            <View style={styles.heroLeft}>
+              <View style={styles.greetingRow}>
+                <View style={styles.greetingIconPill}>
+                  <greetingTime.icon size={13} color={colors.gold} />
+                  <Text style={styles.greetingTimeText}>{greetingTime.text.toUpperCase()}</Text>
+                </View>
+                {user?.role === 'OWNER' && (
+                  <View style={styles.ownerEliteBadge}>
+                    <Sparkles size={11} color={isDark ? colors.goldBright : colors.gold} />
+                    <Text style={styles.ownerEliteBadgeText}>EXECUTIVE OWNER</Text>
+                  </View>
+                )}
+              </View>
 
-          <View style={styles.heroRight}>
-            <View style={styles.avatarRing}>
-              <Text style={styles.avatarInitial}>
-                {user?.full_name?.charAt(0) || user?.username?.charAt(0) || 'F'}
+              <Text numberOfLines={1} style={styles.heroUserName}>
+                {(user?.full_name || user?.username || 'Commander').toUpperCase()}
               </Text>
+
+              {/* Pulsing Operations Beacon */}
+              <View style={styles.statusBeaconRow}>
+                <View style={styles.statusBeaconGlow}>
+                  <View style={styles.statusBeaconDot} />
+                </View>
+                <Text style={styles.statusBeaconText}>HQ OPERATIONS LIVE · COMMAND READY</Text>
+              </View>
             </View>
-            <FVEBadge role={user?.role} size="sm" style={{ marginTop: 4 }} />
+
+            <View style={styles.heroRight}>
+              {user?.avatar_url ? (
+                <View style={styles.avatarWrapper}>
+                  <Image
+                    source={{ uri: user.avatar_url }}
+                    style={styles.avatarImage}
+                    resizeMode="cover"
+                  />
+                  <View style={styles.avatarGoldRim} />
+                </View>
+              ) : (
+                <View style={styles.avatarRing}>
+                  <LinearGradient
+                    colors={
+                      isDark
+                        ? ['#2A3245', '#161A26', '#0E1018']
+                        : ['#FFFBEB', '#FEF3C7', '#FDE68A']
+                    }
+                    style={styles.avatarGradient}
+                  >
+                    <View style={styles.avatarInnerGlow} />
+                    <Text style={styles.avatarInitial}>
+                      {(user?.full_name?.trim()?.charAt(0) || user?.username?.trim()?.charAt(0) || 'O').toUpperCase()}
+                    </Text>
+                  </LinearGradient>
+                </View>
+              )}
+              <FVEBadge role={user?.role} size="sm" style={{ marginTop: 8 }} />
+            </View>
           </View>
-        </View>
+        </LinearGradient>
 
         {/* ── QUICK ACTIONS BAR (HORIZONTAL PILLS) ── */}
         <ScrollView
@@ -373,6 +574,53 @@ export function DashboardScreen() {
           </TouchableOpacity>
         </ScrollView>
 
+        {/* ── EXECUTIVE PERFORMANCE & OPERATIONS FILTER BAR ── */}
+        <View style={styles.execFilterBar}>
+          <View style={styles.execFilterLeft}>
+            <Text style={styles.execFilterHeading}>FILTER OPERATIONS</Text>
+            <View style={styles.execFilterMonthRow}>
+              <TouchableOpacity onPress={handlePrevMonth} style={styles.execMonthArrow}>
+                <ChevronLeft size={16} color={colors.gold} />
+              </TouchableOpacity>
+              <View style={styles.execMonthBadge}>
+                <Calendar size={12} color={colors.gold} style={{ marginRight: 4 }} />
+                <Text style={styles.execMonthText}>{formattedMonthLabel}</Text>
+              </View>
+              <TouchableOpacity
+                onPress={handleNextMonth}
+                disabled={filterMonth >= currentMonthStr}
+                style={[styles.execMonthArrow, filterMonth >= currentMonthStr && { opacity: 0.3 }]}
+              >
+                <ChevronRight size={16} color={filterMonth >= currentMonthStr ? colors.textMuted : colors.gold} />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.execFilterRight}>
+            <Text style={styles.execFilterHeading}>CHECK-IN DATE</Text>
+            <TouchableOpacity
+              onPress={() => {
+                haptics.selection();
+                setCheckInDate(todayStr);
+              }}
+              style={[
+                styles.execDatePill,
+                checkInDate === todayStr && styles.execDatePillActive,
+              ]}
+            >
+              <Clock size={11} color={checkInDate === todayStr ? '#050505' : colors.gold} />
+              <Text
+                style={[
+                  styles.execDatePillText,
+                  checkInDate === todayStr && styles.execDatePillTextActive,
+                ]}
+              >
+                {checkInDate === todayStr ? 'TODAY' : formatDate(checkInDate)}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* ── BENTO METRICS ARCHITECTURE ── */}
 
         {/* Primary Bento Hero: Month Revenue (or Total Strength) */}
@@ -386,7 +634,11 @@ export function DashboardScreen() {
             style={styles.bentoHeroCard}
           >
             <LinearGradient
-              colors={['#1E1606', '#12141A', '#0B0D12']}
+              colors={
+                isDark
+                  ? ['#1E1606', '#12141A', '#0B0D12']
+                  : ['#FFFFFF', '#FCFBF8', '#F8FAFC']
+              }
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.bentoHeroGradient}
@@ -403,7 +655,7 @@ export function DashboardScreen() {
                 </View>
               </View>
 
-              <Text style={styles.bentoHeroAmount}>
+              <Text style={[styles.bentoHeroAmount, { color: colors.textPrimary }]}>
                 {formatCurrency(stats?.monthRevenue || 0)}
               </Text>
 
@@ -420,7 +672,7 @@ export function DashboardScreen() {
                 <View style={styles.bentoHeroDivider} />
                 <View style={styles.bentoHeroMetaItem}>
                   <Text style={styles.bentoHeroMetaLabel}>Today's Log</Text>
-                  <Text style={[styles.bentoHeroMetaVal, { color: colors.blueLight }]}>
+                  <Text style={[styles.bentoHeroMetaVal, { color: colors.blue }]}>
                     {stats?.todayAttendance || 0}
                   </Text>
                 </View>
@@ -431,7 +683,7 @@ export function DashboardScreen() {
           /* Non-owner hero: Gym Strength */
           <View style={styles.bentoHeroCard}>
             <LinearGradient
-              colors={['#141720', '#0E1116']}
+              colors={isDark ? ['#141720', '#0E1116'] : ['#FFFFFF', '#F8FAFC']}
               style={styles.bentoHeroGradient}
             >
               <View style={styles.bentoHeroTopRow}>
@@ -441,7 +693,7 @@ export function DashboardScreen() {
                 </View>
                 <Text style={styles.bentoHeroBadgeText}>LIVE ROSTER</Text>
               </View>
-              <Text style={styles.bentoHeroAmount}>{stats?.activeMembers || 0} Athletes</Text>
+              <Text style={[styles.bentoHeroAmount, { color: colors.textPrimary }]}>{stats?.activeMembers || 0} Athletes</Text>
             </LinearGradient>
           </View>
         )}
@@ -522,9 +774,21 @@ export function DashboardScreen() {
               <AlertTriangle size={16} color={colors.warning} />
               <Text style={styles.sectionTitle}>EXPIRING THIS WEEK</Text>
             </View>
-            <Text style={styles.sectionBadge}>
-              {expiringList?.length || 0} Members
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              {expiringList && expiringList.length > 0 && (
+                <TouchableOpacity
+                  onPress={handleNotifyAll}
+                  style={styles.notifyAllBtn}
+                  activeOpacity={0.8}
+                >
+                  <MessageCircle size={12} color="#050505" />
+                  <Text style={styles.notifyAllBtnText}>Notify All</Text>
+                </TouchableOpacity>
+              )}
+              <Text style={styles.sectionBadge}>
+                {expiringList?.length || 0} Members
+              </Text>
+            </View>
           </View>
 
           {(!expiringList || expiringList.length === 0) ? (
@@ -611,6 +875,64 @@ export function DashboardScreen() {
           )}
         </View>
 
+        {/* ── ON-HOLD ATHLETES CAROUSEL ── */}
+        <View style={styles.sectionContainer}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleRow}>
+              <PauseCircle size={16} color="#FBBF24" />
+              <Text style={styles.sectionTitle}>ON-HOLD ATHLETES</Text>
+            </View>
+            <Text style={[styles.sectionBadge, { backgroundColor: 'rgba(251, 191, 36, 0.12)', color: '#FBBF24', borderColor: 'rgba(251, 191, 36, 0.3)' }]}>
+              {holdMembers?.length || 0} Paused
+            </Text>
+          </View>
+
+          {(!holdMembers || holdMembers.length === 0) ? (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyText}>No memberships currently on hold.</Text>
+            </View>
+          ) : (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.expiringCarousel}
+            >
+              {holdMembers.map((item: any) => (
+                <TouchableOpacity
+                  key={item.id}
+                  onPress={() => {
+                    haptics.light();
+                    navigation.navigate('MemberDetail', { memberId: item.id });
+                  }}
+                  style={styles.holdCard}
+                  activeOpacity={0.85}
+                >
+                  <View style={styles.expiringCardTop}>
+                    <View style={[styles.expiringAvatar, { borderColor: 'rgba(251, 191, 36, 0.4)' }]}>
+                      <Text style={[styles.expiringAvatarInitial, { color: '#FBBF24' }]}>
+                        {item.full_name?.charAt(0) || 'M'}
+                      </Text>
+                    </View>
+                    <View style={styles.holdBadgePill}>
+                      <Text style={styles.holdBadgeText}>ON HOLD</Text>
+                    </View>
+                  </View>
+
+                  <Text numberOfLines={1} style={styles.expiringCardName}>
+                    {item.full_name}
+                  </Text>
+                  <Text numberOfLines={1} style={styles.expiringCardPlan}>
+                    {item.plan_name || 'Standard'}
+                  </Text>
+                  <Text style={styles.expiringCardDate}>
+                    {item.membership_expiry_date ? `Expiry: ${formatDate(item.membership_expiry_date)}` : 'Paused'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+        </View>
+
         {/* ── 7-DAY ATTENDANCE TREND (NATIVE VISUALIZER) ── */}
         <View style={styles.sectionContainer}>
           <View style={styles.sectionHeader}>
@@ -672,34 +994,99 @@ export function DashboardScreen() {
               <Text style={styles.emptyText}>No recent payments recorded.</Text>
             </View>
           ) : (
-            recentPayments.map((p) => (
-              <TouchableOpacity
-                key={p.id}
-                onPress={() => navigation.navigate('PaymentReceipt', { payment: p })}
-                style={styles.recentPayRow}
-                activeOpacity={0.7}
-              >
-                <View style={styles.payIconBox}>
-                  <CreditCard size={16} color={colors.gold} />
-                </View>
+            recentPayments.map((p) => {
+              const memberName = p.members?.full_name || 'Member';
+              const photoUrl = (p.members as { profile_photo?: string | null } | undefined)?.profile_photo;
+              const initial = memberName.trim().charAt(0).toUpperCase();
+              return (
+                <TouchableOpacity
+                  key={p.id}
+                  onPress={() => navigation.navigate('PaymentReceipt', { payment: p })}
+                  style={styles.recentPayRow}
+                  activeOpacity={0.7}
+                >
+                  {photoUrl ? (
+                    <Image
+                      source={{ uri: photoUrl }}
+                      style={styles.payAvatarImage}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={styles.payAvatarFallback}>
+                      <Text style={styles.payAvatarInitial}>{initial}</Text>
+                    </View>
+                  )}
 
-                <View style={styles.payMiddleCol}>
-                  <Text numberOfLines={1} style={styles.payMemberName}>
-                    {p.members?.full_name || 'Member'}
-                  </Text>
-                  <Text style={styles.payMeta}>
-                    #{p.receipt_number || 'N/A'} · {p.payment_method} · {formatDate(p.payment_date || p.created_at)}
-                  </Text>
-                </View>
+                  <View style={styles.payMiddleCol}>
+                    <Text numberOfLines={1} style={styles.payMemberName}>
+                      {memberName}
+                    </Text>
+                    <Text style={styles.payMeta}>
+                      #{p.receipt_number || 'N/A'} · {p.payment_method} · {formatDate(p.payment_date || p.created_at)}
+                    </Text>
+                  </View>
 
-                <View style={styles.payRightCol}>
-                  <Text style={styles.payAmountText}>{formatCurrency(p.amount)}</Text>
-                  <Text style={styles.payStatusSuccess}>PAID</Text>
-                </View>
-              </TouchableOpacity>
-            ))
+                  <View style={styles.payRightCol}>
+                    <Text style={styles.payAmountText}>{formatCurrency(p.amount)}</Text>
+                    <Text style={styles.payStatusSuccess}>PAID</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })
           )}
         </View>
+
+        {/* ── PLAN DISTRIBUTION BREAKDOWN ── */}
+        {planDistribution && planDistribution.length > 0 && (
+          <View style={styles.sectionContainer}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionTitleRow}>
+                <Layers size={16} color={colors.gold} />
+                <Text style={styles.sectionTitle}>PLAN DISTRIBUTION</Text>
+              </View>
+              <Text style={styles.sectionBadge}>
+                {planDistribution.reduce((s, p) => s + p.count, 0)} Active Athletes
+              </Text>
+            </View>
+
+            <View style={styles.planDistributionGrid}>
+              {planDistribution.map((plan, idx) => (
+                <View key={plan.name} style={styles.planDistItem}>
+                  <View style={styles.planDistHeader}>
+                    <Text numberOfLines={1} style={styles.planDistName}>
+                      {plan.name}
+                    </Text>
+                    <Text style={styles.planDistCount}>{plan.count} athletes</Text>
+                  </View>
+                  <View style={styles.planDistBarBg}>
+                    <View
+                      style={[
+                        styles.planDistBarFill,
+                        {
+                          width: `${Math.min(
+                            100,
+                            Math.max(
+                              12,
+                              (plan.count /
+                                Math.max(...planDistribution.map((p) => p.count), 1)) *
+                                100
+                            )
+                          )}%`,
+                          backgroundColor:
+                            idx === 0
+                              ? colors.gold
+                              : idx === 1
+                              ? colors.blueLight
+                              : colors.success,
+                        },
+                      ]}
+                    />
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
 
         {/* Bottom padding for tabbar float */}
         <View style={{ height: 50 }} />
@@ -726,98 +1113,207 @@ export function DashboardScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#050505',
-  },
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 110,
-  },
-  heroBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#11141A',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: 20,
-    padding: 18,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 6,
-  },
-  heroLeft: {
-    flex: 1,
-    marginRight: 12,
-  },
-  greetingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  greetingTimeText: {
-    color: colors.textSecondary,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  heroUserName: {
-    color: colors.textPrimary,
-    fontSize: typography.sizes.xl,
-    fontFamily: typography.fonts.orbitron,
-    fontWeight: '800',
-    letterSpacing: 1,
-    marginTop: 2,
-  },
-  statusBeaconRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 8,
-  },
-  statusBeaconDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: colors.success,
-    shadowColor: colors.success,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.9,
-    shadowRadius: 4,
-  },
-  statusBeaconText: {
-    color: colors.success,
-    fontSize: 9.5,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-  },
-  heroRight: {
-    alignItems: 'center',
-  },
-  avatarRing: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#151920',
-    borderWidth: 1.8,
-    borderColor: colors.gold,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitial: {
-    color: colors.gold,
-    fontSize: typography.sizes.lg,
-    fontFamily: typography.fonts.orbitron,
-    fontWeight: '800',
-  },
+const getDashboardStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    scrollContent: {
+      paddingHorizontal: 16,
+      paddingTop: 12,
+      paddingBottom: 110,
+    },
+    heroBanner: {
+      position: 'relative',
+      borderRadius: 22,
+      padding: 18,
+      marginBottom: 16,
+      borderWidth: 1.5,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.35)' : 'rgba(217, 119, 6, 0.25)',
+      backgroundColor: colors.card,
+      shadowColor: isDark ? colors.gold : '#000000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: isDark ? 0.25 : 0.08,
+      shadowRadius: 12,
+      elevation: 6,
+      overflow: 'hidden',
+    },
+    heroTopHighlight: {
+      position: 'absolute',
+      top: 0,
+      left: 24,
+      right: 24,
+      height: 2,
+      borderRadius: 1,
+    },
+    heroContentRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    heroLeft: {
+      flex: 1,
+      marginRight: 14,
+    },
+    greetingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginBottom: 4,
+    },
+    greetingIconPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : 'rgba(217, 119, 6, 0.10)',
+      paddingHorizontal: 8,
+      paddingVertical: 3.5,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.25)' : 'rgba(217, 119, 6, 0.25)',
+    },
+    greetingTimeText: {
+      color: colors.gold,
+      fontSize: 10,
+      fontFamily: typography.fonts.orbitron,
+      fontWeight: '700',
+      letterSpacing: 0.8,
+    },
+    ownerEliteBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.18)' : 'rgba(217, 119, 6, 0.14)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.45)' : 'rgba(217, 119, 6, 0.35)',
+      paddingHorizontal: 8,
+      paddingVertical: 3.5,
+      borderRadius: 8,
+    },
+    ownerEliteBadgeText: {
+      color: isDark ? colors.goldBright : colors.gold,
+      fontSize: 9.5,
+      fontFamily: typography.fonts.orbitron,
+      fontWeight: '800',
+      letterSpacing: 0.8,
+    },
+    heroUserName: {
+      color: colors.textPrimary,
+      fontSize: 21,
+      fontFamily: typography.fonts.orbitron,
+      fontWeight: '900',
+      letterSpacing: 0.5,
+      marginTop: 4,
+      ...(isDark
+        ? {
+            textShadowColor: 'rgba(0, 0, 0, 0.8)',
+            textShadowOffset: { width: 0, height: 2 },
+            textShadowRadius: 4,
+          }
+        : {
+            textShadowColor: 'rgba(217, 119, 6, 0.12)',
+            textShadowOffset: { width: 0, height: 1 },
+            textShadowRadius: 2,
+          }),
+    },
+    statusBeaconRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginTop: 8,
+    },
+    statusBeaconGlow: {
+      width: 14,
+      height: 14,
+      borderRadius: 7,
+      backgroundColor: isDark ? 'rgba(34, 197, 94, 0.20)' : 'rgba(22, 163, 74, 0.15)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    statusBeaconDot: {
+      width: 7,
+      height: 7,
+      borderRadius: 3.5,
+      backgroundColor: colors.success,
+    },
+    statusBeaconText: {
+      color: isDark ? colors.success : '#15803D',
+      fontSize: 9.5,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 0.8,
+    },
+    heroRight: {
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    avatarWrapper: {
+      position: 'relative',
+      width: 64,
+      height: 64,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    avatarImage: {
+      width: 60,
+      height: 60,
+      borderRadius: 30,
+    },
+    avatarGoldRim: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      borderRadius: 32,
+      borderWidth: 2,
+      borderColor: colors.gold,
+      shadowColor: colors.gold,
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: isDark ? 0.6 : 0.25,
+      shadowRadius: 8,
+    },
+    avatarRing: {
+      width: 64,
+      height: 64,
+      borderRadius: 32,
+      padding: 2.5,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.45)' : 'rgba(217, 119, 6, 0.35)',
+      shadowColor: isDark ? colors.gold : '#000000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: isDark ? 0.65 : 0.15,
+      shadowRadius: 10,
+      elevation: 6,
+    },
+    avatarGradient: {
+      flex: 1,
+      borderRadius: 29,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1.5,
+      borderColor: colors.gold,
+      overflow: 'hidden',
+    },
+    avatarInnerGlow: {
+      position: 'absolute',
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.20)' : 'rgba(217, 119, 6, 0.15)',
+    },
+    avatarInitial: {
+      color: isDark ? colors.goldBright : colors.gold,
+      fontSize: 28,
+      fontFamily: typography.fonts.orbitron,
+      fontWeight: '900',
+      textAlign: 'center',
+      includeFontPadding: false,
+      textShadowColor: isDark ? 'rgba(239, 161, 0, 0.6)' : 'rgba(217, 119, 6, 0.25)',
+      textShadowOffset: { width: 0, height: 1 },
+      textShadowRadius: 6,
+    },
   quickActionsScroll: {
     flexDirection: 'row',
     gap: 10,
@@ -856,22 +1352,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: '#11141A',
+    backgroundColor: isDark ? '#11141A' : colors.cardBackground,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: colors.borderDark,
     borderRadius: 24,
     paddingHorizontal: 15,
     paddingVertical: 10,
   },
   actionPillBlue: {
-    borderColor: 'rgba(0, 102, 255, 0.25)',
-    backgroundColor: '#0C121E',
+    borderColor: colors.blueBorder,
+    backgroundColor: isDark ? '#0C121E' : colors.blueMuted,
   },
   actionPillIconDark: {
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: 'rgba(239, 161, 0, 0.12)',
+    backgroundColor: colors.goldMuted,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -879,7 +1375,7 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: 'rgba(0, 102, 255, 0.15)',
+    backgroundColor: colors.blueMuted,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -894,13 +1390,13 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.25)',
+    borderColor: colors.goldBorder,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.4,
+    shadowColor: colors.shadowColor,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
     shadowRadius: 10,
-    elevation: 6,
+    elevation: 4,
   },
   bentoHeroGradient: {
     padding: 20,
@@ -924,7 +1420,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   bentoHeroBadge: {
-    backgroundColor: 'rgba(239, 161, 0, 0.18)',
+    backgroundColor: colors.goldMuted,
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -936,7 +1432,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   bentoHeroAmount: {
-    color: '#FFFFFF',
     fontSize: 34,
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '800',
@@ -949,7 +1444,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
     paddingTop: 14,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+    borderTopColor: colors.borderDark,
   },
   bentoHeroMetaItem: {
     flex: 1,
@@ -971,7 +1466,7 @@ const styles = StyleSheet.create({
   bentoHeroDivider: {
     width: 1,
     height: 24,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: colors.borderDark,
   },
   bentoRow: {
     flexDirection: 'row',
@@ -980,17 +1475,22 @@ const styles = StyleSheet.create({
   },
   bentoCard: {
     flex: 1,
-    backgroundColor: '#11141A',
+    backgroundColor: colors.cardBackground,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: colors.borderDark,
     borderRadius: 18,
     padding: 16,
+    shadowColor: colors.shadowColor,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 2,
   },
   bentoCardBlue: {
-    borderColor: 'rgba(0, 102, 255, 0.22)',
+    borderColor: colors.blueBorder,
   },
   bentoCardAmber: {
-    borderColor: 'rgba(239, 161, 0, 0.22)',
+    borderColor: colors.goldBorder,
   },
   bentoIconHeader: {
     flexDirection: 'row',
@@ -1009,7 +1509,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(0, 102, 255, 0.12)',
+    backgroundColor: colors.blueMuted,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 6,
@@ -1018,10 +1518,10 @@ const styles = StyleSheet.create({
     width: 5,
     height: 5,
     borderRadius: 3,
-    backgroundColor: colors.blueLight,
+    backgroundColor: colors.blue,
   },
   bentoLiveText: {
-    color: colors.blueLight,
+    color: colors.blue,
     fontSize: 9,
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '800',
@@ -1031,7 +1531,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '800',
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    backgroundColor: colors.warningMuted,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 6,
@@ -1052,9 +1552,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#0B0E13',
+    backgroundColor: isDark ? '#0B0E13' : colors.surfaceLight,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: colors.borderDark,
     borderRadius: 14,
     paddingVertical: 10,
     paddingHorizontal: 16,
@@ -1080,7 +1580,7 @@ const styles = StyleSheet.create({
   pillStatDivider: {
     width: 1,
     height: 18,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: colors.borderDark,
   },
   sectionContainer: {
     marginBottom: 22,
@@ -1121,11 +1621,16 @@ const styles = StyleSheet.create({
   },
   expiringCard: {
     width: 175,
-    backgroundColor: '#11141A',
+    backgroundColor: colors.cardBackground,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: colors.borderDark,
     borderRadius: 18,
     padding: 14,
+    shadowColor: colors.shadowColor,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 2,
   },
   expiringCardTop: {
     flexDirection: 'row',
@@ -1137,7 +1642,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#161B22',
+    backgroundColor: isDark ? '#161B22' : '#EDF2F7',
     borderWidth: 1,
     borderColor: colors.gold,
     alignItems: 'center',
@@ -1150,13 +1655,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   daysLeftPill: {
-    backgroundColor: 'rgba(239, 161, 0, 0.15)',
+    backgroundColor: colors.goldMuted,
     borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
   daysLeftPillUrgent: {
-    backgroundColor: 'rgba(239, 68, 68, 0.2)',
+    backgroundColor: colors.errorMuted,
   },
   daysLeftPillText: {
     color: colors.gold,
@@ -1211,11 +1716,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   trendCard: {
-    backgroundColor: '#11141A',
+    backgroundColor: colors.cardBackground,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: colors.borderDark,
     borderRadius: 20,
     padding: 18,
+    shadowColor: colors.shadowColor,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 2,
   },
   chartBarsRow: {
     flexDirection: 'row',
@@ -1242,7 +1752,7 @@ const styles = StyleSheet.create({
   barTrack: {
     width: 14,
     height: 85,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : '#E2E8F0',
     borderRadius: 7,
     justifyContent: 'flex-end',
     overflow: 'hidden',
@@ -1264,21 +1774,43 @@ const styles = StyleSheet.create({
   recentPayRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#11141A',
+    backgroundColor: colors.cardBackground,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: colors.borderDark,
     borderRadius: 16,
     padding: 14,
     marginBottom: 8,
+    shadowColor: colors.shadowColor,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 1,
   },
-  payIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: 'rgba(239, 161, 0, 0.1)',
+  payAvatarImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: colors.goldBorder,
+    marginRight: 12,
+  },
+  payAvatarFallback: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.goldMuted,
+    borderWidth: 1.5,
+    borderColor: colors.goldBorder,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
+  },
+  payAvatarInitial: {
+    color: colors.gold,
+    fontSize: 16,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+    lineHeight: 20,
   },
   payMiddleCol: {
     flex: 1,
@@ -1312,9 +1844,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   emptyCard: {
-    backgroundColor: '#0D1014',
+    backgroundColor: isDark ? '#0D1014' : colors.surfaceLight,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
+    borderColor: colors.borderDark,
     borderRadius: 14,
     padding: 20,
     alignItems: 'center',
@@ -1323,5 +1855,164 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: typography.sizes.sm,
     fontFamily: typography.fonts.inter,
+  },
+  execFilterBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: isDark ? '#0C0F14' : colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: colors.goldBorder,
+    borderRadius: 14,
+    marginHorizontal: 16,
+    marginBottom: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  execFilterLeft: {
+    flex: 1,
+  },
+  execFilterRight: {
+    alignItems: 'flex-end',
+  },
+  execFilterHeading: {
+    color: colors.textMuted,
+    fontSize: 9,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    marginBottom: 4,
+  },
+  execFilterMonthRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  execMonthArrow: {
+    padding: 4,
+    borderRadius: 6,
+    backgroundColor: colors.goldMuted,
+  },
+  execMonthBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.goldMuted,
+    borderWidth: 1,
+    borderColor: colors.goldBorder,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  execMonthText: {
+    color: colors.gold,
+    fontSize: 11,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+  },
+  execDatePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: isDark ? '#141820' : colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderDark,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  execDatePillActive: {
+    backgroundColor: colors.gold,
+    borderColor: colors.goldBright,
+  },
+  execDatePillText: {
+    color: colors.gold,
+    fontSize: 10,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  execDatePillTextActive: {
+    color: '#050505',
+  },
+  notifyAllBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.gold,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  notifyAllBtnText: {
+    color: '#050505',
+    fontSize: 10,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '800',
+  },
+  holdCard: {
+    width: 170,
+    backgroundColor: colors.cardBackground,
+    borderWidth: 1,
+    borderColor: 'rgba(251, 191, 36, 0.35)',
+    borderRadius: 14,
+    padding: 12,
+    marginRight: 10,
+    shadowColor: colors.shadowColor,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  holdBadgePill: {
+    backgroundColor: 'rgba(251, 191, 36, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(251, 191, 36, 0.4)',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  holdBadgeText: {
+    color: '#FBBF24',
+    fontSize: 9,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  planDistributionGrid: {
+    backgroundColor: isDark ? '#0E1116' : colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: colors.borderDark,
+    borderRadius: 14,
+    padding: 14,
+    gap: 12,
+  },
+  planDistItem: {
+    gap: 4,
+  },
+  planDistHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  planDistName: {
+    color: colors.textPrimary,
+    fontSize: 12,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+  },
+  planDistCount: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontFamily: typography.fonts.inter,
+  },
+  planDistBarBg: {
+    height: 6,
+    backgroundColor: isDark ? '#1A1E26' : '#E2E8F0',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  planDistBarFill: {
+    height: '100%',
+    borderRadius: 3,
   },
 });

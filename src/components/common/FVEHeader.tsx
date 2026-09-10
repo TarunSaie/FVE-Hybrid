@@ -13,9 +13,9 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Bell, Menu } from 'lucide-react-native';
-import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/api/supabase';
 import { AppDrawerModal } from '@/components/layout/AppDrawerModal';
 import { haptics } from '@/utils/haptics';
@@ -44,6 +44,7 @@ export function FVEHeader({
 }: FVEHeaderProps) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { user } = useAuth();
+  const { colors, isDark } = useTheme();
   const [drawerVisible, setDrawerVisible] = useState(false);
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : insets.top;
@@ -52,15 +53,19 @@ export function FVEHeader({
     queryKey: ['unread-notifications-count', user?.id],
     queryFn: async () => {
       if (!user?.id) return 0;
-      const { count } = await supabase
+      const { count, error } = await supabase
         .from('notifications')
         .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('read', false);
+        .eq('read', false)
+        .or(`user_id.eq.${user.id},user_id.is.null`);
+
+      if (error) {
+        return 0;
+      }
       return count || 0;
     },
     enabled: !!user?.id,
-    refetchInterval: 20000,
+    refetchInterval: 15000,
   });
 
   const finalUnreadCount = unreadCount || fetchedUnreadCount || 0;
@@ -74,17 +79,27 @@ export function FVEHeader({
     }
   };
 
+  const buttonBg = isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(15, 23, 42, 0.05)';
 
   return (
     <>
-      <View style={[styles.headerWrap, { paddingTop: topPad }]}>
-        <View style={styles.container}>
+      <View
+        style={[
+          styles.headerWrap,
+          {
+            paddingTop: topPad,
+            backgroundColor: isDark ? '#080A0D' : colors.cardBackground,
+            borderBottomColor: colors.borderDark,
+          },
+        ]}
+      >
+        <View style={[styles.container, { backgroundColor: isDark ? '#080A0D' : colors.cardBackground }]}>
           {/* Left: Back button OR Drawer Menu + Logo */}
           <View style={styles.leftContainer}>
             {showBack ? (
               <TouchableOpacity
                 onPress={onBack}
-                style={styles.backButton}
+                style={[styles.backButton, { backgroundColor: buttonBg }]}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 <ArrowLeft size={22} color={colors.gold} />
@@ -95,7 +110,7 @@ export function FVEHeader({
                   haptics.light();
                   setDrawerVisible(true);
                 }}
-                style={styles.menuButton}
+                style={[styles.menuButton, { backgroundColor: buttonBg }]}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 activeOpacity={0.7}
               >
@@ -113,14 +128,14 @@ export function FVEHeader({
 
             <View style={styles.titleContainer}>
               {title ? (
-                <Text numberOfLines={1} style={styles.title}>
+                <Text numberOfLines={1} style={[styles.title, { color: colors.textPrimary }]}>
                   {title}
                 </Text>
               ) : (
-                <Text style={styles.brandTitle}>FITVERSE ELITE</Text>
+                <Text style={[styles.brandTitle, { color: colors.gold }]}>FITVERSE ELITE</Text>
               )}
               {subtitle && (
-                <Text numberOfLines={1} style={styles.subtitle}>
+                <Text numberOfLines={1} style={[styles.subtitle, { color: colors.textMuted }]}>
                   {subtitle}
                 </Text>
               )}
@@ -130,8 +145,8 @@ export function FVEHeader({
           {/* Right Action */}
           <View style={styles.rightContainer}>
             {user?.isStaffProfile && (
-              <View style={styles.staffModeBadge}>
-                <Text style={styles.staffModeText}>STAFF MODE</Text>
+              <View style={[styles.staffModeBadge, { backgroundColor: colors.goldMuted, borderColor: colors.goldBorder }]}>
+                <Text style={[styles.staffModeText, { color: colors.gold }]}>STAFF MODE</Text>
               </View>
             )}
 
@@ -140,12 +155,12 @@ export function FVEHeader({
             {(!showBack || onNotificationsPress) && (
               <TouchableOpacity
                 onPress={handleNotificationPress}
-                style={styles.notificationButton}
+                style={[styles.notificationButton, { backgroundColor: buttonBg }]}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 <Bell size={20} color={colors.gold} />
                 {finalUnreadCount > 0 && (
-                  <View style={styles.badgeCount}>
+                  <View style={[styles.badgeCount, { backgroundColor: colors.error }]}>
                     <Text style={styles.badgeText}>
                       {finalUnreadCount > 9 ? '9+' : finalUnreadCount}
                     </Text>
@@ -168,9 +183,7 @@ export function FVEHeader({
 
 const styles = StyleSheet.create({
   headerWrap: {
-    backgroundColor: '#080A0D',
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
   },
   container: {
     height: 56,
@@ -178,7 +191,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    backgroundColor: '#080A0D',
   },
   leftContainer: {
     flexDirection: 'row',
@@ -189,7 +201,6 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
@@ -198,7 +209,6 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
@@ -210,23 +220,21 @@ const styles = StyleSheet.create({
   },
   titleContainer: {
     flex: 1,
+    paddingRight: 6,
   },
   brandTitle: {
-    color: colors.gold,
     fontSize: typography.sizes.sm,
     fontFamily: typography.fonts.orbitron,
     fontWeight: '700',
     letterSpacing: 1.5,
   },
   title: {
-    color: colors.textPrimary,
     fontSize: typography.sizes.base,
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '700',
     letterSpacing: 0.5,
   },
   subtitle: {
-    color: colors.textMuted,
     fontSize: 11,
     fontFamily: typography.fonts.inter,
     marginTop: 1,
@@ -237,15 +245,12 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   staffModeBadge: {
-    backgroundColor: 'rgba(239, 161, 0, 0.12)',
-    borderColor: 'rgba(239, 161, 0, 0.3)',
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
   staffModeText: {
-    color: colors.gold,
     fontSize: 9,
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '700',
@@ -255,7 +260,6 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
@@ -264,7 +268,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 4,
     right: 4,
-    backgroundColor: colors.error,
     borderRadius: 8,
     minWidth: 15,
     height: 15,

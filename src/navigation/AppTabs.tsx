@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useMemo } from 'react';
 import { StyleSheet, Platform, View, Pressable, Animated, Text } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,8 +10,9 @@ import { AttendanceScreen } from '@/screens/attendance/AttendanceScreen';
 import { PaymentsScreen } from '@/screens/payments/PaymentsScreen';
 import { SettingsScreen } from '@/screens/settings/SettingsScreen';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { canAccessTab } from '@/constants/permissions';
-import { colors } from '@/constants/colors';
+import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { haptics } from '@/utils/haptics';
 import { MainTabParamList } from './types';
@@ -80,12 +81,23 @@ function AnimatedTabButton({
 interface TabIconProps {
   icon: React.ReactNode;
   focused: boolean;
+  isDark: boolean;
 }
 
-function TabIcon({ icon, focused }: TabIconProps) {
+function TabIcon({ icon, focused, isDark }: TabIconProps) {
   return (
     <View style={styles.iconWrap}>
-      {focused && <View style={styles.activePill} />}
+      {focused && (
+        <View
+          style={[
+            styles.activePill,
+            {
+              backgroundColor: isDark ? 'rgba(239,161,0,0.16)' : 'rgba(217,130,0,0.12)',
+              borderColor: isDark ? 'rgba(239,161,0,0.25)' : 'rgba(217,130,0,0.22)',
+            },
+          ]}
+        />
+      )}
       {icon}
     </View>
   );
@@ -94,6 +106,7 @@ function TabIcon({ icon, focused }: TabIconProps) {
 export function AppTabs() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { colors, isDark } = useTheme();
   const role = user?.role;
 
   const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 16 : 12);
@@ -103,24 +116,32 @@ export function AppTabs() {
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
+        lazy: false,
 
         tabBarStyle: [
           styles.tabBar,
           {
             height: tabBarHeight,
             paddingBottom: bottomInset,
+            backgroundColor: Platform.OS === 'ios' ? 'transparent' : colors.cardBackground,
+            borderTopColor: colors.borderDark,
           },
         ],
 
         tabBarBackground: () =>
           Platform.OS === 'ios' ? (
-            <BlurView tint="dark" intensity={90} style={StyleSheet.absoluteFill} />
+            <BlurView tint={isDark ? 'dark' : 'light'} intensity={95} style={StyleSheet.absoluteFill} />
           ) : (
-            <View style={[StyleSheet.absoluteFill, styles.androidBackground]} />
+            <View
+              style={[
+                StyleSheet.absoluteFill,
+                { backgroundColor: colors.cardBackground },
+              ]}
+            />
           ),
 
         tabBarActiveTintColor: colors.gold,
-        tabBarInactiveTintColor: 'rgba(138,146,166,0.7)',
+        tabBarInactiveTintColor: isDark ? 'rgba(138,146,166,0.7)' : 'rgba(100,116,139,0.8)',
 
         tabBarLabelStyle: styles.tabLabel,
         tabBarItemStyle: styles.tabItem,
@@ -139,6 +160,7 @@ export function AppTabs() {
             tabBarIcon: ({ color, focused }) => (
               <TabIcon
                 focused={focused}
+                isDark={isDark}
                 icon={<Home size={22} color={color} strokeWidth={focused ? 2.5 : 1.8} />}
               />
             ),
@@ -157,6 +179,7 @@ export function AppTabs() {
             tabBarIcon: ({ color, focused }) => (
               <TabIcon
                 focused={focused}
+                isDark={isDark}
                 icon={<Users size={22} color={color} strokeWidth={focused ? 2.5 : 1.8} />}
               />
             ),
@@ -175,6 +198,7 @@ export function AppTabs() {
             tabBarIcon: ({ color, focused }) => (
               <TabIcon
                 focused={focused}
+                isDark={isDark}
                 icon={<UserCheck size={22} color={color} strokeWidth={focused ? 2.5 : 1.8} />}
               />
             ),
@@ -193,6 +217,7 @@ export function AppTabs() {
             tabBarIcon: ({ color, focused }) => (
               <TabIcon
                 focused={focused}
+                isDark={isDark}
                 icon={<CreditCard size={22} color={color} strokeWidth={focused ? 2.5 : 1.8} />}
               />
             ),
@@ -211,6 +236,7 @@ export function AppTabs() {
             tabBarIcon: ({ color, focused }) => (
               <TabIcon
                 focused={focused}
+                isDark={isDark}
                 icon={<Settings size={22} color={color} strokeWidth={focused ? 2.5 : 1.8} />}
               />
             ),
@@ -223,23 +249,17 @@ export function AppTabs() {
 
 const styles = StyleSheet.create({
   tabBar: {
-    backgroundColor: Platform.OS === 'ios' ? 'transparent' : '#0A0C10',
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(255,255,255,0.1)',
     paddingTop: 4,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
     elevation: 20,
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-  },
-
-  androidBackground: {
-    backgroundColor: '#0A0C10',
   },
 
   tabButton: {
@@ -285,8 +305,6 @@ const styles = StyleSheet.create({
     width: 44,
     height: 28,
     borderRadius: 14,
-    backgroundColor: 'rgba(239,161,0,0.16)',
     borderWidth: 1,
-    borderColor: 'rgba(239,161,0,0.22)',
   },
 });

@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import {
@@ -14,19 +15,26 @@ import {
   Upload,
   Calendar,
   Trash2,
+  CreditCard,
+  Check,
+  Sparkles,
 } from 'lucide-react-native';
 import { FVEModal } from '@/components/common/FVEModal';
 import { FVEInput } from '@/components/common/FVEInput';
 import { FVEButton } from '@/components/common/FVEButton';
 import { FVEDatePickerModal } from '@/components/common/FVEDatePickerModal';
-import { Member, BLOOD_GROUPS } from '@/types';
+import { Member, MembershipPlan, BLOOD_GROUPS, PAYMENT_METHODS } from '@/types';
 import { supabase } from '@/api/supabase';
-import { getLocalDateStr, calculateAge, formatDate } from '@/utils/date';
+import { getLocalDateStr, calculateAge, formatDate, calculateExpiryDate } from '@/utils/date';
+import { formatCurrency, generateReceiptNumber } from '@/utils/format';
 import { useAuth } from '@/contexts/AuthContext';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
+import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { haptics } from '@/utils/haptics';
+import { sounds } from '@/utils/sounds';
 import { checkAndNotifyBirthdays } from '@/hooks/useBirthdayAlerts';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface MemberFormModalProps {
   visible: boolean;
@@ -44,6 +52,9 @@ export function MemberFormModal({
   member,
 }: MemberFormModalProps) {
   const { user } = useAuth();
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => getMemberFormStyles(colors, isDark), [colors, isDark]);
+  const qc = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
 
@@ -67,6 +78,15 @@ export function MemberFormModal({
   // Date picker modals
   const [showDobPicker, setShowDobPicker] = useState(false);
   const [showJoiningPicker, setShowJoiningPicker] = useState(false);
+
+  // Instant plan enrollment state (only for new member registration)
+  const [enrollInPlan, setEnrollInPlan] = useState(false);
+  const [plans, setPlans] = useState<MembershipPlan[]>([]);
+  const [selectedPlanId, setSelectedPlanId] = useState('');
+  const [planStartDate, setPlanStartDate] = useState(getLocalDateStr());
+  const [showPlanStartDatePicker, setShowPlanStartDatePicker] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<string>('UPI');
+  const amountPaidRef = useRef('');
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -105,7 +125,25 @@ export function MemberFormModal({
       setProfilePhoto('');
     }
     setErrors({});
+
+    // If opening for a new member, fetch active membership plans
+    if (visible && !member) {
+      supabase
+        .from('membership_plans')
+        .select('*')
+        .eq('active', true)
+        .order('price')
+        .then(({ data }) => {
+          setPlans((data || []) as MembershipPlan[]);
+        });
+      setEnrollInPlan(false);
+      setSelectedPlanId('');
+      setPlanStartDate(getLocalDateStr());
+      amountPaidRef.current = '';
+    }
   }, [member, visible]);
+
+  const selectedPlan = plans.find(p => p.id === selectedPlanId);
 
   // Upload image to Supabase Storage
   const uploadImageToSupabase = async (uri: string) => {
@@ -204,7 +242,7 @@ export function MemberFormModal({
     if (!gender) {
       errs.gender = 'Please select a gender';
     }
-    if (!addressRef.current.trim() && !notesRef.current) {
+    if (!addressRef.current.trim()) {
       errs.address = 'Residential address is required';
     }
     if (!joiningDate.trim()) {
@@ -233,24 +271,34 @@ export function MemberFormModal({
         ? calculateAge(dateOfBirth.trim())
         : (ageRef.current ? parseInt(ageRef.current, 10) : null);
 
-      const payload = {
+      // Base payload — member_id excluded from INSERTs so the DB trigger
+      // auto-assigns the next FVE-XX value. For UPDATEs we include it so
+      // admins can manually correct an ID if needed.
+      // NOTE: all text columns in the DB are NOT NULL DEFAULT '' — send ''
+      // not null for optional fields to avoid constraint violations.
+      const basePayload = {
         full_name: fullNameRef.current.trim(),
-        member_id: memberIdRef.current.trim() || null,
         mobile: mobileRef.current.trim() || null,
         email: emailRef.current.trim().toLowerCase() || null,
         date_of_birth: dateOfBirth.trim() || null,
-        age: calculatedAge ?? null,
-        gender,
+        age: calculatedAge ?? 0,
+        gender: gender || '',
         joining_date: joiningDate.trim() || getLocalDateStr(),
-        height: heightRef.current.trim() || null,
-        weight: weightRef.current.trim() || null,
-        blood_group: bloodGroup.trim() || null,
-        address: addressRef.current.trim(),
-        emergency_contact: emergencyContactRef.current.trim() || null,
-        notes: notesRef.current.trim() || null,
-        profile_photo: profilePhoto.trim() || null,
+        height: heightRef.current.trim() || '',
+        weight: weightRef.current.trim() || '',
+        blood_group: bloodGroup.trim() || '',
+        address: addressRef.current.trim() || '',
+        emergency_contact: emergencyContactRef.current.trim() || '',
+        notes: notesRef.current.trim() || '',
+        profile_photo: profilePhoto.trim() || '',
         updated_at: new Date().toISOString(),
       };
+
+      // Custom member ID (optional override; leave empty to auto-assign sequential FVE-XX)
+      const customId = memberIdRef.current.trim();
+      const payload = member
+        ? { ...basePayload, member_id: customId || undefined }
+        : (customId ? { ...basePayload, member_id: customId } : basePayload);
 
       if (member) {
         const { error } = await supabase
@@ -263,16 +311,108 @@ export function MemberFormModal({
         Alert.alert('Success', `${fullNameRef.current} updated successfully!`);
       } else {
         const randomQR = `FVE-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-        const { error } = await supabase.from('members').insert({
+        const { data: insertedMember, error } = await supabase.from('members').insert({
           ...payload,
           qr_code: randomQR,
           created_by: user?.id || null,
           created_at: new Date().toISOString(),
-        });
+        }).select('id, member_id, full_name').single();
 
         if (error) throw error;
+
+        // Insert in-app notification for new member registration
+        try {
+          const registeredName = fullNameRef.current.trim() || 'New member';
+          const memberCode = insertedMember?.member_id || memberIdRef.current.trim() || 'New';
+          const notifMsg = `New member ${registeredName} (${memberCode}) registered to FitVerse Elite.`;
+          const { data: admins } = await supabase
+            .from('user_profiles')
+            .select('id')
+            .in('role', ['OWNER', 'ADMIN']);
+
+          const notifRows: { user_id: string; title: string; message: string; type: string }[] = [];
+          const targetIds = new Set<string>();
+          if (user?.id) targetIds.add(user.id);
+          (admins || []).forEach(a => targetIds.add(a.id));
+
+          targetIds.forEach(uid => {
+            notifRows.push({
+              user_id: uid,
+              title: 'New Member Registered',
+              message: notifMsg,
+              type: 'INFO',
+            });
+          });
+
+          if (notifRows.length > 0) {
+            await supabase.from('notifications').insert(notifRows);
+            sounds.notification();
+            qc.invalidateQueries({ queryKey: ['mobile-notifications'] });
+            qc.invalidateQueries({ queryKey: ['unread-notifications'] });
+            qc.invalidateQueries({ queryKey: ['unread-notifications-count'] });
+          }
+        } catch (notifErr) {
+          console.warn('[MemberFormModal] Notification error:', notifErr);
+        }
+
+        // If plan enrollment was enabled, create membership and payment record
+        if (enrollInPlan && selectedPlan && insertedMember?.id) {
+          try {
+            const planExpiry = calculateExpiryDate(
+              planStartDate,
+              selectedPlan.duration_days
+            );
+
+            const { data: newMembership, error: msErr } = await supabase
+              .from('memberships')
+              .insert({
+                member_id: insertedMember.id,
+                membership_plan_id: selectedPlan.id,
+                start_date: planStartDate,
+                expiry_date: planExpiry,
+                status: 'ACTIVE',
+                visit_day_limit: selectedPlan.visit_day_limit || null,
+                visit_days_used: 0,
+                created_by: user?.id || null,
+                created_at: new Date().toISOString(),
+              })
+              .select('id')
+              .single();
+
+            if (msErr) throw msErr;
+
+            const paidAmount = amountPaidRef.current.trim() || String(selectedPlan.price || 0);
+            const receiptNo = generateReceiptNumber();
+
+            const { error: payErr } = await supabase.from('payments').insert({
+              member_id: insertedMember.id,
+              membership_id: newMembership.id,
+              membership_plan_id: selectedPlan.id,
+              amount: paidAmount,
+              payment_method: paymentMethod,
+              receipt_no: receiptNo,
+              payment_date: planStartDate,
+              created_by: user?.id || null,
+              created_at: new Date().toISOString(),
+            });
+
+            if (payErr) console.warn('[MemberFormModal] Payment creation error:', payErr);
+
+            qc.invalidateQueries({ queryKey: ['payments'] });
+            qc.invalidateQueries({ queryKey: ['recent-payments'] });
+            qc.invalidateQueries({ queryKey: ['dashboard-stats'] });
+          } catch (enrollErr) {
+            console.warn('[MemberFormModal] Auto-enrollment error:', enrollErr);
+          }
+        }
+
         haptics.success();
-        Alert.alert('Success', `${fullNameRef.current} registered to FitVerse Elite!`);
+        Alert.alert(
+          'Success',
+          enrollInPlan && selectedPlan
+            ? `${fullNameRef.current} registered & enrolled in ${selectedPlan.name}!`
+            : `${fullNameRef.current} registered to FitVerse Elite!`
+        );
       }
 
       // Check if new/updated member's birthday is today and notify Admins/Owners
@@ -380,7 +520,7 @@ export function MemberFormModal({
                 label="MEMBER ID (OPTIONAL)"
                 defaultValue={memberIdRef.current}
                 onChangeText={(t) => { memberIdRef.current = t; }}
-                placeholder="e.g. FVE-101"
+                placeholder="Auto-assigned (e.g. FVE-11)"
               />
             </View>
             <View style={[styles.flex1, { marginLeft: 10 }]}>
@@ -573,6 +713,148 @@ export function MemberFormModal({
             style={styles.multilineInput}
           />
 
+          {/* ── SECTION 4: INSTANT PLAN ENROLLMENT (OPTIONAL FOR NEW ATHLETES) ── */}
+          {!member && (
+            <View style={styles.planEnrollmentSection}>
+              <View style={styles.sectionHeader}>
+                <View style={styles.sectionAccent} />
+                <Text style={styles.sectionTitle}>MEMBERSHIP PLAN ENROLLMENT (OPTIONAL)</Text>
+              </View>
+
+              <TouchableOpacity
+                onPress={() => {
+                  haptics.selection();
+                  const next = !enrollInPlan;
+                  setEnrollInPlan(next);
+                  if (next && !selectedPlanId && plans.length > 0) {
+                    setSelectedPlanId(plans[0].id);
+                    amountPaidRef.current = String(plans[0].price);
+                  }
+                }}
+                style={[
+                  styles.enrollToggleCard,
+                  enrollInPlan && styles.enrollToggleCardActive,
+                ]}
+                activeOpacity={0.8}
+              >
+                <View style={styles.enrollToggleLeft}>
+                  <CreditCard size={18} color={enrollInPlan ? colors.gold : colors.textMuted} />
+                  <View style={styles.enrollToggleTextContainer}>
+                    <Text style={[styles.enrollToggleTitle, enrollInPlan && styles.enrollToggleTitleActive]}>
+                      {enrollInPlan ? 'Plan Enrollment Activated' : 'Enroll in Membership Plan Now'}
+                    </Text>
+                    <Text style={styles.enrollToggleSub}>
+                      {enrollInPlan
+                        ? 'Creates active subscription & payment record'
+                        : 'Tap to assign plan and collect initial fee immediately'}
+                    </Text>
+                  </View>
+                </View>
+                <View style={[styles.toggleCheckbox, enrollInPlan && styles.toggleCheckboxActive]}>
+                  {enrollInPlan && <Check size={14} color="#050505" strokeWidth={3} />}
+                </View>
+              </TouchableOpacity>
+
+              {enrollInPlan && (
+                <View style={styles.planEnrollmentBody}>
+                  {/* Active Plans Horizontal Picker */}
+                  <Text style={styles.fieldLabel}>SELECT ACTIVE PLAN</Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.planScroll}
+                  >
+                    {plans.map((p) => {
+                      const isSel = selectedPlanId === p.id;
+                      return (
+                        <TouchableOpacity
+                          key={p.id}
+                          onPress={() => {
+                            haptics.selection();
+                            setSelectedPlanId(p.id);
+                            amountPaidRef.current = String(p.price);
+                          }}
+                          style={[styles.planCardChip, isSel && styles.planCardChipActive]}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.planCardName, isSel && styles.planCardNameActive]}>
+                            {p.name}
+                          </Text>
+                          <Text style={styles.planCardPrice}>
+                            {formatCurrency(p.price)}
+                          </Text>
+                          <Text style={styles.planCardDuration}>
+                            {p.duration_type || `${p.duration_days} days`}
+                            {p.visit_day_limit ? ` • ${p.visit_day_limit} visits` : ''}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+
+                  {/* Plan Start Date */}
+                  <TouchableOpacity
+                    onPress={() => setShowPlanStartDatePicker(true)}
+                    style={styles.planDateBtn}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.planDateLeft}>
+                      <Calendar size={16} color={colors.gold} />
+                      <View>
+                        <Text style={styles.planDateLabel}>START DATE</Text>
+                        <Text style={styles.planDateVal}>{formatDate(planStartDate)}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.planDateChange}>Change</Text>
+                  </TouchableOpacity>
+
+                  {/* Calculated Expiry Card */}
+                  {selectedPlan && (
+                    <View style={styles.calculatedExpiryCard}>
+                      <Text style={styles.calculatedExpiryLabel}>ESTIMATED SUBSCRIPTION EXPIRY</Text>
+                      <Text style={styles.calculatedExpiryVal}>
+                        {formatDate(calculateExpiryDate(planStartDate, selectedPlan.duration_days))}
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* Payment Method Chips */}
+                  <View style={styles.fieldBlock}>
+                    <Text style={styles.fieldLabel}>PAYMENT METHOD</Text>
+                    <View style={styles.chipsRow}>
+                      {PAYMENT_METHODS.map((pm) => {
+                        const isSel = paymentMethod === pm;
+                        return (
+                          <TouchableOpacity
+                            key={pm}
+                            onPress={() => {
+                              haptics.selection();
+                              setPaymentMethod(pm);
+                            }}
+                            style={[styles.genderChip, isSel && styles.genderChipSelected]}
+                          >
+                            <Text style={[styles.genderChipText, isSel && styles.genderChipTextSelected]}>
+                              {pm}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+
+                  {/* Initial Fee Collected */}
+                  <FVEInput
+                    label="INITIAL FEE COLLECTED (₹)"
+                    defaultValue={amountPaidRef.current || (selectedPlan ? String(selectedPlan.price) : '')}
+                    onChangeText={(t) => { amountPaidRef.current = t; }}
+                    placeholder="Enter amount in Rupees"
+                    keyboardType="numeric"
+                  />
+                </View>
+              )}
+            </View>
+          )}
+
           <FVEButton
             title={member ? 'UPDATE ATHLETE RECORD' : 'SAVE & REGISTER MEMBER'}
             onPress={handleSave}
@@ -601,259 +883,430 @@ export function MemberFormModal({
         initialDate={joiningDate || getLocalDateStr()}
         title="SELECT JOINING DATE"
       />
+
+      {/* Plan Start Date Picker */}
+      <FVEDatePickerModal
+        visible={showPlanStartDatePicker}
+        onClose={() => setShowPlanStartDatePicker(false)}
+        onSelectDate={(d) => setPlanStartDate(d)}
+        initialDate={planStartDate || getLocalDateStr()}
+        title="SELECT MEMBERSHIP START DATE"
+      />
     </>
   );
 }
 
-const styles = StyleSheet.create({
-  form: {
-    paddingBottom: 20,
-  },
-  mediaCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#11141A',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 20,
-    gap: 14,
-  },
-  avatarContainer: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    borderWidth: 2,
-    borderColor: colors.gold,
-    overflow: 'hidden',
-    backgroundColor: '#151920',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarImage: {
-    width: '100%',
-    height: '100%',
-  },
-  avatarPlaceholder: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#151920',
-  },
-  avatarInitial: {
-    color: colors.gold,
-    fontSize: 26,
-    fontFamily: typography.fonts.orbitron,
-    fontWeight: '700',
-  },
-  uploadingOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mediaButtonsCol: {
-    flex: 1,
-  },
-  mediaButtonsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 6,
-  },
-  captureBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: colors.gold,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-  },
-  captureBtnText: {
-    color: '#050505',
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-  },
-  uploadBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#161A22',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-  },
-  uploadBtnText: {
-    color: colors.gold,
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  removePhotoBtn: {
-    padding: 9,
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  photoHintText: {
-    color: colors.textMuted,
-    fontSize: 10,
-    fontFamily: typography.fonts.inter,
-    marginTop: 2,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 8,
-    marginBottom: 14,
-  },
-  sectionAccent: {
-    width: 3,
-    height: 14,
-    backgroundColor: colors.gold,
-    borderRadius: 2,
-  },
-  sectionTitle: {
-    color: colors.gold,
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  flex1: {
-    flex: 1,
-  },
-  dateFieldLabel: {
-    color: colors.textSecondary,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhaniMedium,
-    fontWeight: '600',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    marginBottom: 6,
-  },
-  datePickerTrigger: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#11141A',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    minHeight: 52,
-    marginBottom: 16,
-  },
-  datePickerValueText: {
-    color: colors.textPrimary,
-    fontSize: typography.sizes.base,
-    fontFamily: typography.fonts.inter,
-    fontWeight: '500',
-  },
-  datePickerPlaceholderText: {
-    color: colors.textSubtle,
-  },
-  ageBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(239, 161, 0, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.25)',
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    marginBottom: 14,
-    marginTop: -8,
-  },
-  ageBadgeText: {
-    color: colors.gold,
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  fieldBlock: {
-    marginBottom: 16,
-  },
-  fieldLabel: {
-    color: colors.textSecondary,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhaniMedium,
-    fontWeight: '600',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    marginBottom: 8,
-  },
-  chipsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  genderChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#11141A',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  genderChipSelected: {
-    backgroundColor: 'rgba(239, 161, 0, 0.15)',
-    borderColor: 'rgba(239, 161, 0, 0.35)',
-  },
-  genderChipText: {
-    color: colors.textSecondary,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  genderChipTextSelected: {
-    color: colors.gold,
-  },
-  bgChip: {
-    width: 44,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: '#11141A',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bgChipSelected: {
-    backgroundColor: 'rgba(239, 161, 0, 0.15)',
-    borderColor: 'rgba(239, 161, 0, 0.35)',
-  },
-  bgChipText: {
-    color: colors.textSecondary,
-    fontSize: 12,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  bgChipTextSelected: {
-    color: colors.gold,
-  },
-  multilineInput: {
-    height: 80,
-    textAlignVertical: 'top',
-    paddingTop: 12,
-  },
-  submitBtn: {
-    marginTop: 10,
-    marginBottom: 10,
-  },
-});
+const getMemberFormStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    form: {
+      paddingBottom: 20,
+    },
+    mediaCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.bgSecondary,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+      borderRadius: 18,
+      padding: 16,
+      marginBottom: 20,
+      gap: 14,
+    },
+    avatarContainer: {
+      width: 68,
+      height: 68,
+      borderRadius: 34,
+      borderWidth: 2,
+      borderColor: colors.gold,
+      overflow: 'hidden',
+      backgroundColor: colors.bgTertiary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    avatarImage: {
+      width: '100%',
+      height: '100%',
+    },
+    avatarPlaceholder: {
+      width: '100%',
+      height: '100%',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.bgTertiary,
+    },
+    avatarInitial: {
+      color: colors.gold,
+      fontSize: 26,
+      fontFamily: typography.fonts.orbitron,
+      fontWeight: '700',
+    },
+    uploadingOverlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.65)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    mediaButtonsCol: {
+      flex: 1,
+    },
+    mediaButtonsRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 6,
+    },
+    captureBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      backgroundColor: colors.gold,
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 9,
+    },
+    captureBtnText: {
+      color: '#050505',
+      fontSize: 11,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '800',
+    },
+    uploadBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: colors.bgTertiary,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 9,
+    },
+    uploadBtnText: {
+      color: colors.gold,
+      fontSize: 11,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    removePhotoBtn: {
+      padding: 9,
+      backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.12)',
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    photoHintText: {
+      color: colors.textMuted,
+      fontSize: 10,
+      fontFamily: typography.fonts.inter,
+      marginTop: 2,
+    },
+    sectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginTop: 8,
+      marginBottom: 14,
+    },
+    sectionAccent: {
+      width: 3,
+      height: 14,
+      backgroundColor: colors.gold,
+      borderRadius: 2,
+    },
+    sectionTitle: {
+      color: colors.gold,
+      fontSize: 11,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '800',
+      letterSpacing: 1,
+    },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+    },
+    flex1: {
+      flex: 1,
+    },
+    dateFieldLabel: {
+      color: colors.textSecondary,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhaniMedium,
+      fontWeight: '600',
+      letterSpacing: 0.8,
+      textTransform: 'uppercase',
+      marginBottom: 6,
+    },
+    datePickerTrigger: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor: colors.bgSecondary,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+      borderRadius: 14,
+      paddingHorizontal: 14,
+      minHeight: 52,
+      marginBottom: 16,
+    },
+    datePickerValueText: {
+      color: colors.textPrimary,
+      fontSize: typography.sizes.base,
+      fontFamily: typography.fonts.inter,
+      fontWeight: '500',
+    },
+    datePickerPlaceholderText: {
+      color: colors.textSubtle,
+    },
+    ageBadge: {
+      alignSelf: 'flex-start',
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : 'rgba(239, 161, 0, 0.15)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.25)' : colors.goldBorder,
+      borderRadius: 10,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      marginBottom: 14,
+      marginTop: -8,
+    },
+    ageBadgeText: {
+      color: colors.gold,
+      fontSize: 11,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    fieldBlock: {
+      marginBottom: 16,
+    },
+    fieldLabel: {
+      color: colors.textSecondary,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhaniMedium,
+      fontWeight: '600',
+      letterSpacing: 0.8,
+      textTransform: 'uppercase',
+      marginBottom: 8,
+    },
+    chipsRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    genderChip: {
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 20,
+      backgroundColor: colors.bgSecondary,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+    },
+    genderChipSelected: {
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.15)' : 'rgba(239, 161, 0, 0.18)',
+      borderColor: colors.gold,
+    },
+    genderChipText: {
+      color: colors.textSecondary,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    genderChipTextSelected: {
+      color: colors.gold,
+    },
+    bgChip: {
+      width: 44,
+      height: 38,
+      borderRadius: 12,
+      backgroundColor: colors.bgSecondary,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    bgChipSelected: {
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.15)' : 'rgba(239, 161, 0, 0.18)',
+      borderColor: colors.gold,
+    },
+    bgChipText: {
+      color: colors.textSecondary,
+      fontSize: 12,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    bgChipTextSelected: {
+      color: colors.gold,
+    },
+    multilineInput: {
+      height: 80,
+      textAlignVertical: 'top',
+      paddingTop: 12,
+    },
+    submitBtn: {
+      marginTop: 10,
+      marginBottom: 10,
+    },
+    planEnrollmentSection: {
+      marginTop: 8,
+      marginBottom: 12,
+    },
+    enrollToggleCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: colors.bgSecondary,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+      borderRadius: 14,
+      padding: 14,
+      marginBottom: 12,
+    },
+    enrollToggleCardActive: {
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.08)' : 'rgba(239, 161, 0, 0.12)',
+      borderColor: colors.gold,
+    },
+    enrollToggleLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      flex: 1,
+      marginRight: 10,
+    },
+    enrollToggleTextContainer: {
+      flex: 1,
+    },
+    enrollToggleTitle: {
+      fontSize: 14,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      color: colors.textPrimary,
+    },
+    enrollToggleTitleActive: {
+      color: colors.gold,
+    },
+    enrollToggleSub: {
+      fontSize: 11,
+      fontFamily: typography.fonts.inter,
+      color: colors.textMuted,
+      marginTop: 2,
+    },
+    toggleCheckbox: {
+      width: 22,
+      height: 22,
+      borderRadius: 6,
+      borderWidth: 1.5,
+      borderColor: colors.borderDefault,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    toggleCheckboxActive: {
+      backgroundColor: colors.gold,
+      borderColor: colors.gold,
+    },
+    planEnrollmentBody: {
+      backgroundColor: colors.bgSecondary,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.2)' : colors.goldBorder,
+      borderRadius: 14,
+      padding: 14,
+      marginBottom: 14,
+    },
+    planScroll: {
+      marginBottom: 14,
+    },
+    planCardChip: {
+      backgroundColor: colors.bgTertiary,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+      borderRadius: 12,
+      padding: 12,
+      marginRight: 10,
+      minWidth: 130,
+    },
+    planCardChipActive: {
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.15)' : 'rgba(239, 161, 0, 0.18)',
+      borderColor: colors.gold,
+    },
+    planCardName: {
+      fontSize: 13,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      marginBottom: 4,
+    },
+    planCardNameActive: {
+      color: colors.gold,
+    },
+    planCardPrice: {
+      fontSize: 15,
+      fontFamily: typography.fonts.orbitron,
+      fontWeight: '700',
+      color: colors.gold,
+      marginBottom: 2,
+    },
+    planCardDuration: {
+      fontSize: 10,
+      fontFamily: typography.fonts.inter,
+      color: colors.textMuted,
+    },
+    planDateBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: colors.bgTertiary,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+      borderRadius: 12,
+      padding: 12,
+      marginBottom: 12,
+    },
+    planDateLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    planDateLabel: {
+      fontSize: 10,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      color: colors.textMuted,
+      letterSpacing: 0.5,
+    },
+    planDateVal: {
+      fontSize: 13,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      marginTop: 2,
+    },
+    planDateChange: {
+      fontSize: 12,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      color: colors.gold,
+    },
+    calculatedExpiryCard: {
+      backgroundColor: isDark ? 'rgba(0, 102, 255, 0.08)' : 'rgba(0, 102, 255, 0.1)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(0, 102, 255, 0.25)' : 'rgba(0, 102, 255, 0.35)',
+      borderRadius: 12,
+      padding: 12,
+      marginBottom: 12,
+    },
+    calculatedExpiryLabel: {
+      fontSize: 10,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      color: isDark ? '#60A5FA' : '#2563EB',
+      letterSpacing: 0.5,
+      marginBottom: 4,
+    },
+    calculatedExpiryVal: {
+      fontSize: 14,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      color: colors.textPrimary,
+    },
+  });

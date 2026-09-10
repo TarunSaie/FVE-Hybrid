@@ -4,17 +4,20 @@ import {
   ViewStyle,
   StyleProp,
   Platform,
+  ScrollView,
+  KeyboardAvoidingView,
+  ScrollViewProps,
 } from 'react-native';
-import { KeyboardAwareScrollView, KeyboardAwareScrollViewProps } from 'react-native-keyboard-aware-scroll-view';
+import { useTheme } from '@/contexts/ThemeContext';
 
-export interface FVEKeyboardAwareContainerProps extends KeyboardAwareScrollViewProps {
+export interface FVEKeyboardAwareContainerProps extends ScrollViewProps {
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   contentContainerStyle?: StyleProp<ViewStyle>;
   extraScrollHeight?: number;
 }
 
-export const FVEKeyboardAwareContainer = forwardRef<KeyboardAwareScrollView, FVEKeyboardAwareContainerProps>(
+export const FVEKeyboardAwareContainer = forwardRef<ScrollView, FVEKeyboardAwareContainerProps>(
   function FVEKeyboardAwareContainer(
     {
       children,
@@ -27,35 +30,33 @@ export const FVEKeyboardAwareContainer = forwardRef<KeyboardAwareScrollView, FVE
     },
     ref
   ) {
+    const { colors } = useTheme();
+
     return (
-      <KeyboardAwareScrollView
-        ref={ref}
-        style={[styles.container, style]}
-        contentContainerStyle={[styles.content, contentContainerStyle]}
-        keyboardShouldPersistTaps={keyboardShouldPersistTaps}
-        keyboardDismissMode={keyboardDismissMode}
-        showsVerticalScrollIndicator={false}
-        scrollEventThrottle={16}
-        bounces={true}
-        enableOnAndroid={true}
-        enableAutomaticScroll={true}
-        extraScrollHeight={Platform.OS === 'ios' ? 24 : extraScrollHeight}
-        keyboardOpeningTime={0}
-        enableResetScrollToCoords={false}
-        {...rest}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={[{ flex: 1, backgroundColor: colors.background }, style]}
       >
-        {children}
-      </KeyboardAwareScrollView>
+        <ScrollView
+          ref={ref}
+          contentContainerStyle={[styles.content, contentContainerStyle]}
+          keyboardShouldPersistTaps={keyboardShouldPersistTaps}
+          keyboardDismissMode={keyboardDismissMode}
+          showsVerticalScrollIndicator={false}
+          scrollEventThrottle={16}
+          bounces={true}
+          {...rest}
+        >
+          {children}
+        </ScrollView>
+      </KeyboardAvoidingView>
     );
   }
 );
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#050505',
-  },
   content: {
     flexGrow: 1,
   },
 });
+

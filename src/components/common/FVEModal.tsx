@@ -5,16 +5,15 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Platform,
   SafeAreaView,
   Pressable,
   BackHandler,
   Animated,
   PanResponder,
+  ScrollView,
 } from 'react-native';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { X } from 'lucide-react-native';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
 import { typography } from '@/constants/typography';
 import { haptics } from '@/utils/haptics';
 
@@ -33,6 +32,7 @@ export function FVEModal({
   children,
   subtitle,
 }: FVEModalProps) {
+  const { colors, isDark } = useTheme();
   const translateY = useRef(new Animated.Value(0)).current;
 
   const handleClose = () => {
@@ -86,6 +86,11 @@ export function FVEModal({
     })
   ).current;
 
+  const sheetBg = isDark ? '#12151B' : colors.cardBackground;
+  const sheetBorder = isDark ? 'rgba(255, 255, 255, 0.1)' : colors.borderDark;
+  const handleBg = isDark ? 'rgba(255, 255, 255, 0.25)' : 'rgba(15, 23, 42, 0.2)';
+  const closeBtnBg = isDark ? 'rgba(255, 255, 255, 0.07)' : 'rgba(15, 23, 42, 0.06)';
+
   return (
     <Modal
       visible={visible}
@@ -94,32 +99,47 @@ export function FVEModal({
       onRequestClose={handleClose}
       statusBarTranslucent
     >
-      <View style={styles.backdrop}>
+      <View style={[styles.backdrop, { backgroundColor: colors.overlay }]}>
         {/* Backdrop tap to dismiss */}
         <Pressable style={styles.backdropTap} onPress={handleClose} />
 
         <SafeAreaView pointerEvents="box-none" style={styles.safeArea}>
-          <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]}>
+          <Animated.View
+            style={[
+              styles.sheet,
+              {
+                backgroundColor: sheetBg,
+                borderColor: sheetBorder,
+                transform: [{ translateY }],
+              },
+            ]}
+          >
             {/* Native Sheet Grab Handle with Drag Gesture */}
             <View {...panResponder.panHandlers} style={styles.handleContainer}>
-              <View style={styles.sheetHandle} />
+              <View style={[styles.sheetHandle, { backgroundColor: handleBg }]} />
             </View>
 
             {/* Header */}
-            <View {...panResponder.panHandlers} style={styles.header}>
+            <View
+              {...panResponder.panHandlers}
+              style={[
+                styles.header,
+                { borderBottomColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.borderDark },
+              ]}
+            >
               <View style={styles.headerTextContainer}>
-                <Text numberOfLines={1} style={styles.title}>
+                <Text numberOfLines={1} style={[styles.title, { color: colors.textPrimary }]}>
                   {title}
                 </Text>
                 {subtitle && (
-                  <Text numberOfLines={1} style={styles.subtitle}>
+                  <Text numberOfLines={1} style={[styles.subtitle, { color: colors.textSecondary }]}>
                     {subtitle}
                   </Text>
                 )}
               </View>
               <TouchableOpacity
                 onPress={handleClose}
-                style={styles.closeButton}
+                style={[styles.closeButton, { backgroundColor: closeBtnBg }]}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 activeOpacity={0.7}
               >
@@ -127,21 +147,15 @@ export function FVEModal({
               </TouchableOpacity>
             </View>
 
-            {/* Native Keyboard-Aware Scrollable Sheet Body */}
-            <KeyboardAwareScrollView
+            <ScrollView
               style={styles.body}
               contentContainerStyle={styles.bodyContent}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
               bounces={true}
-              enableOnAndroid={true}
-              enableAutomaticScroll={true}
-              extraScrollHeight={Platform.OS === 'ios' ? 24 : 70}
-              keyboardOpeningTime={0}
-              enableResetScrollToCoords={false}
             >
               {children}
-            </KeyboardAwareScrollView>
+            </ScrollView>
           </Animated.View>
         </SafeAreaView>
       </View>
@@ -152,7 +166,6 @@ export function FVEModal({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
     justifyContent: 'flex-end',
   },
   backdropTap: {
@@ -167,17 +180,15 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: '#12151B',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     borderWidth: 1,
     borderBottomWidth: 0,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
     maxHeight: '92%',
     flex: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -6 },
-    shadowOpacity: 0.6,
+    shadowOpacity: 0.35,
     shadowRadius: 16,
     elevation: 24,
   },
@@ -189,7 +200,6 @@ const styles = StyleSheet.create({
     width: 44,
     height: 5,
     borderRadius: 3,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
   },
   header: {
     flexDirection: 'row',
@@ -198,20 +208,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 22,
     paddingBottom: 14,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
   },
   headerTextContainer: {
     flex: 1,
   },
   title: {
-    color: colors.textPrimary,
     fontSize: typography.sizes.lg,
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '700',
     letterSpacing: 0.6,
   },
   subtitle: {
-    color: colors.textSecondary,
     fontSize: typography.sizes.xs,
     fontFamily: typography.fonts.inter,
     marginTop: 2,
@@ -220,7 +227,6 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.07)',
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 10,

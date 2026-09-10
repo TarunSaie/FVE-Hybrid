@@ -71,4 +71,14 @@ export const haptics = {
       // Ignore unsupported platforms
     }
   },
+
+  /** Standard notification alert haptic */
+  notification: () => {
+    if (Platform.OS === 'web') return;
+    try {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {
+      // Ignore unsupported platforms
+    }
+  },
 };

@@ -1,7 +1,7 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
-import { Payment } from '@/types';
+import { Payment, PersonalTraining } from '@/types';
 import { formatCurrency } from '@/utils/format';
 import { formatDate } from '@/utils/date';
 import { APP_NAME, TAGLINE, CHIRVEX_WEBSITE } from '@/constants/branding';
@@ -18,19 +18,89 @@ export interface ReceiptData {
   paymentDate: string;
   startDate?: string | null;
   endDate?: string | null;
+  durationDays?: number | null;
+  memberQrCode?: string | null;
   transactionReference?: string | null;
+  isPersonalTraining?: boolean;
+  trainerName?: string | null;
+  totalSessions?: number | null;
+  serviceType?: string;
+  visitDayLimit?: number | null;
+  visitDaysUsed?: number | null;
+  actualVisitsUsed?: number | null;
+  remainingVisits?: number | null;
+  actualPTSessionsCompleted?: number | null;
+  remainingPTSessions?: number | null;
 }
 
-export function buildReceiptDataFromPayment(payment: Payment): ReceiptData {
+export function buildReceiptDataFromPayment(
+  payment: Payment,
+  pt?: PersonalTraining | null,
+  usageStats?: {
+    actualVisitsUsed?: number | null;
+    remainingVisits?: number | null;
+    actualPTSessionsCompleted?: number | null;
+    remainingPTSessions?: number | null;
+  }
+): ReceiptData {
   const memberName = payment.members?.full_name || 'Member';
   const memberMobile = payment.members?.mobile;
   const memberId = payment.members?.member_id;
   const plan = payment.memberships?.membership_plans;
-  const planName = plan?.name || 'Gym Membership';
+
+  const isPT = Boolean(pt || payment.notes?.includes('Personal Training'));
+
+  let planName = plan?.name || 'Gym Membership';
+  let startDate = payment.memberships?.start_date ? formatDate(payment.memberships.start_date) : null;
+  let endDate = payment.memberships?.expiry_date ? formatDate(payment.memberships.expiry_date) : null;
+  let durationDays =
+    plan?.duration_days ||
+    (payment.memberships?.start_date && payment.memberships?.expiry_date
+      ? Math.max(
+          1,
+          Math.round(
+            (new Date(payment.memberships.expiry_date).getTime() -
+              new Date(payment.memberships.start_date).getTime()) /
+              (1000 * 60 * 60 * 24)
+          )
+        )
+      : null);
+
+  let trainerName: string | null = null;
+  let totalSessions: number | null = null;
+
+  if (isPT) {
+    if (pt) {
+      planName = `Personal Training — ${pt.package_name}`;
+      trainerName = pt.trainer?.full_name || null;
+      totalSessions = pt.total_sessions;
+      if (pt.start_date) startDate = formatDate(pt.start_date);
+      if (pt.expiry_date) endDate = formatDate(pt.expiry_date);
+      if (pt.start_date && pt.expiry_date) {
+        durationDays = Math.max(
+          1,
+          Math.round(
+            (new Date(pt.expiry_date).getTime() - new Date(pt.start_date).getTime()) /
+              (1000 * 60 * 60 * 24)
+          )
+        );
+      }
+    } else {
+      planName = 'Personal Training Add-On';
+    }
+  }
+
   const receiptNo = payment.receipt_number || 'FVE-N/A';
   const dateStr = formatDate(payment.payment_date || payment.created_at);
-  const startDate = payment.memberships?.start_date ? formatDate(payment.memberships.start_date) : null;
-  const endDate = payment.memberships?.expiry_date ? formatDate(payment.memberships.expiry_date) : null;
+  const memberQrCode = payment.members?.qr_code || payment.members?.id || payment.member_id || null;
+  const visitDayLimit = payment.memberships?.visit_day_limit ?? null;
+  const visitDaysUsed = payment.memberships?.visit_days_used ?? 0;
+
+  const actualVisits = usageStats?.actualVisitsUsed ?? visitDaysUsed;
+  const remainingVis = usageStats?.remainingVisits ?? (visitDayLimit != null ? Math.max(0, visitDayLimit - actualVisits) : null);
+
+  const actualPTCompleted = usageStats?.actualPTSessionsCompleted ?? pt?.sessions_completed ?? 0;
+  const remainingPT = usageStats?.remainingPTSessions ?? (totalSessions != null ? Math.max(0, totalSessions - actualPTCompleted) : null);
 
   return {
     receiptNumber: receiptNo,
@@ -43,12 +113,29 @@ export function buildReceiptDataFromPayment(payment: Payment): ReceiptData {
     paymentDate: dateStr,
     startDate,
     endDate,
+    durationDays,
+    memberQrCode,
     transactionReference: payment.transaction_reference,
+    isPersonalTraining: isPT,
+    trainerName,
+    totalSessions,
+    serviceType: isPT ? 'PERSONAL TRAINING ADD-ON' : 'GYM MEMBERSHIP',
+    visitDayLimit,
+    visitDaysUsed,
+    actualVisitsUsed: actualVisits,
+    remainingVisits: remainingVis,
+    actualPTSessionsCompleted: actualPTCompleted,
+    remainingPTSessions: remainingPT,
   };
 }
 
 export function generateReceiptHtml(data: ReceiptData): string {
   const formattedAmount = formatCurrency(data.amount);
+  const qrUrl = data.memberQrCode
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(
+        data.memberQrCode
+      )}&bgcolor=141820&color=EFA100`
+    : '';
 
   return `
 <!DOCTYPE html>
@@ -223,6 +310,79 @@ export function generateReceiptHtml(data: ReceiptData): string {
       color: #EFA100;
       font-weight: 700;
     }
+    .duration-tag {
+      font-size: 11px;
+      color: #8A92A6;
+    }
+    .qr-attendance-panel {
+      background: rgba(239, 161, 0, 0.04);
+      border: 1.5px dashed rgba(239, 161, 0, 0.35);
+      border-radius: 14px;
+      padding: 16px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      gap: 16px;
+    }
+    .qr-attendance-info {
+      flex: 1;
+    }
+    .qr-attendance-title {
+      font-size: 13px;
+      font-weight: 800;
+      color: #EFA100;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .qr-attendance-sub {
+      font-size: 11px;
+      color: #8A92A6;
+      line-height: 1.4;
+      margin-bottom: 6px;
+    }
+    .qr-validity-badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      color: #4ADE80;
+      background: rgba(34, 197, 94, 0.12);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      border-radius: 4px;
+      padding: 2px 8px;
+      letter-spacing: 0.5px;
+    }
+    .qr-box-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .qr-box {
+      width: 86px;
+      height: 86px;
+      border-radius: 10px;
+      border: 1.5px solid #EFA100;
+      background: #141820;
+      padding: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .qr-img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    .qr-label {
+      font-size: 9px;
+      color: #EFA100;
+      font-weight: 700;
+      font-family: monospace;
+      margin-top: 4px;
+      letter-spacing: 0.5px;
+    }
     .footer-note {
       text-align: center;
       padding-top: 20px;
@@ -255,9 +415,13 @@ export function generateReceiptHtml(data: ReceiptData): string {
         </div>
       </div>
       <div class="invoice-title-block">
-        <div class="invoice-title">PAYMENT RECEIPT</div>
+        <div class="invoice-title">${data.isPersonalTraining ? 'PERSONAL TRAINING RECEIPT' : 'PAYMENT RECEIPT'}</div>
         <div class="receipt-no">#${data.receiptNumber}</div>
-        <div><span class="paid-badge">PAID • VERIFIED</span></div>
+        <div>
+          <span class="paid-badge" style="${data.isPersonalTraining ? 'background-color: rgba(239, 161, 0, 0.15); border: 1px solid #EFA100; color: #EFA100;' : ''}">
+            ${data.isPersonalTraining ? 'PT ADD-ON • VERIFIED' : 'PAID • VERIFIED'}
+          </span>
+        </div>
       </div>
     </div>
 
@@ -289,22 +453,72 @@ export function generateReceiptHtml(data: ReceiptData): string {
         </div>` : ''}
       </div>
 
-      <!-- Membership & Plan Panel -->
+      <!-- Membership / PT Plan Panel -->
       <div class="panel">
-        <div class="panel-header">SUBSCRIPTION & TRANSACTION</div>
+        <div class="panel-header">${data.isPersonalTraining ? 'PERSONAL TRAINING DETAILS' : 'SUBSCRIPTION & TRANSACTION'}</div>
+        ${data.isPersonalTraining ? `
+        <div class="row">
+          <span class="label">Service:</span>
+          <span class="val val-gold">Personal Training Add-On</span>
+        </div>
+        <div class="row">
+          <span class="label">Package:</span>
+          <span class="val val-gold">${data.planName}</span>
+        </div>
+        ${data.trainerName ? `
+        <div class="row">
+          <span class="label">Assigned Trainer:</span>
+          <span class="val">${data.trainerName}</span>
+        </div>` : ''}
+        ${data.totalSessions ? `
+        <div class="row">
+          <span class="label">Sessions Allotted:</span>
+          <span class="val val-gold">${data.totalSessions} Guided Sessions</span>
+        </div>
+        <div style="font-size: 10px; color: #8A92A6; margin-top: 4px; margin-bottom: 6px; line-height: 1.4;">
+          <div>Sessions: ${data.totalSessions} sessions allotted throughout your entire subscription period.</div>
+          <div style="color: #EFA100; font-weight: 600; margin-top: 2px;">
+            ${data.actualPTSessionsCompleted ?? 0}/${data.totalSessions} sessions completed. ${(data.remainingPTSessions ?? (data.totalSessions - (data.actualPTSessionsCompleted ?? 0))) > 1 ? `You can attend ${data.remainingPTSessions ?? (data.totalSessions - (data.actualPTSessionsCompleted ?? 0))} more sessions during your plan.` : (data.remainingPTSessions ?? (data.totalSessions - (data.actualPTSessionsCompleted ?? 0))) === 1 ? `You can attend 1 more session during your plan.` : `All allotted sessions have been completed.`}
+          </div>
+        </div>` : ''}
+        ${data.startDate && data.endDate ? `
+        <div class="row">
+          <span class="label">PT Validity:</span>
+          <span class="val">${data.startDate} to ${data.endDate}</span>
+        </div>` : ''}
+        ${data.durationDays ? `
+        <div class="row">
+          <span class="label">Duration:</span>
+          <span class="val duration-tag">${data.durationDays} Days PT Validity</span>
+        </div>` : ''}
+        ` : `
         <div class="row">
           <span class="label">Plan:</span>
           <span class="val val-gold">${data.planName}</span>
-        </div>
-        <div class="row">
-          <span class="label">Payment Mode:</span>
-          <span class="val">${data.paymentMethod}</span>
         </div>
         ${data.startDate && data.endDate ? `
         <div class="row">
           <span class="label">Validity:</span>
           <span class="val">${data.startDate} to ${data.endDate}</span>
         </div>` : ''}
+        ${data.durationDays ? `
+        <div class="row">
+          <span class="label">Duration:</span>
+          <span class="val duration-tag">${data.durationDays} Days Membership</span>
+        </div>` : ''}
+        ${data.visitDayLimit != null ? `
+        <div class="row">
+          <span class="label">Visits Allotted:</span>
+          <span class="val val-gold">${data.visitDayLimit} Days</span>
+        </div>
+        <div style="font-size: 10px; color: #8A92A6; margin-top: 2px; margin-bottom: 6px; line-height: 1.4;">
+          Visits: ${data.visitDayLimit} days allotted throughout your entire subscription period. You can visit on any ${data.visitDayLimit} days during your plan.
+        </div>` : ''}
+        `}
+        <div class="row">
+          <span class="label">Payment Mode:</span>
+          <span class="val">${data.paymentMethod}</span>
+        </div>
         ${data.transactionReference ? `
         <div class="row">
           <span class="label">Txn Ref:</span>
@@ -313,9 +527,25 @@ export function generateReceiptHtml(data: ReceiptData): string {
       </div>
     </div>
 
+    ${qrUrl ? `
+    <div class="qr-attendance-panel">
+      <div class="qr-attendance-info">
+        <div class="qr-attendance-title">${data.isPersonalTraining ? 'MEMBER ATTENDANCE & PT QR CODE' : 'MEMBER ATTENDANCE QR CODE'}</div>
+        <div class="qr-attendance-sub">${data.isPersonalTraining ? 'Present this digital QR code at the gym front-desk kiosk to verify subscription and 1-on-1 personal training validity.' : 'Present this digital QR code at the gym front-desk kiosk to verify subscription validity and record daily attendance.'}</div>
+        ${data.startDate && data.endDate ? `<div class="qr-validity-badge">VALIDITY: ${data.startDate} — ${data.endDate}</div>` : ''}
+      </div>
+      <div class="qr-box-wrap">
+        <div class="qr-box">
+          <img src="${qrUrl}" class="qr-img" alt="Member QR Code" />
+        </div>
+        <div class="qr-label">${data.memberId || 'ATTENDANCE QR'}</div>
+      </div>
+    </div>
+    ` : ''}
+
     <div class="footer-note">
-      This is an authentic computer-generated payment voucher and official proof of gym subscription fee payment at FitVerse Elite.<br>
-      No signature required. Valid for entrance access during the active subscription period.
+      This is an authentic computer-generated payment voucher and official proof of ${data.isPersonalTraining ? 'personal training add-on service fee payment' : 'gym subscription fee payment'} at FitVerse Elite.<br>
+      No signature required. Valid for entrance access and session tracking during the active period.
     </div>
   </div>
 
@@ -327,60 +557,81 @@ export function generateReceiptHtml(data: ReceiptData): string {
   `.trim();
 }
 
+let isSharingReceipt = false;
+
 /**
  * Generates the receipt PDF and shares it (allowing user to select WhatsApp to attach PDF).
  */
 export async function sharePdfReceipt(receiptData: ReceiptData): Promise<void> {
-  const html = generateReceiptHtml(receiptData);
+  if (isSharingReceipt) {
+    console.warn('[receiptPdf] A share request is already in progress, ignoring duplicate call');
+    return;
+  }
+  isSharingReceipt = true;
 
-  // 1. Generate official PDF file in print cache
-  const { uri: tempUri, base64 } = await Print.printToFileAsync({
-    html,
-    base64: true,
-  });
+  try {
+    const html = generateReceiptHtml(receiptData);
 
-  // 2. Prepare destination in app cacheDirectory with a clean file name
-  const safeReceiptNo = (receiptData.receiptNumber || 'Receipt').replace(/[^a-zA-Z0-9_-]/g, '_');
-  const targetDir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
-  let shareUri = tempUri;
+    // 1. Generate official PDF file in print cache
+    const { uri: tempUri, base64 } = await Print.printToFileAsync({
+      html,
+      base64: true,
+    });
 
-  if (targetDir) {
-    const targetUri = `${targetDir}FVE_Receipt_${safeReceiptNo}.pdf`;
-    try {
-      const existing = await FileSystem.getInfoAsync(targetUri);
-      if (existing.exists) {
-        await FileSystem.deleteAsync(targetUri, { idempotent: true });
-      }
-      await FileSystem.copyAsync({
-        from: tempUri,
-        to: targetUri,
-      });
-      shareUri = targetUri;
-    } catch (copyErr) {
-      console.warn('[receiptPdf] copyAsync failed, trying base64 write fallback:', copyErr);
-      if (base64) {
-        try {
-          await FileSystem.writeAsStringAsync(targetUri, base64, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          shareUri = targetUri;
-        } catch (writeErr) {
-          console.error('[receiptPdf] base64 write fallback failed:', writeErr);
+    // 2. Prepare destination in app cacheDirectory with a clean file name
+    const safeReceiptNo = (receiptData.receiptNumber || 'Receipt').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const targetDir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+    let shareUri = tempUri;
+
+    if (targetDir) {
+      const targetUri = `${targetDir}FVE_Receipt_${safeReceiptNo}.pdf`;
+      try {
+        const existing = await FileSystem.getInfoAsync(targetUri);
+        if (existing.exists) {
+          await FileSystem.deleteAsync(targetUri, { idempotent: true });
+        }
+        await FileSystem.copyAsync({
+          from: tempUri,
+          to: targetUri,
+        });
+        shareUri = targetUri;
+      } catch (copyErr) {
+        console.warn('[receiptPdf] copyAsync failed, trying base64 write fallback:', copyErr);
+        if (base64) {
+          try {
+            await FileSystem.writeAsStringAsync(targetUri, base64, {
+              encoding: FileSystem.EncodingType.Base64,
+            });
+            shareUri = targetUri;
+          } catch (writeErr) {
+            console.error('[receiptPdf] base64 write fallback failed:', writeErr);
+          }
         }
       }
     }
-  }
 
-  const isAvailable = await Sharing.isAvailableAsync();
-  if (!isAvailable) {
-    throw new Error('Sharing is not available on this device');
-  }
+    const isAvailable = await Sharing.isAvailableAsync();
+    if (!isAvailable) {
+      throw new Error('Sharing is not available on this device');
+    }
 
-  await Sharing.shareAsync(shareUri, {
-    UTI: '.pdf',
-    mimeType: 'application/pdf',
-    dialogTitle: `Share Receipt #${receiptData.receiptNumber} PDF to WhatsApp`,
-  });
+    await Sharing.shareAsync(shareUri, {
+      UTI: '.pdf',
+      mimeType: 'application/pdf',
+      dialogTitle: `Share Receipt #${receiptData.receiptNumber} PDF to WhatsApp`,
+    });
+  } catch (err: unknown) {
+    const msg = (err as Error)?.message || '';
+    if (msg.includes('Another share request')) {
+      console.warn('[receiptPdf] Suppressed duplicate Android share request:', msg);
+      return;
+    }
+    throw err;
+  } finally {
+    setTimeout(() => {
+      isSharingReceipt = false;
+    }, 1200);
+  }
 }
 
 /**

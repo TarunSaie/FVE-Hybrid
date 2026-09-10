@@ -6,7 +6,8 @@ import { FVEButton } from '@/components/common/FVEButton';
 import { UserProfile, UserRole } from '@/types';
 import { supabase } from '@/api/supabase';
 import { OWNER_MANAGED_ROLES, ROLE_DISPLAY_NAMES } from '@/constants/permissions';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
+import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 
 interface StaffFormModalProps {
@@ -22,6 +23,8 @@ export function StaffFormModal({
   onSaved,
   staff,
 }: StaffFormModalProps) {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => getStaffFormStyles(colors, isDark), [colors, isDark]);
   const [loading, setLoading] = useState(false);
   const fullNameRef = useRef('');
   const emailRef = useRef('');
@@ -152,51 +155,52 @@ export function StaffFormModal({
   );
 }
 
-const styles = StyleSheet.create({
-  form: {
-    paddingBottom: 20,
-  },
-  fieldSection: {
-    marginBottom: 16,
-  },
-  sectionLabel: {
-    color: colors.textSecondary,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhaniMedium,
-    fontWeight: '600',
-    letterSpacing: 0.8,
-    marginBottom: 8,
-  },
-  rolesGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  roleCard: {
-    backgroundColor: '#161A20',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.2)',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    flex: 1,
-    minWidth: '45%',
-    alignItems: 'center',
-  },
-  selectedRoleCard: {
-    backgroundColor: colors.goldMuted,
-    borderColor: colors.gold,
-  },
-  roleName: {
-    color: colors.textSecondary,
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  selectedRoleName: {
-    color: colors.gold,
-  },
-  saveButton: {
-    marginTop: 10,
-  },
-});
+const getStaffFormStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    form: {
+      paddingBottom: 20,
+    },
+    fieldSection: {
+      marginBottom: 16,
+    },
+    sectionLabel: {
+      color: colors.textSecondary,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhaniMedium,
+      fontWeight: '600',
+      letterSpacing: 0.8,
+      marginBottom: 8,
+    },
+    rolesGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    roleCard: {
+      backgroundColor: colors.bgSecondary,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      flex: 1,
+      minWidth: '45%',
+      alignItems: 'center',
+    },
+    selectedRoleCard: {
+      backgroundColor: isDark ? colors.goldMuted : 'rgba(239, 161, 0, 0.15)',
+      borderColor: colors.gold,
+    },
+    roleName: {
+      color: colors.textSecondary,
+      fontSize: typography.sizes.sm,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    selectedRoleName: {
+      color: colors.gold,
+    },
+    saveButton: {
+      marginTop: 10,
+    },
+  });

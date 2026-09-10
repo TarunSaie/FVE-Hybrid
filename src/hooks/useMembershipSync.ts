@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/api/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import { getLocalDateStr } from '@/utils/date';
+import { getLocalDateStr, calculateExpiryDate } from '@/utils/date';
 
 /**
  * Reconciles memberships where start_date was mistakenly recorded as payment date
@@ -44,9 +44,7 @@ export function useMembershipSync() {
               .lt('created_at', ms.created_at);
 
             if (!count || count === 0) {
-              const dt = new Date(joiningDate);
-              dt.setDate(dt.getDate() + durationDays);
-              const expectedExpiry = getLocalDateStr(dt);
+              const expectedExpiry = calculateExpiryDate(joiningDate, durationDays);
 
               const today = getLocalDateStr();
               let newStatus = 'ACTIVE';

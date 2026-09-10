@@ -1,5 +1,6 @@
 import { Linking, Alert } from 'react-native';
 import { colors } from '@/constants/colors';
+import { formatDate } from './date';
 
 /**
  * Format number into Indian Rupee format without decimals.
@@ -92,3 +93,80 @@ export function getMembershipStatusStyle(status?: string | null): { bg: string; 
       };
   }
 }
+
+/**
+ * Builds standard WhatsApp renewal alert message for expired members.
+ */
+export function buildExpiredAlertMessage(
+  memberName: string,
+  planName?: string | null,
+  expiryDate?: string | null
+): string {
+  const planInfo = planName ? ` (${planName})` : '';
+  const dateInfo = expiryDate ? ` on *${formatDate(expiryDate)}*` : '';
+  return (
+    `Hi *${memberName}*,\n\n` +
+    `Your *FitVerse Elite* gym membership${planInfo} has expired${dateInfo}.\n\n` +
+    `Please renew your membership to continue your workouts uninterrupted.\n\n` +
+    `Visit our front desk or contact us for quick renewal assistance.\n\n` +
+    `— Team FitVerse Elite`
+  );
+}
+
+/**
+ * Safely parse features stored as JSON string, string array, or comma-separated string.
+ */
+export function parseFeatures(features: unknown): string[] {
+  if (Array.isArray(features)) return features.map(String).map(s => s.trim()).filter(Boolean);
+  if (typeof features === 'string') {
+    try {
+      const parsed = JSON.parse(features);
+      if (Array.isArray(parsed)) return parsed.map(String).map(s => s.trim()).filter(Boolean);
+    } catch {
+      // Fall back to comma-separated or single string
+    }
+    return features.split(',').map(s => s.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+/**
+ * Normalizes a membership plan with parsed features array and numeric price.
+ */
+export function normalizeMembershipPlan<T extends { price: unknown; features?: unknown }>(plan: T) {
+  return {
+    ...plan,
+    price: Number(plan.price) || 0,
+    features: parseFeatures(plan.features),
+  };
+}
+
+/**
+ * Translates database and technical exceptions into clear, human-understandable messages.
+ */
+export function getFriendlyErrorMessage(
+  err: unknown,
+  fallbackMessage = 'Unable to complete the action. Please try again.'
+): string {
+  if (!err) return fallbackMessage;
+  const msg = (err as Error)?.message || String(err);
+
+  if (msg.includes('transaction_reference') && msg.includes('not-null')) {
+    return 'Transaction reference is missing. If paying with UPI, Card, or Bank Transfer, please enter the reference ID.';
+  }
+  if (msg.includes('violates not-null constraint')) {
+    return 'A required field was left blank. Please check all details and try again.';
+  }
+  if (msg.includes('duplicate key') || msg.includes('unique constraint')) {
+    return 'This record already exists or was already recorded.';
+  }
+  if (msg.includes('Network request failed') || msg.includes('Failed to fetch')) {
+    return 'Network connection error. Please check your internet connection.';
+  }
+  if (msg.includes('JWT') || msg.includes('token') || msg.includes('auth')) {
+    return 'Your session has expired. Please log in again.';
+  }
+
+  return msg;
+}
+

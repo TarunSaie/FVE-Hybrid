@@ -1,15 +1,19 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, Alert, TouchableOpacity, ScrollView } from 'react-native';
+import { Search, X, Check, User } from 'lucide-react-native';
 import { FVEModal } from '@/components/common/FVEModal';
 import { FVEInput } from '@/components/common/FVEInput';
 import { FVEButton } from '@/components/common/FVEButton';
 import { Member, MembershipPlan, PAYMENT_METHODS } from '@/types';
 import { supabase } from '@/api/supabase';
-import { getLocalDateStr } from '@/utils/date';
-import { formatCurrency, generateReceiptNumber } from '@/utils/format';
+import { getLocalDateStr, calculateExpiryDate, formatDate } from '@/utils/date';
+import { formatCurrency, generateReceiptNumber, getFriendlyErrorMessage } from '@/utils/format';
 import { useAuth } from '@/contexts/AuthContext';
-import { colors } from '@/constants/colors';
+import { useQueryClient } from '@tanstack/react-query';
+import { useTheme } from '@/contexts/ThemeContext';
+import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
+import { sounds } from '@/utils/sounds';
 
 interface PaymentFormModalProps {
   visible: boolean;
@@ -25,22 +29,73 @@ export function PaymentFormModal({
   preselectedMemberId,
 }: PaymentFormModalProps) {
   const { user } = useAuth();
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => getPaymentFormStyles(colors, isDark), [colors, isDark]);
+  const qc = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [plans, setPlans] = useState<MembershipPlan[]>([]);
   const [selectedMemberId, setSelectedMemberId] = useState<string>(preselectedMemberId || '');
+  const [memberSearch, setMemberSearch] = useState('');
   const [selectedPlanId, setSelectedPlanId] = useState<string>('');
   const amountRef = useRef('');
   const [paymentMethod, setPaymentMethod] = useState<string>('UPI');
   const transactionRefInput = useRef('');
   const notesRef = useRef('');
+  const [activePlanInfo, setActivePlanInfo] = useState<{
+    name: string;
+    expiryDate: string;
+    isActive: boolean;
+  } | null>(null);
+
+  // Detect active plan whenever selected member changes
+  useEffect(() => {
+    if (!selectedMemberId) {
+      setActivePlanInfo(null);
+      return;
+    }
+    supabase
+      .from('memberships')
+      .select('id, expiry_date, status, membership_plans(name)')
+      .eq('member_id', selectedMemberId)
+      .in('status', ['ACTIVE', 'EXPIRING_SOON'])
+      .order('expiry_date', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          const todayStr = getLocalDateStr();
+          const notExpired = !!data.expiry_date && data.expiry_date >= todayStr;
+          const plan = data.membership_plans as { name?: string } | null;
+          setActivePlanInfo({
+            name: plan?.name || 'Active Membership',
+            expiryDate: data.expiry_date,
+            isActive: notExpired,
+          });
+        } else {
+          setActivePlanInfo(null);
+        }
+      });
+  }, [selectedMemberId]);
 
   useEffect(() => {
     if (visible) {
       // Fetch members and plans
-      supabase.from('members').select('id, full_name, mobile, member_id, joining_date').order('full_name').then(({ data }) => {
-        setMembers((data || []) as Member[]);
-      });
+      supabase
+        .from('members')
+        .select('id, full_name, mobile, member_id, joining_date')
+        .then(({ data }) => {
+          const list = (data || []) as Member[];
+          list.sort((a, b) => {
+            const aMatch = (a.member_id || '').match(/\d+/);
+            const bMatch = (b.member_id || '').match(/\d+/);
+            const aNum = aMatch ? parseInt(aMatch[0], 10) : 999999999;
+            const bNum = bMatch ? parseInt(bMatch[0], 10) : 999999999;
+            if (aNum !== bNum) return aNum - bNum;
+            return (a.full_name || '').localeCompare(b.full_name || '');
+          });
+          setMembers(list);
+        });
 
       supabase.from('membership_plans').select('*').eq('active', true).order('price').then(({ data }) => {
         setPlans((data || []) as MembershipPlan[]);
@@ -49,8 +104,24 @@ export function PaymentFormModal({
       if (preselectedMemberId) {
         setSelectedMemberId(preselectedMemberId);
       }
+      setMemberSearch('');
     }
   }, [visible, preselectedMemberId]);
+
+  const selectedMember = useMemo(
+    () => members.find(m => m.id === selectedMemberId),
+    [members, selectedMemberId]
+  );
+
+  const filteredMembers = useMemo(() => {
+    const term = memberSearch.trim().toLowerCase();
+    if (!term) return members.slice(0, 10);
+    return members.filter(m =>
+      (m.full_name || '').toLowerCase().includes(term) ||
+      (m.member_id || '').toLowerCase().includes(term) ||
+      (m.mobile || '').includes(term)
+    );
+  }, [members, memberSearch]);
 
   const handlePlanSelect = (plan: MembershipPlan) => {
     setSelectedPlanId(plan.id);
@@ -58,6 +129,7 @@ export function PaymentFormModal({
   };
 
   const handleSubmit = async () => {
+    if (loading) return;
     if (!selectedMemberId) {
       Alert.alert('Error', 'Please select a member');
       return;
@@ -67,6 +139,26 @@ export function PaymentFormModal({
       return;
     }
 
+    // If member already has an active membership into the future, warn owner
+    if (activePlanInfo?.isActive && selectedPlanId) {
+      Alert.alert(
+        'Active Membership Exists',
+        `${selectedMember?.full_name || 'This member'} already has an active membership (${activePlanInfo.name}) valid until ${formatDate(activePlanInfo.expiryDate)}.\n\nDo you want to proceed with recording this renewal payment?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Yes, Record Payment',
+            onPress: () => processPaymentSubmission(),
+          },
+        ]
+      );
+      return;
+    }
+
+    await processPaymentSubmission();
+  };
+
+  const processPaymentSubmission = async () => {
     setLoading(true);
     try {
       const today = getLocalDateStr();
@@ -74,30 +166,40 @@ export function PaymentFormModal({
 
       let membershipId: string | null = null;
 
+      const memberObj = members.find(m => m.id === selectedMemberId);
+
       // If a plan is selected, create a membership
       const selectedPlan = plans.find(p => p.id === selectedPlanId);
       if (selectedPlan) {
-        const memberObj = members.find(m => m.id === selectedMemberId);
         let subStartDate = today;
 
-        // If member has no active/expiring memberships, default to joining date
-        if (memberObj?.joining_date) {
-          const { data: activeMs } = await supabase
-            .from('memberships')
-            .select('id')
-            .eq('member_id', selectedMemberId)
-            .in('status', ['ACTIVE', 'EXPIRING_SOON']);
-          if (!activeMs || activeMs.length === 0) {
-            subStartDate = memberObj.joining_date;
-          }
+        // Check if member has any existing memberships
+        const { data: existingMs } = await supabase
+          .from('memberships')
+          .select('id, start_date, expiry_date, status')
+          .eq('member_id', selectedMemberId)
+          .order('expiry_date', { ascending: false });
+
+        const hasAnyMembership = (existingMs || []).length > 0;
+
+        // ONLY default to joining date if this is brand new member with NO membership history at all
+        if (!hasAnyMembership && memberObj?.joining_date) {
+          subStartDate = memberObj.joining_date;
+        } else {
+          // For renewals: start from today
+          subStartDate = today;
         }
 
-        const [sy, sm, sd] = subStartDate.split('T')[0].split('-').map(Number);
-        const sDate = new Date(sy, sm - 1, sd);
-        const eDate = new Date(sDate);
-        eDate.setDate(sDate.getDate() + selectedPlan.duration_days);
-        const expiryStr = getLocalDateStr(eDate);
+        const expiryStr = calculateExpiryDate(subStartDate, selectedPlan.duration_days);
 
+        // Expire all previous active/expiring memberships so old ones don't conflict
+        await supabase
+          .from('memberships')
+          .update({ status: 'EXPIRED' })
+          .eq('member_id', selectedMemberId)
+          .in('status', ['ACTIVE', 'EXPIRING_SOON']);
+
+        // Insert new active membership with future expiry date
         const { data: newMs, error: msError } = await supabase
           .from('memberships')
           .insert({
@@ -123,21 +225,63 @@ export function PaymentFormModal({
         membership_id: membershipId,
         amount: String(amountRef.current),
         payment_method: paymentMethod,
-        transaction_reference: transactionRefInput.current.trim() || null,
+        transaction_reference: transactionRefInput.current.trim() || '',
         received_by: user?.id || null,
         payment_date: today,
         receipt_number: receiptNumber,
-        notes: notesRef.current.trim() || null,
+        notes: notesRef.current.trim() || '',
         created_at: new Date().toISOString(),
       });
 
       if (payError) throw payError;
 
+      // Invalidate queries across screens
+      qc.invalidateQueries({ queryKey: ['mobile-payments'] });
+      qc.invalidateQueries({ queryKey: ['mobile-members'] });
+      qc.invalidateQueries({ queryKey: ['member-detail', selectedMemberId] });
+      qc.invalidateQueries({ queryKey: ['member-memberships', selectedMemberId] });
+      qc.invalidateQueries({ queryKey: ['member-payments', selectedMemberId] });
+      qc.invalidateQueries({ queryKey: ['mobile-dashboard-stats'] });
+      qc.invalidateQueries({ queryKey: ['expiring-memberships'] });
+
+      // Insert in-app notifications
+      try {
+        const notifMsg = `${formatCurrency(amountRef.current)} received from ${memberObj?.full_name || 'Member'} for ${selectedPlan ? selectedPlan.name : 'gym dues'}.`;
+        const { data: admins } = await supabase
+          .from('user_profiles')
+          .select('id')
+          .in('role', ['OWNER', 'ADMIN']);
+
+        const notifRows: { user_id: string; title: string; message: string; type: string }[] = [];
+        const targetIds = new Set<string>();
+        if (user?.id) targetIds.add(user.id);
+        (admins || []).forEach(a => targetIds.add(a.id));
+
+        targetIds.forEach(uid => {
+          notifRows.push({
+            user_id: uid,
+            title: 'Payment Received',
+            message: notifMsg,
+            type: 'SUCCESS',
+          });
+        });
+
+        if (notifRows.length > 0) {
+          await supabase.from('notifications').insert(notifRows);
+          sounds.notification();
+          qc.invalidateQueries({ queryKey: ['mobile-notifications'] });
+          qc.invalidateQueries({ queryKey: ['unread-notifications'] });
+          qc.invalidateQueries({ queryKey: ['unread-notifications-count'] });
+        }
+      } catch (notifErr) {
+        console.warn('[PaymentFormModal] Notification error:', notifErr);
+      }
+
       Alert.alert('Success', `Payment of ${formatCurrency(amountRef.current)} recorded successfully! (Receipt #${receiptNumber})`);
       onSaved();
       onClose();
     } catch (err: unknown) {
-      Alert.alert('Payment Failed', (err as Error).message || 'Unable to record payment');
+      Alert.alert('Payment Failed', getFriendlyErrorMessage(err, 'Unable to record payment. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -152,30 +296,114 @@ export function PaymentFormModal({
     >
       <View style={styles.form}>
         {/* Member Selector */}
-        {!preselectedMemberId && (
-          <View style={styles.fieldSection}>
-            <Text style={styles.sectionLabel}>SELECT MEMBER *</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsScroll}>
-              {members.map(m => {
-                const isSelected = selectedMemberId === m.id;
-                return (
-                  <TouchableOpacity
-                    key={m.id}
-                    onPress={() => setSelectedMemberId(m.id)}
-                    style={[
-                      styles.chip,
-                      isSelected && styles.selectedChip,
-                    ]}
-                  >
-                    <Text style={[styles.chipText, isSelected && styles.selectedChipText]}>
-                      {m.full_name}
+        <View style={styles.fieldSection}>
+          <Text style={styles.sectionLabel}>SELECT MEMBER *</Text>
+          {selectedMember ? (
+            <View style={styles.selectedMemberCard}>
+              <View style={styles.selectedMemberAvatar}>
+                <Text style={styles.selectedMemberInitial}>
+                  {selectedMember.full_name?.charAt(0)?.toUpperCase() || 'M'}
+                </Text>
+              </View>
+              <View style={styles.selectedMemberInfo}>
+                <View style={styles.selectedMemberNameRow}>
+                  <Text style={styles.selectedMemberName}>{selectedMember.full_name}</Text>
+                  {selectedMember.member_id && (
+                    <View style={styles.idBadge}>
+                      <Text style={styles.idBadgeText}>{selectedMember.member_id}</Text>
+                    </View>
+                  )}
+                </View>
+                {selectedMember.mobile ? (
+                  <Text style={styles.selectedMemberMobile}>📞 {selectedMember.mobile}</Text>
+                ) : null}
+                {activePlanInfo?.isActive ? (
+                  <View style={{ marginTop: 6, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(34, 197, 94, 0.1)', borderWidth: 1, borderColor: 'rgba(34, 197, 94, 0.3)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
+                    <Text style={{ color: colors.success, fontSize: 11, fontFamily: typography.fonts.interSemiBold }}>
+                      ✓ Active Membership: {activePlanInfo.name} (Valid till {formatDate(activePlanInfo.expiryDate)})
                     </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
-        )}
+                  </View>
+                ) : (
+                  <View style={{ marginTop: 6, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(239, 68, 68, 0.08)', borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.25)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
+                    <Text style={{ color: colors.error, fontSize: 11, fontFamily: typography.fonts.interSemiBold }}>
+                      ⚠️ Membership Expired / Renewal Due
+                    </Text>
+                  </View>
+                )}
+              </View>
+              {!preselectedMemberId && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setSelectedMemberId('');
+                    setMemberSearch('');
+                  }}
+                  style={styles.changeMemberBtn}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.changeMemberText}>Change</Text>
+                  <X size={14} color={colors.error} />
+                </TouchableOpacity>
+              )}
+            </View>
+          ) : (
+            <View style={styles.searchMemberContainer}>
+              <FVEInput
+                value={memberSearch}
+                onChangeText={setMemberSearch}
+                placeholder="Search member by ID (e.g. FVE-25), name, phone..."
+                leftIcon={<Search size={15} color={colors.gold} />}
+                rightIcon={memberSearch ? <X size={15} color={colors.textSecondary} /> : undefined}
+                onRightIconPress={() => setMemberSearch('')}
+                containerStyle={{ marginBottom: 8 }}
+              />
+
+              <View style={styles.memberResultsBox}>
+                {filteredMembers.length > 0 ? (
+                  filteredMembers.map(m => (
+                    <TouchableOpacity
+                      key={m.id}
+                      onPress={() => {
+                        setSelectedMemberId(m.id);
+                        setMemberSearch('');
+                      }}
+                      style={styles.memberResultRow}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.memberResultLeft}>
+                        <View style={styles.memberMiniAvatar}>
+                          <Text style={styles.memberMiniInitial}>
+                            {m.full_name?.charAt(0)?.toUpperCase() || 'M'}
+                          </Text>
+                        </View>
+                        <View>
+                          <View style={styles.memberResultNameRow}>
+                            <Text style={styles.memberResultName}>{m.full_name}</Text>
+                            {m.member_id && (
+                              <View style={styles.idBadgeSm}>
+                                <Text style={styles.idBadgeSmText}>{m.member_id}</Text>
+                              </View>
+                            )}
+                          </View>
+                          {m.mobile && (
+                            <Text style={styles.memberResultMobile}>{m.mobile}</Text>
+                          )}
+                        </View>
+                      </View>
+                      <Check size={16} color="transparent" />
+                    </TouchableOpacity>
+                  ))
+                ) : (
+                  <View style={styles.emptySearchBox}>
+                    <Text style={styles.emptySearchText}>
+                      No members found matching "{memberSearch}"
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          )}
+        </View>
 
         {/* Plan Selector */}
         <View style={styles.fieldSection}>
@@ -269,77 +497,236 @@ export function PaymentFormModal({
   );
 }
 
-const styles = StyleSheet.create({
-  form: {
-    paddingBottom: 20,
-  },
-  fieldSection: {
-    marginBottom: 16,
-  },
-  sectionLabel: {
-    color: colors.textSecondary,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhaniMedium,
-    fontWeight: '600',
-    letterSpacing: 0.8,
-    marginBottom: 8,
-  },
-  chipsScroll: {
-    flexDirection: 'row',
-  },
-  chip: {
-    backgroundColor: '#161A20',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.2)',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginRight: 8,
-  },
-  selectedChip: {
-    backgroundColor: colors.goldMuted,
-    borderColor: colors.gold,
-  },
-  chipText: {
-    color: colors.textSecondary,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.inter,
-  },
-  selectedChipText: {
-    color: colors.gold,
-    fontWeight: '700',
-  },
-  methodRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  methodButton: {
-    backgroundColor: '#161A20',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.2)',
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    flex: 1,
-    minWidth: '45%',
-    alignItems: 'center',
-  },
-  selectedMethodButton: {
-    backgroundColor: colors.goldMuted,
-    borderColor: colors.gold,
-  },
-  methodButtonText: {
-    color: colors.textSecondary,
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '600',
-  },
-  selectedMethodButtonText: {
-    color: colors.gold,
-    fontWeight: '700',
-  },
-  submitButton: {
-    marginTop: 10,
-  },
-});
+const getPaymentFormStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    form: {
+      paddingBottom: 20,
+    },
+    fieldSection: {
+      marginBottom: 16,
+    },
+    sectionLabel: {
+      color: colors.textSecondary,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhaniMedium,
+      fontWeight: '600',
+      letterSpacing: 0.8,
+      marginBottom: 8,
+    },
+    chipsScroll: {
+      flexDirection: 'row',
+    },
+    chip: {
+      backgroundColor: colors.bgSecondary,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      marginRight: 8,
+    },
+    selectedChip: {
+      backgroundColor: isDark ? colors.goldMuted : 'rgba(239, 161, 0, 0.15)',
+      borderColor: colors.gold,
+    },
+    chipText: {
+      color: colors.textSecondary,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.inter,
+    },
+    selectedChipText: {
+      color: colors.gold,
+      fontWeight: '700',
+    },
+    methodRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    methodButton: {
+      backgroundColor: colors.bgSecondary,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+      borderRadius: 8,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      flex: 1,
+      minWidth: '45%',
+      alignItems: 'center',
+    },
+    selectedMethodButton: {
+      backgroundColor: isDark ? colors.goldMuted : 'rgba(239, 161, 0, 0.15)',
+      borderColor: colors.gold,
+    },
+    methodButtonText: {
+      color: colors.textSecondary,
+      fontSize: typography.sizes.sm,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '600',
+    },
+    selectedMethodButtonText: {
+      color: colors.gold,
+      fontWeight: '700',
+    },
+    submitButton: {
+      marginTop: 10,
+    },
+    selectedMemberCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.bgSecondary,
+      borderWidth: 1.5,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.45)' : colors.goldBorder,
+      borderRadius: 12,
+      padding: 12,
+      gap: 12,
+    },
+    selectedMemberAvatar: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.15)' : 'rgba(239, 161, 0, 0.12)',
+      borderWidth: 1.5,
+      borderColor: colors.gold,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    selectedMemberInitial: {
+      color: colors.gold,
+      fontSize: 16,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    selectedMemberInfo: {
+      flex: 1,
+    },
+    selectedMemberNameRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 3,
+    },
+    selectedMemberName: {
+      color: colors.textPrimary,
+      fontSize: typography.sizes.sm,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      flexShrink: 1,
+    },
+    selectedMemberMobile: {
+      color: colors.textMuted,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.inter,
+    },
+    idBadge: {
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.15)' : 'rgba(239, 161, 0, 0.12)',
+      borderWidth: 1,
+      borderColor: colors.gold,
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+      borderRadius: 6,
+    },
+    idBadgeText: {
+      color: colors.gold,
+      fontSize: 10,
+      fontFamily: typography.fonts.orbitron,
+      fontWeight: '700',
+    },
+    changeMemberBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: isDark ? 'rgba(239, 68, 68, 0.1)' : 'rgba(239, 68, 68, 0.12)',
+      borderWidth: 1,
+      borderColor: 'rgba(239, 68, 68, 0.3)',
+      borderRadius: 8,
+      paddingHorizontal: 8,
+      paddingVertical: 5,
+    },
+    changeMemberText: {
+      color: colors.error,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.interSemiBold,
+    },
+    searchMemberContainer: {
+      marginBottom: 4,
+    },
+    memberResultsBox: {
+      backgroundColor: colors.bgSecondary,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+      borderRadius: 10,
+      maxHeight: 200,
+      overflow: 'hidden',
+    },
+    memberResultRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderDefault,
+    },
+    memberResultLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      flex: 1,
+    },
+    memberMiniAvatar: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: colors.bgTertiary,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.3)' : colors.goldBorder,
+    },
+    memberMiniInitial: {
+      color: colors.gold,
+      fontSize: 11,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    memberResultNameRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    memberResultName: {
+      color: colors.textPrimary,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.interSemiBold,
+    },
+    memberResultMobile: {
+      color: colors.textMuted,
+      fontSize: 10,
+      fontFamily: typography.fonts.inter,
+      marginTop: 1,
+    },
+    idBadgeSm: {
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : 'rgba(239, 161, 0, 0.1)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.35)' : colors.goldBorder,
+      paddingHorizontal: 5,
+      paddingVertical: 0.5,
+      borderRadius: 4,
+    },
+    idBadgeSmText: {
+      color: colors.gold,
+      fontSize: 9,
+      fontFamily: typography.fonts.orbitron,
+      fontWeight: '700',
+    },
+    emptySearchBox: {
+      padding: 16,
+      alignItems: 'center',
+    },
+    emptySearchText: {
+      color: colors.textMuted,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.inter,
+    },
+  });

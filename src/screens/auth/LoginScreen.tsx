@@ -10,13 +10,15 @@ import {
   TouchableOpacity,
   Platform,
   StatusBar,
+  ScrollView,
+  KeyboardAvoidingView,
 } from 'react-native';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Mail, Lock, Eye, EyeOff, ShieldCheck, ArrowRight } from 'lucide-react-native';
 import { FVEButton } from '@/components/common/FVEButton';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
+import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { supabase } from '@/api/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -38,6 +40,8 @@ interface NativeFieldProps {
   blurOnSubmit?: boolean;
   rightElement?: React.ReactNode;
   inputRef: React.RefObject<TextInput | null>;
+  colors: ThemeColors;
+  isDark: boolean;
 }
 
 const NativeField = memo(function NativeField({
@@ -52,19 +56,34 @@ const NativeField = memo(function NativeField({
   blurOnSubmit = false,
   rightElement,
   inputRef,
+  colors,
+  isDark,
 }: NativeFieldProps) {
   const [focused, setFocused] = useState(false);
 
   return (
-    <View style={styles.inputGroup}>
-      <Text style={styles.inputLabel}>{label}</Text>
-      <View style={[styles.fieldBox, focused && styles.fieldBoxFocused]}>
-        <View style={styles.leftIcon} pointerEvents="none">
+    <View style={staticFieldStyles.inputGroup}>
+      <Text style={[staticFieldStyles.inputLabel, { color: colors.textSecondary }]}>{label}</Text>
+      <View
+        style={[
+          staticFieldStyles.fieldBox,
+          {
+            backgroundColor: isDark ? colors.bgSecondary : colors.card,
+            borderColor: focused ? colors.gold : colors.borderDefault,
+          },
+          focused && staticFieldStyles.fieldBoxFocused,
+        ]}
+      >
+        <View style={staticFieldStyles.leftIcon} pointerEvents="none">
           {icon}
         </View>
         <TextInput
           ref={inputRef}
-          style={[styles.textInput, rightElement ? styles.textInputRight : undefined]}
+          style={[
+            staticFieldStyles.textInput,
+            { color: colors.textPrimary },
+            rightElement ? staticFieldStyles.textInputRight : undefined,
+          ]}
           placeholder={placeholder}
           placeholderTextColor={colors.textSubtle}
           selectionColor={colors.gold}
@@ -85,7 +104,7 @@ const NativeField = memo(function NativeField({
           onBlur={() => setFocused(false)}
         />
         {rightElement && (
-          <View style={styles.rightEl} pointerEvents="box-none">
+          <View style={staticFieldStyles.rightEl} pointerEvents="box-none">
             {rightElement}
           </View>
         )}
@@ -99,9 +118,10 @@ const NativeField = memo(function NativeField({
 // ─────────────────────────────────────────────────────────────────────────────
 interface EyeButtonProps {
   passwordRef: React.RefObject<TextInput | null>;
+  colors: ThemeColors;
 }
 
-const EyeButton = memo(function EyeButton({ passwordRef }: EyeButtonProps) {
+const EyeButton = memo(function EyeButton({ passwordRef, colors }: EyeButtonProps) {
   const [visible, setVisible] = useState(false);
 
   const toggle = useCallback(() => {
@@ -116,7 +136,7 @@ const EyeButton = memo(function EyeButton({ passwordRef }: EyeButtonProps) {
   return (
     <TouchableOpacity
       onPress={toggle}
-      style={styles.eyeBtn}
+      style={staticFieldStyles.eyeBtn}
       activeOpacity={0.7}
       hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
     >
@@ -135,6 +155,8 @@ const EyeButton = memo(function EyeButton({ passwordRef }: EyeButtonProps) {
 export function LoginScreen() {
   const insets = useSafeAreaInsets();
   const { login } = useAuth();
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => getLoginStyles(colors, isDark), [colors, isDark]);
 
   // Values in refs — typing never triggers a parent re-render
   const emailVal = useRef('');
@@ -201,229 +223,140 @@ export function LoginScreen() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#050505" />
+      <StatusBar
+        barStyle={isDark ? 'light-content' : 'dark-content'}
+        backgroundColor={colors.bgPrimary}
+      />
 
       <LinearGradient
-        colors={['rgba(239,161,0,0.16)', 'rgba(239,161,0,0.03)', 'transparent']}
+        colors={
+          isDark
+            ? ['rgba(239,161,0,0.16)', 'rgba(239,161,0,0.03)', 'transparent']
+            : ['rgba(239,161,0,0.12)', 'rgba(239,161,0,0.02)', 'transparent']
+        }
         style={styles.aura}
         pointerEvents="none"
       />
 
-      {/*
-        KeyboardAwareScrollView automatically scrolls the focused input
-        into view when the keyboard appears — no manual measurement needed.
-      */}
-      <KeyboardAwareScrollView
-        style={styles.scroll}
-        contentContainerStyle={[
-          styles.scrollContent,
-          {
-            paddingTop: Math.max(insets.top + 16, 28),
-            paddingBottom: Math.max(insets.bottom + 32, 40),
-          },
-        ]}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-        bounces
-        enableOnAndroid
-        extraScrollHeight={Platform.OS === 'ios' ? 24 : 80}
-        keyboardOpeningTime={0}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardContainer}
       >
-        {/* ── Brand Hero ── */}
-        <View style={styles.hero}>
-          <View style={styles.logoWrap}>
-            <Image
-              source={require('@/../assets/logo.png')}
-              style={styles.logo}
-              resizeMode="contain"
-            />
-            <View style={styles.logoRing} />
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[
+            styles.scrollContent,
+            {
+              paddingTop: Math.max(insets.top + 16, 28),
+              paddingBottom: Math.max(insets.bottom + 32, 40),
+            },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          bounces
+        >
+          {/* ── Brand Hero ── */}
+          <View style={styles.hero}>
+            <View style={styles.logoWrap}>
+              <Image
+                source={require('@/../assets/logo.png')}
+                style={styles.logo}
+                resizeMode="contain"
+              />
+              <View style={styles.logoRing} />
+            </View>
+            <Text style={styles.brandTitle}>FITVERSE ELITE</Text>
+            <Text style={styles.brandTagline}>DISCIPLINE · STRENGTH · TRANSFORMATION</Text>
+            <View style={styles.welcomeWrap}>
+              <Text style={styles.welcomeHeading}>Sign In</Text>
+              <Text style={styles.welcomeSub}>
+                Access your gym operational control center
+              </Text>
+            </View>
           </View>
-          <Text style={styles.brandTitle}>FITVERSE ELITE</Text>
-          <Text style={styles.brandTagline}>DISCIPLINE · STRENGTH · TRANSFORMATION</Text>
-          <View style={styles.welcomeWrap}>
-            <Text style={styles.welcomeHeading}>Sign In</Text>
-            <Text style={styles.welcomeSub}>
-              Access your gym operational control center
+
+          {/* ── Form Card ── */}
+          <View style={styles.card}>
+            <NativeField
+              label="EMAIL ADDRESS"
+              placeholder="name@fitverse.com"
+              icon={<Mail size={18} color={colors.gold} />}
+              onChangeText={handleEmailChange}
+              keyboardType="email-address"
+              returnKeyType="next"
+              onSubmitEditing={focusPassword}
+              blurOnSubmit={false}
+              inputRef={emailRef}
+              colors={colors}
+              isDark={isDark}
+            />
+
+            <NativeField
+              label="PASSWORD"
+              placeholder="Enter password"
+              icon={<Lock size={18} color={colors.gold} />}
+              onChangeText={handlePasswordChange}
+              secureTextEntry
+              returnKeyType="go"
+              onSubmitEditing={handleLogin}
+              blurOnSubmit
+              inputRef={passwordRef}
+              colors={colors}
+              isDark={isDark}
+              rightElement={<EyeButton passwordRef={passwordRef} colors={colors} />}
+            />
+
+            {/* Assistance Row */}
+            <View style={styles.assistRow}>
+              <View style={styles.securityPill}>
+                <ShieldCheck size={13} color={colors.gold} />
+                <Text style={styles.securityPillText}>Encrypted Session</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => {
+                  haptics.light();
+                  Alert.alert(
+                    'Account Assistance',
+                    'Contact your gym administrator to reset your login credentials.'
+                  );
+                }}
+                activeOpacity={0.7}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.needHelp}>Need Help?</Text>
+              </TouchableOpacity>
+            </View>
+
+            <FVEButton
+              title="ENTER FITVERSE"
+              onPress={handleLogin}
+              loading={loading}
+              variant="gold"
+              size="lg"
+              icon={<ArrowRight size={18} color="#050505" strokeWidth={2.5} />}
+              iconPosition="right"
+              style={styles.submitBtn}
+            />
+          </View>
+
+          {/* ── Footer ── */}
+          <View style={styles.footer}>
+            <Text style={styles.footerBrand}>FitVerse Elite Mobile OS</Text>
+            <Text style={styles.footerCredit}>
+              Engineered for Gym Owners & Staff · Powered by Chirvex
             </Text>
           </View>
-        </View>
-
-        {/* ── Form Card ── */}
-        <View style={styles.card}>
-          <NativeField
-            label="EMAIL ADDRESS"
-            placeholder="name@fitverse.com"
-            icon={<Mail size={18} color={colors.gold} />}
-            onChangeText={handleEmailChange}
-            keyboardType="email-address"
-            returnKeyType="next"
-            onSubmitEditing={focusPassword}
-            blurOnSubmit={false}
-            inputRef={emailRef}
-          />
-
-          <NativeField
-            label="PASSWORD"
-            placeholder="Enter password"
-            icon={<Lock size={18} color={colors.gold} />}
-            onChangeText={handlePasswordChange}
-            secureTextEntry
-            returnKeyType="go"
-            onSubmitEditing={handleLogin}
-            blurOnSubmit
-            inputRef={passwordRef}
-            rightElement={<EyeButton passwordRef={passwordRef} />}
-          />
-
-          {/* Assistance Row */}
-          <View style={styles.assistRow}>
-            <View style={styles.securityPill}>
-              <ShieldCheck size={13} color={colors.gold} />
-              <Text style={styles.securityPillText}>Encrypted Session</Text>
-            </View>
-            <TouchableOpacity
-              onPress={() => {
-                haptics.light();
-                Alert.alert(
-                  'Account Assistance',
-                  'Contact your gym administrator to reset your login credentials.'
-                );
-              }}
-              activeOpacity={0.7}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Text style={styles.needHelp}>Need Help?</Text>
-            </TouchableOpacity>
-          </View>
-
-          <FVEButton
-            title="ENTER FITVERSE"
-            onPress={handleLogin}
-            loading={loading}
-            variant="gold"
-            size="lg"
-            icon={<ArrowRight size={18} color="#050505" strokeWidth={2.5} />}
-            iconPosition="right"
-            style={styles.submitBtn}
-          />
-        </View>
-
-        {/* ── Footer ── */}
-        <View style={styles.footer}>
-          <Text style={styles.footerBrand}>FitVerse Elite Mobile OS</Text>
-          <Text style={styles.footerCredit}>
-            Engineered for Gym Owners & Staff · Powered by Chirvex
-          </Text>
-        </View>
-      </KeyboardAwareScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#050505',
-  },
-  aura: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 320,
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    paddingHorizontal: 20,
-    justifyContent: 'center',
-  },
-  // ── Hero ──
-  hero: {
-    alignItems: 'center',
-    marginBottom: 28,
-    width: '100%',
-  },
-  logoWrap: {
-    position: 'relative',
-    width: 84,
-    height: 84,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
-  },
-  logo: {
-    width: 74,
-    height: 74,
-  },
-  logoRing: {
-    position: 'absolute',
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    borderWidth: 1.2,
-    borderColor: 'rgba(239,161,0,0.28)',
-  },
-  brandTitle: {
-    color: colors.gold,
-    fontSize: typography.sizes.lg,
-    fontFamily: typography.fonts.orbitron,
-    fontWeight: '800',
-    letterSpacing: 2.2,
-    textAlign: 'center',
-  },
-  brandTagline: {
-    color: colors.textMuted,
-    fontSize: 10,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    letterSpacing: 1.2,
-    marginTop: 4,
-    textAlign: 'center',
-  },
-  welcomeWrap: {
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  welcomeHeading: {
-    color: colors.textPrimary,
-    fontSize: 26,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-    letterSpacing: 0.4,
-  },
-  welcomeSub: {
-    color: colors.textSecondary,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.inter,
-    marginTop: 4,
-    textAlign: 'center',
-  },
-  // ── Card ──
-  card: {
-    width: '100%',
-    maxWidth: 420,
-    alignSelf: 'center',
-    backgroundColor: '#0D1015',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 14,
-    elevation: 8,
-  },
-  // ── Field ──
+const staticFieldStyles = StyleSheet.create({
   inputGroup: {
     marginBottom: 16,
   },
   inputLabel: {
-    color: colors.textSecondary,
     fontSize: typography.sizes.xs,
     fontFamily: typography.fonts.rajdhaniMedium,
     fontWeight: '600',
@@ -434,21 +367,16 @@ const styles = StyleSheet.create({
   fieldBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#12151C',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
     borderRadius: 14,
     height: 54,
     overflow: 'hidden',
   },
   fieldBoxFocused: {
-    borderColor: colors.gold,
-    backgroundColor: '#171B24',
-    shadowColor: colors.gold,
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 4,
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+    elevation: 3,
   },
   leftIcon: {
     width: 46,
@@ -459,12 +387,10 @@ const styles = StyleSheet.create({
   textInput: {
     flex: 1,
     height: 54,
-    color: colors.textPrimary,
     fontSize: typography.sizes.base,
     fontFamily: typography.fonts.inter,
     paddingRight: 14,
     paddingVertical: 0,
-    outlineStyle: 'none' as any,
   },
   textInputRight: {
     paddingRight: 48,
@@ -482,58 +408,159 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  // ── Assistance ──
-  assistRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 18,
-    marginTop: -4,
-    paddingHorizontal: 2,
-  },
-  securityPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(239,161,0,0.08)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
-  },
-  securityPillText: {
-    color: colors.gold,
-    fontSize: 10,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    letterSpacing: 0.4,
-  },
-  needHelp: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    letterSpacing: 0.4,
-  },
-  submitBtn: {
-    marginTop: 2,
-  },
-  // ── Footer ──
-  footer: {
-    alignItems: 'center',
-    marginTop: 28,
-  },
-  footerBrand: {
-    color: colors.textSecondary,
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-  },
-  footerCredit: {
-    color: colors.textSubtle,
-    fontSize: 10,
-    fontFamily: typography.fonts.inter,
-    marginTop: 3,
-    textAlign: 'center',
-  },
 });
+
+const getLoginStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.bgPrimary,
+    },
+    keyboardContainer: {
+      flex: 1,
+    },
+    aura: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      height: 320,
+    },
+    scroll: {
+      flex: 1,
+    },
+    scrollContent: {
+      flexGrow: 1,
+      paddingHorizontal: 20,
+    },
+    // ── Hero ──
+    hero: {
+      alignItems: 'center',
+      marginBottom: 28,
+      width: '100%',
+    },
+    logoWrap: {
+      position: 'relative',
+      width: 84,
+      height: 84,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 14,
+    },
+    logo: {
+      width: 74,
+      height: 74,
+    },
+    logoRing: {
+      position: 'absolute',
+      width: 84,
+      height: 84,
+      borderRadius: 42,
+      borderWidth: 1.2,
+      borderColor: isDark ? 'rgba(239,161,0,0.28)' : 'rgba(239,161,0,0.35)',
+    },
+    brandTitle: {
+      color: colors.gold,
+      fontSize: typography.sizes.lg,
+      fontFamily: typography.fonts.orbitron,
+      fontWeight: '800',
+      letterSpacing: 2.2,
+      textAlign: 'center',
+    },
+    brandTagline: {
+      color: colors.textMuted,
+      fontSize: 10,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 1.2,
+      marginTop: 4,
+      textAlign: 'center',
+    },
+    welcomeWrap: {
+      alignItems: 'center',
+      marginTop: 20,
+    },
+    welcomeHeading: {
+      color: colors.textPrimary,
+      fontSize: 26,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '800',
+      letterSpacing: 0.4,
+    },
+    welcomeSub: {
+      color: colors.textSecondary,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.inter,
+      marginTop: 4,
+      textAlign: 'center',
+    },
+    // ── Card ──
+    card: {
+      width: '100%',
+      maxWidth: 420,
+      alignSelf: 'center',
+      backgroundColor: colors.card,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+      padding: 20,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: isDark ? 8 : 4 },
+      shadowOpacity: isDark ? 0.4 : 0.08,
+      shadowRadius: isDark ? 14 : 10,
+      elevation: isDark ? 8 : 3,
+    },
+    assistRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 18,
+      marginTop: -4,
+      paddingHorizontal: 2,
+    },
+    securityPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      backgroundColor: isDark ? 'rgba(239,161,0,0.08)' : 'rgba(239,161,0,0.1)',
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 12,
+    },
+    securityPillText: {
+      color: colors.gold,
+      fontSize: 10,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 0.4,
+    },
+    needHelp: {
+      color: colors.textMuted,
+      fontSize: 11,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 0.4,
+    },
+    submitBtn: {
+      marginTop: 2,
+    },
+    // ── Footer ──
+    footer: {
+      alignItems: 'center',
+      marginTop: 28,
+    },
+    footerBrand: {
+      color: colors.textSecondary,
+      fontSize: 11,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 0.8,
+    },
+    footerCredit: {
+      color: colors.textSubtle,
+      fontSize: 10,
+      fontFamily: typography.fonts.inter,
+      marginTop: 3,
+      textAlign: 'center',
+    },
+  });

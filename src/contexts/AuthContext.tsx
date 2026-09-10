@@ -129,14 +129,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!mounted) return;
-      if (session?.user) {
-        fetchProfile(session.user);
-      } else {
+    // Safety fallback: Ensure auth loading doesn't hang indefinitely on startup
+    const authTimeout = setTimeout(() => {
+      if (mounted && loading) {
         setLoading(false);
       }
-    });
+    }, 4000);
+
+    supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => {
+        clearTimeout(authTimeout);
+        if (!mounted) return;
+        if (session?.user) {
+          fetchProfile(session.user);
+        } else {
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        clearTimeout(authTimeout);
+        console.warn('Supabase getSession failed on launch:', err);
+        if (mounted) setLoading(false);
+      });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {

@@ -13,6 +13,7 @@ import {
   Animated,
   Alert,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useNavigationState } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -32,9 +33,12 @@ import {
   ChevronRight,
   QrCode,
   Sparkles,
+  Sun,
+  Moon,
+  Laptop,
 } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
 import { typography } from '@/constants/typography';
 import { FVEBadge } from '@/components/common/FVEBadge';
 import { canAccessRoute } from '@/constants/permissions';
@@ -97,15 +101,15 @@ const NAV_SECTIONS: NavSection[] = [
 export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
   const navigation = useNavigation<NavigationProp>();
   const { user, logout } = useAuth();
+  const { colors, isDark, theme, setTheme } = useTheme();
   const insets = useSafeAreaInsets();
 
-  // Internal rendered state allows smooth slide-out and backdrop fade before unmounting
   const [rendered, setRendered] = useState(visible);
   const slideAnim = useRef(new Animated.Value(-320)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   // Track active screen for highlighting
-  const activeRouteName = useNavigationState(state => {
+  const activeRouteName = useNavigationState((state) => {
     if (!state || !state.routes || state.routes.length === 0) return 'Dashboard';
     const current = state.routes[state.index];
     if (current.name === 'MainTabs') {
@@ -119,24 +123,27 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
     return current.name;
   });
 
-  const closeWithAnimation = useCallback((afterClose?: () => void) => {
-    Animated.parallel([
-      Animated.timing(slideAnim, {
-        toValue: -320,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setRendered(false);
-      onClose();
-      afterClose?.();
-    });
-  }, [slideAnim, fadeAnim, onClose]);
+  const closeWithAnimation = useCallback(
+    (afterClose?: () => void) => {
+      Animated.parallel([
+        Animated.timing(slideAnim, {
+          toValue: -320,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        setRendered(false);
+        onClose();
+        afterClose?.();
+      });
+    },
+    [slideAnim, fadeAnim, onClose]
+  );
 
   useEffect(() => {
     if (visible) {
@@ -219,6 +226,11 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
 
   if (!rendered) return null;
 
+  const drawerBg = isDark ? '#0D0F12' : colors.cardBackground;
+  const drawerBorder = isDark ? 'rgba(239, 161, 0, 0.3)' : colors.borderDark;
+  const headerBg = isDark ? '#080A0D' : colors.surfaceLight;
+  const userSectionBg = isDark ? '#111419' : colors.surface;
+
   return (
     <Modal
       visible={rendered}
@@ -233,6 +245,7 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
           style={[
             styles.backdrop,
             {
+              backgroundColor: colors.overlay,
               opacity: fadeAnim,
             },
           ]}
@@ -240,11 +253,13 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
           <Pressable style={styles.backdropTap} onPress={() => closeWithAnimation()} />
         </Animated.View>
 
-        {/* Drawer Container — smoothly slides in and out */}
+        {/* Drawer Container */}
         <Animated.View
           style={[
             styles.drawerContainer,
             {
+              backgroundColor: drawerBg,
+              borderRightColor: drawerBorder,
               paddingTop: insets.top + (Platform.OS === 'android' ? 6 : 2),
               transform: [{ translateX: slideAnim }],
             },
@@ -252,7 +267,7 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
         >
           <View style={styles.drawerContent}>
             {/* Header: Logo + Brand + Close */}
-            <View style={styles.header}>
+            <View style={[styles.header, { backgroundColor: headerBg, borderBottomColor: colors.borderDark }]}>
               <View style={styles.logoRow}>
                 <Image
                   source={require('@/../assets/logo.png')}
@@ -260,8 +275,8 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
                   resizeMode="contain"
                 />
                 <View>
-                  <Text style={styles.brandTitle}>FITVERSE</Text>
-                  <Text style={styles.brandSubtitle}>ELITE MOBILE</Text>
+                  <Text style={[styles.brandTitle, { color: colors.gold }]}>FITVERSE</Text>
+                  <Text style={[styles.brandSubtitle, { color: colors.textSecondary }]}>ELITE MOBILE</Text>
                 </View>
               </View>
               <TouchableOpacity
@@ -269,7 +284,7 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
                   haptics.light();
                   closeWithAnimation();
                 }}
-                style={styles.closeBtn}
+                style={[styles.closeBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(15, 23, 42, 0.05)' }]}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 activeOpacity={0.7}
               >
@@ -280,17 +295,26 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
             {/* Interactive User Profile Card */}
             <TouchableOpacity
               onPress={() => handleNavigate('Settings')}
-              style={styles.userSection}
+              style={[styles.userSection, { backgroundColor: userSectionBg, borderBottomColor: colors.borderDark }]}
               activeOpacity={0.8}
             >
-              <View style={styles.avatarCircle}>
-                <Text style={styles.avatarText}>
-                  {user?.full_name?.charAt(0) || user?.username?.charAt(0) || 'U'}
-                </Text>
+              <View style={[styles.avatarWrapper, { borderColor: colors.gold }]}>
+                {user?.avatar_url ? (
+                  <Image source={{ uri: user.avatar_url }} style={styles.avatarImg} />
+                ) : (
+                  <LinearGradient
+                    colors={isDark ? ['#2A3245', '#161A26'] : ['#E2E8F0', '#CBD5E1']}
+                    style={styles.avatarGradient}
+                  >
+                    <Text style={[styles.avatarText, { color: colors.gold }]}>
+                      {(user?.full_name?.trim()?.charAt(0) || user?.username?.trim()?.charAt(0) || 'O').toUpperCase()}
+                    </Text>
+                  </LinearGradient>
+                )}
               </View>
               <View style={styles.userInfo}>
-                <Text numberOfLines={1} style={styles.userName}>
-                  {user?.full_name || user?.username}
+                <Text numberOfLines={1} style={[styles.userName, { color: colors.textPrimary }]}>
+                  {(user?.full_name || user?.username || 'User').toUpperCase()}
                 </Text>
                 <View style={styles.userRoleRow}>
                   <FVEBadge role={user?.role} size="sm" />
@@ -299,14 +323,14 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
               <ChevronRight size={16} color={colors.textMuted} />
             </TouchableOpacity>
 
-            {/* Structured Categorical Navigation List */}
+            {/* Categorical Navigation List */}
             <ScrollView
               style={styles.scrollList}
               contentContainerStyle={styles.scrollListContent}
               showsVerticalScrollIndicator={false}
             >
               {NAV_SECTIONS.map((section, idx) => {
-                const accessibleItems = section.items.filter(item =>
+                const accessibleItems = section.items.filter((item) =>
                   canAccessRoute(user?.role, item.route)
                 );
 
@@ -314,7 +338,7 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
 
                 return (
                   <View key={section.title} style={idx > 0 ? styles.sectionGroup : undefined}>
-                    <Text style={styles.sectionTitle}>{section.title}</Text>
+                    <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>{section.title}</Text>
 
                     {accessibleItems.map((item) => {
                       const isActive = activeRouteName === item.screen;
@@ -326,18 +350,19 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
                           onPress={() => handleNavigate(item.screen)}
                           style={({ pressed }) => [
                             styles.navItem,
-                            isActive && styles.navItemActive,
-                            pressed && styles.navItemPressed,
+                            isActive && [styles.navItemActive, { borderLeftColor: colors.gold, backgroundColor: colors.goldMuted }],
+                            pressed && [styles.navItemPressed, { backgroundColor: colors.goldSubtle }],
                           ]}
                           android_ripple={{
-                            color: 'rgba(239, 161, 0, 0.15)',
+                            color: colors.goldMuted,
                             borderless: false,
                           }}
                         >
                           <View
                             style={[
                               styles.navIconBox,
-                              isActive && styles.navIconBoxActive,
+                              { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(15, 23, 42, 0.04)' },
+                              isActive && { backgroundColor: colors.goldMuted },
                             ]}
                           >
                             <IconComponent
@@ -349,19 +374,20 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
                           <Text
                             style={[
                               styles.navLabel,
-                              isActive && styles.navLabelActive,
+                              { color: colors.textSecondary },
+                              isActive && [styles.navLabelActive, { color: colors.gold }],
                             ]}
                           >
                             {item.label}
                           </Text>
 
                           {isActive ? (
-                            <View style={styles.activePill}>
+                            <View style={[styles.activePill, { backgroundColor: colors.goldMuted }]}>
                               <Sparkles size={11} color={colors.gold} />
-                              <Text style={styles.activePillText}>ACTIVE</Text>
+                              <Text style={[styles.activePillText, { color: colors.gold }]}>ACTIVE</Text>
                             </View>
                           ) : (
-                            <ChevronRight size={16} color="rgba(255,255,255,0.2)" />
+                            <ChevronRight size={16} color={colors.textSubtle} />
                           )}
                         </Pressable>
                       );
@@ -371,19 +397,81 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
               })}
             </ScrollView>
 
-            {/* Footer Sign Out + Tagline with Safe Area Insets */}
-            <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+            {/* Footer with Theme Switcher & Sign Out */}
+            <View
+              style={[
+                styles.footer,
+                {
+                  backgroundColor: headerBg,
+                  borderTopColor: colors.borderDark,
+                  paddingBottom: Math.max(insets.bottom, 16),
+                },
+              ]}
+            >
+              {/* Quick Theme Switcher */}
+              <View style={[styles.themeRow, { backgroundColor: isDark ? '#14171C' : '#FFFFFF', borderColor: colors.borderDark }]}>
+                <TouchableOpacity
+                  onPress={() => {
+                    haptics.selection();
+                    setTheme('light');
+                  }}
+                  style={[
+                    styles.themeBtn,
+                    theme === 'light' && [styles.themeBtnActive, { backgroundColor: colors.goldMuted, borderColor: colors.gold }],
+                  ]}
+                >
+                  <Sun size={14} color={theme === 'light' ? colors.gold : colors.textMuted} />
+                  <Text style={[styles.themeBtnText, { color: theme === 'light' ? colors.gold : colors.textMuted }]}>
+                    Light
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => {
+                    haptics.selection();
+                    setTheme('dark');
+                  }}
+                  style={[
+                    styles.themeBtn,
+                    theme === 'dark' && [styles.themeBtnActive, { backgroundColor: colors.goldMuted, borderColor: colors.gold }],
+                  ]}
+                >
+                  <Moon size={14} color={theme === 'dark' ? colors.gold : colors.textMuted} />
+                  <Text style={[styles.themeBtnText, { color: theme === 'dark' ? colors.gold : colors.textMuted }]}>
+                    Dark
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => {
+                    haptics.selection();
+                    setTheme('system');
+                  }}
+                  style={[
+                    styles.themeBtn,
+                    theme === 'system' && [styles.themeBtnActive, { backgroundColor: colors.goldMuted, borderColor: colors.gold }],
+                  ]}
+                >
+                  <Laptop size={14} color={theme === 'system' ? colors.gold : colors.textMuted} />
+                  <Text style={[styles.themeBtnText, { color: theme === 'system' ? colors.gold : colors.textMuted }]}>
+                    Auto
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
               <TouchableOpacity
                 onPress={handleLogoutConfirm}
-                style={styles.logoutBtn}
+                style={[styles.logoutBtn, { backgroundColor: colors.errorMuted, borderColor: colors.errorBorder }]}
                 activeOpacity={0.7}
               >
-                <View style={styles.logoutIconBox}>
+                <View style={[styles.logoutIconBox, { backgroundColor: colors.errorMuted }]}>
                   <LogOut size={16} color={colors.error} />
                 </View>
-                <Text style={styles.logoutText}>Sign Out</Text>
+                <Text style={[styles.logoutText, { color: colors.error }]}>Sign Out</Text>
               </TouchableOpacity>
-              <Text style={styles.footerTagline}>DISCIPLINE · STRENGTH · TRANSFORMATION</Text>
+              <Text style={[styles.footerTagline, { color: colors.gold, opacity: 0.5 }]}>
+                DISCIPLINE · STRENGTH · TRANSFORMATION
+              </Text>
             </View>
           </View>
         </Animated.View>
@@ -403,7 +491,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
   },
   backdropTap: {
     flex: 1,
@@ -411,12 +498,10 @@ const styles = StyleSheet.create({
   drawerContainer: {
     width: 300,
     maxWidth: '82%',
-    backgroundColor: '#0D0F12',
     borderRightWidth: 1.2,
-    borderRightColor: 'rgba(239, 161, 0, 0.3)',
     shadowColor: '#000',
     shadowOffset: { width: 8, height: 0 },
-    shadowOpacity: 0.9,
+    shadowOpacity: 0.5,
     shadowRadius: 20,
     elevation: 24,
     height: '100%',
@@ -432,8 +517,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(239, 161, 0, 0.15)',
-    backgroundColor: '#080A0D',
   },
   logoRow: {
     flexDirection: 'row',
@@ -445,7 +528,6 @@ const styles = StyleSheet.create({
     height: 36,
   },
   brandTitle: {
-    color: colors.gold,
     fontSize: typography.sizes.base,
     fontFamily: typography.fonts.orbitron,
     fontWeight: '700',
@@ -453,7 +535,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   brandSubtitle: {
-    color: colors.textSecondary,
     fontSize: 10,
     fontFamily: typography.fonts.orbitron,
     letterSpacing: 2,
@@ -461,7 +542,6 @@ const styles = StyleSheet.create({
   closeBtn: {
     padding: 6,
     borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
   },
   userSection: {
     flexDirection: 'row',
@@ -469,32 +549,40 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.06)',
-    backgroundColor: '#111419',
     gap: 12,
   },
-  avatarCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: colors.gold,
+  avatarWrapper: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    padding: 2,
+    borderWidth: 1.5,
+  },
+  avatarImg: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+  },
+  avatarGradient: {
+    flex: 1,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
-    color: '#050505',
-    fontSize: typography.sizes.md,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
+    fontSize: 18,
+    fontFamily: typography.fonts.orbitron,
+    fontWeight: '900',
+    includeFontPadding: false,
   },
   userInfo: {
     flex: 1,
   },
   userName: {
-    color: colors.textPrimary,
-    fontSize: typography.sizes.base,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
+    fontSize: typography.sizes.sm,
+    fontFamily: typography.fonts.orbitron,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   userRoleRow: {
     marginTop: 3,
@@ -512,7 +600,6 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   sectionTitle: {
-    color: colors.textMuted,
     fontSize: 10,
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '700',
@@ -532,48 +619,36 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   navItemActive: {
-    backgroundColor: 'rgba(239, 161, 0, 0.12)',
     borderLeftWidth: 3,
-    borderLeftColor: colors.gold,
   },
-  navItemPressed: {
-    backgroundColor: 'rgba(239, 161, 0, 0.08)',
-  },
+  navItemPressed: {},
   navIconBox: {
     width: 32,
     height: 32,
     borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
   },
-  navIconBoxActive: {
-    backgroundColor: 'rgba(239, 161, 0, 0.22)',
-  },
   navLabel: {
     flex: 1,
-    color: colors.textSecondary,
     fontSize: typography.sizes.base,
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '600',
     letterSpacing: 0.4,
   },
   navLabelActive: {
-    color: colors.gold,
     fontWeight: '700',
   },
   activePill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(239, 161, 0, 0.16)',
     paddingHorizontal: 7,
     paddingVertical: 3,
     borderRadius: 10,
   },
   activePillText: {
-    color: colors.gold,
     fontSize: 9,
     fontFamily: typography.fonts.orbitron,
     fontWeight: '700',
@@ -582,8 +657,33 @@ const styles = StyleSheet.create({
   footer: {
     padding: 16,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.06)',
-    backgroundColor: '#0A0C0F',
+  },
+  themeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  themeBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  themeBtnActive: {},
+  themeBtnText: {
+    fontSize: 11,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   logoutBtn: {
     flexDirection: 'row',
@@ -592,27 +692,22 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 10,
-    backgroundColor: 'rgba(239, 68, 68, 0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.2)',
   },
   logoutIconBox: {
     width: 28,
     height: 28,
     borderRadius: 6,
-    backgroundColor: 'rgba(239, 68, 68, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   logoutText: {
-    color: colors.error,
     fontSize: typography.sizes.base,
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '700',
     letterSpacing: 0.5,
   },
   footerTagline: {
-    color: 'rgba(239, 161, 0, 0.35)',
     fontSize: 9,
     fontFamily: typography.fonts.orbitron,
     letterSpacing: 1,

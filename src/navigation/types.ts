@@ -20,4 +20,5 @@ export type RootStackParamList = {
   Reports: undefined;
   Staff: undefined;
   Notifications: undefined;
+  PersonalTraining: undefined;
 };

@@ -82,3 +82,52 @@ export function calculateAge(dob?: string | null): number | null {
     return null;
   }
 }
+
+/**
+ * Timezone-safe calculation of expiry date string (YYYY-MM-DD) from a local start date string (YYYY-MM-DD)
+ * and duration in days using inclusive date math (Option A).
+ *
+ * Expiry Date = Start Date + (durationDays - 1) days.
+ * E.g. A 1-month (30-day) membership starting Sept 7 expires on Oct 6 at 23:59:59 (30 full days: Sept 7 to Oct 6 inclusive).
+ * Day 1 is counted on the start date itself.
+ */
+export function calculateExpiryDate(startDateStr: string, durationDays: number): string {
+  if (!startDateStr) return getLocalDateStr();
+  const daysToAdd = Math.max(0, durationDays - 1);
+  const cleanStr = startDateStr.split('T')[0];
+  const parts = cleanStr.split('-').map(Number);
+  if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+    const d = new Date(parts[0], parts[1] - 1, parts[2] + daysToAdd);
+    return getLocalDateStr(d);
+  }
+  const d = new Date(startDateStr);
+  d.setDate(d.getDate() + daysToAdd);
+  return getLocalDateStr(d);
+}
+
+/**
+ * Normalizes membership status against today's date (local IST).
+ * Guarantees that past expiry dates are always computed as EXPIRED
+ * regardless of static DB values, and respects HOLD status.
+ */
+export function normalizeMembershipStatus(
+  status: string | null | undefined,
+  expiryDate: string | null | undefined,
+): 'ACTIVE' | 'EXPIRING_SOON' | 'EXPIRED' | 'HOLD' | null {
+  if (status === 'HOLD') return 'HOLD';
+
+  if (!expiryDate) {
+    if (status === 'ACTIVE' || status === 'EXPIRING_SOON') return 'ACTIVE';
+    return status === 'EXPIRED' ? 'EXPIRED' : null;
+  }
+
+  const todayStr = getLocalDateStr();
+  const cleanExp = expiryDate.split('T')[0];
+  if (cleanExp < todayStr) return 'EXPIRED';
+
+  const diffMs = new Date(cleanExp).getTime() - new Date(todayStr).getTime();
+  const daysLeft = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  if (daysLeft <= 7) return 'EXPIRING_SOON';
+  return 'ACTIVE';
+}
+
