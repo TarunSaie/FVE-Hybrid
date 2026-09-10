@@ -35,6 +35,7 @@ export function MemberCard({ member, onPress, onShare, isSharing, onWhatsAppAler
   const isExpired =
     member.membership_status === 'EXPIRED' ||
     (!!member.membership_expiry_date && member.membership_expiry_date < todayStr);
+  const isExpiringSoon = !isExpired && member.membership_status === 'EXPIRING_SOON';
 
   const displayStatus = isExpired ? 'EXPIRED' : (member.membership_status || 'NONE');
 
@@ -63,10 +64,14 @@ export function MemberCard({ member, onPress, onShare, isSharing, onWhatsAppAler
 
   const cardBg = isExpired
     ? isDark ? '#140D0E' : '#FEF2F2'
+    : isExpiringSoon
+    ? isDark ? '#12100A' : '#FFFBEB'
     : colors.cardBackground;
 
   const cardBorder = isExpired
     ? isDark ? 'rgba(239, 68, 68, 0.3)' : 'rgba(220, 38, 38, 0.25)'
+    : isExpiringSoon
+    ? isDark ? 'rgba(245, 158, 11, 0.35)' : 'rgba(217, 119, 6, 0.25)'
     : colors.borderDark;
 
   return (
@@ -181,7 +186,7 @@ export function MemberCard({ member, onPress, onShare, isSharing, onWhatsAppAler
               </TouchableOpacity>
             ) : null}
 
-            {isExpired && onWhatsAppAlert ? (
+            {(isExpired || isExpiringSoon) && onWhatsAppAlert ? (
               <TouchableOpacity
                 onPress={() => {
                   haptics.medium();
@@ -192,7 +197,9 @@ export function MemberCard({ member, onPress, onShare, isSharing, onWhatsAppAler
                 style={styles.whatsappAlertBtn}
               >
                 <MessageCircle size={13} color="#25D366" />
-                <Text style={styles.whatsappAlertText}>Alert</Text>
+                <Text style={styles.whatsappAlertText}>
+                  {isExpiringSoon ? 'Remind' : 'Alert'}
+                </Text>
               </TouchableOpacity>
             ) : null}
             <ChevronRight size={18} color={isExpired ? colors.error : colors.gold} style={styles.chevron} />

@@ -95,6 +95,25 @@ export function getMembershipStatusStyle(status?: string | null): { bg: string; 
 }
 
 /**
+ * Builds a proactive WhatsApp renewal reminder for members whose membership is expiring soon.
+ */
+export function buildExpiryReminderMessage(
+  memberName: string,
+  planName: string | null | undefined,
+  expiryDate: string | null | undefined,
+  daysLeft: number
+): string {
+  const planInfo = planName ? `*${planName}*` : 'gym';
+  const dateInfo = expiryDate ? ` on *${formatDate(expiryDate)}*` : '';
+  return (
+    `Hi *${memberName}*,\n\n` +
+    `This is a reminder from *FitVerse Elite Gym* that your ${planInfo} membership is expiring${dateInfo} (${daysLeft} day${daysLeft === 1 ? '' : 's'} left).\n\n` +
+    `Please renew soon to continue your training without interruption.\n\n` +
+    `— Team FitVerse Elite`
+  );
+}
+
+/**
  * Builds standard WhatsApp renewal alert message for expired members.
  */
 export function buildExpiredAlertMessage(

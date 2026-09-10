@@ -31,7 +31,7 @@ import { RootStackParamList } from '@/navigation/types';
 import { haptics } from '@/utils/haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Plus } from 'lucide-react-native';
-import { buildExpiredAlertMessage, openWhatsAppLink } from '@/utils/format';
+import { buildExpiredAlertMessage, buildExpiryReminderMessage, openWhatsAppLink } from '@/utils/format';
 import { getLocalDateStr } from '@/utils/date';
 import * as Clipboard from 'expo-clipboard';
 import {
@@ -257,11 +257,26 @@ export function MembersScreen() {
       return;
     }
     haptics.medium();
-    const message = buildExpiredAlertMessage(
-      member.full_name,
-      member.plan_name,
-      member.membership_expiry_date
-    );
+    const isExpiringSoon = member.membership_status === 'EXPIRING_SOON';
+    let message: string;
+    if (isExpiringSoon && member.membership_expiry_date) {
+      const daysLeft = Math.ceil(
+        (new Date(member.membership_expiry_date).getTime() - new Date().getTime()) /
+          (1000 * 60 * 60 * 24)
+      );
+      message = buildExpiryReminderMessage(
+        member.full_name,
+        member.plan_name,
+        member.membership_expiry_date,
+        Math.max(0, daysLeft)
+      );
+    } else {
+      message = buildExpiredAlertMessage(
+        member.full_name,
+        member.plan_name,
+        member.membership_expiry_date
+      );
+    }
     openWhatsAppLink(member.mobile, message);
   };
 
@@ -430,6 +445,28 @@ export function MembersScreen() {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Expiring Soon Alert Banner */}
+      {statusFilter === 'EXPIRING_SOON' && (
+        <View style={[styles.expiredBanner, styles.expiringBanner]}>
+          <View style={[styles.expiredBannerIconBox, styles.expiringBannerIconBox]}>
+            <AlertCircle size={20} color="#FBBF24" />
+          </View>
+          <View style={styles.expiredBannerContent}>
+            <View style={styles.expiredBannerHeader}>
+              <Text style={[styles.expiredBannerTitle, styles.expiringBannerTitle]}>EXPIRING SOON LIST</Text>
+              <View style={[styles.expiredCountBadge, styles.expiringCountBadge]}>
+                <Text style={[styles.expiredCountBadgeText, styles.expiringCountBadgeText]}>
+                  {members?.length || 0} expiring
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.expiredBannerText}>
+              Tap the WhatsApp Remind button on any member card below to send a proactive renewal reminder.
+            </Text>
+          </View>
+        </View>
+      )}
 
       {/* Expired Members Alert Banner (Indicator) */}
       {statusFilter === 'EXPIRED' && (
@@ -707,6 +744,25 @@ const getMembersStyles = (colors: ThemeColors, isDark: boolean) =>
       fontSize: 11,
       fontFamily: typography.fonts.inter,
       lineHeight: 15,
+    },
+    // Amber overrides for Expiring Soon banner
+    expiringBanner: {
+      backgroundColor: isDark ? 'rgba(120, 80, 0, 0.2)' : '#FFFBEB',
+      borderColor: isDark ? 'rgba(245, 158, 11, 0.35)' : 'rgba(217, 119, 6, 0.3)',
+    },
+    expiringBannerIconBox: {
+      backgroundColor: 'rgba(245, 158, 11, 0.15)',
+      borderColor: 'rgba(245, 158, 11, 0.4)',
+    },
+    expiringBannerTitle: {
+      color: isDark ? '#FBBF24' : '#92400E',
+    },
+    expiringCountBadge: {
+      backgroundColor: 'rgba(245, 158, 11, 0.15)',
+      borderColor: 'rgba(245, 158, 11, 0.4)',
+    },
+    expiringCountBadgeText: {
+      color: isDark ? '#FBBF24' : '#B45309',
     },
     sortRow: {
       flexDirection: 'row',

@@ -290,32 +290,47 @@ export function PaymentReceiptScreen() {
     if (!payment) return;
     setShowWhatsAppModal(false);
     haptics.medium();
-    setPdfGenerating(true);
-    try {
-      // 1. Copy formatted text to clipboard
-      await Clipboard.setStringAsync(whatsAppReceiptText);
 
-      // 2. Generate and open PDF sharing
-      const receiptData = buildReceiptDataFromPayment(payment, ptRecord, {
-        actualVisitsUsed,
-        remainingVisits,
-        actualPTSessionsCompleted,
-        remainingPTSessions,
-      });
-      await sharePdfReceipt(receiptData);
-
-      // 3. User feedback
+    if (!memberMobile) {
       Alert.alert(
-        'Receipt Ready to Share',
-        '✓ Receipt summary text copied to your clipboard!\n\nYou can paste it alongside the attached PDF invoice in WhatsApp.',
-        [{ text: 'OK' }]
+        'No Mobile Number',
+        'This member does not have a registered mobile number. Please update their profile with a valid WhatsApp phone number.'
       );
-    } catch (err: unknown) {
-      haptics.error();
-      Alert.alert('Error', (err as Error).message || 'Failed to share receipt');
-    } finally {
-      setPdfGenerating(false);
+      return;
     }
+
+    // 1. Open WhatsApp directly to the member's registered number with pre-filled receipt text
+    //    (mirrors Dashboard's working openWhatsAppLink pattern)
+    await openWhatsAppLink(memberMobile, whatsAppReceiptText);
+
+    // 2. After WhatsApp opens, offer to also share the branded PDF document
+    Alert.alert(
+      'Also Share PDF Invoice?',
+      'WhatsApp has opened with the receipt text pre-filled.\n\nWould you like to also share the official branded PDF invoice?',
+      [
+        { text: 'No, thanks', style: 'cancel' },
+        {
+          text: 'Share PDF',
+          onPress: async () => {
+            setPdfGenerating(true);
+            try {
+              const receiptData = buildReceiptDataFromPayment(payment, ptRecord, {
+                actualVisitsUsed,
+                remainingVisits,
+                actualPTSessionsCompleted,
+                remainingPTSessions,
+              });
+              await sharePdfReceipt(receiptData);
+            } catch (err: unknown) {
+              haptics.error();
+              Alert.alert('Error', (err as Error).message || 'Failed to generate PDF');
+            } finally {
+              setPdfGenerating(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handlePrintPdf = async () => {
@@ -639,7 +654,7 @@ export function PaymentReceiptScreen() {
                 </View>
               </View>
               <Text style={styles.modalOptionDesc}>
-                Copies receipt message to clipboard & attaches official branded PDF invoice in WhatsApp.
+                Opens WhatsApp directly with {memberMobile || 'member\'s number'} and pre-fills the receipt text. Then offers to attach the official PDF invoice.
               </Text>
             </View>
           </TouchableOpacity>
