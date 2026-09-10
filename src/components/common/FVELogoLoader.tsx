@@ -25,7 +25,7 @@ export function FVELogoLoader({
 
   return (
     <View style={[fullScreen ? styles.fullScreen : styles.inlineContainer, style]}>
-      <View style={[styles.loaderBox, { width: size, height: size }]}>
+      <View style={[styles.loaderBox, { width: size, height: size, borderRadius: size / 2 }]}>
         <Image
           source={loaderSource}
           style={{ width: size, height: size }}
