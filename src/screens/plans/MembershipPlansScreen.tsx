@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -18,7 +18,8 @@ import { FVEEmptyState } from '@/components/common/FVEEmptyState';
 import { FVELogoLoader } from '@/components/common/FVELogoLoader';
 import { MembershipPlan, PersonalTrainingPlan } from '@/types';
 import { supabase } from '@/api/supabase';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
+import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { formatCurrency, parseFeatures } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
@@ -26,6 +27,8 @@ import { haptics } from '@/utils/haptics';
 export function MembershipPlansScreen() {
   const navigation = useNavigation();
   const qc = useQueryClient();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => getPlansStyles(colors, isDark), [colors, isDark]);
 
   // Tab State
   const [activeTab, setActiveTab] = useState<'membership' | 'pt'>('membership');
@@ -197,7 +200,7 @@ export function MembershipPlansScreen() {
         >
           <Award size={14} color={activeTab === 'membership' ? colors.background : colors.textMuted} />
           <Text style={[styles.tabButtonText, activeTab === 'membership' && styles.tabButtonTextActive]}>
-            MEMBERSHIP PLANS ({plans?.filter(p => p.active).length || 0})
+            MEMBER PLANS ({plans?.filter(p => p.active).length || 0})
           </Text>
         </TouchableOpacity>
 
@@ -457,197 +460,203 @@ export function MembershipPlansScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#050505',
-  },
-  tabContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#0E1114',
-    marginHorizontal: 16,
-    marginTop: 10,
-    marginBottom: 6,
-    borderRadius: 10,
-    padding: 4,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  tabButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  tabButtonActive: {
-    backgroundColor: colors.gold,
-  },
-  tabButtonText: {
-    fontFamily: typography.fonts.rajdhani,
-    fontSize: 11,
-    color: colors.textMuted,
-    letterSpacing: 0.5,
-  },
-  tabButtonTextActive: {
-    color: colors.background,
-    fontWeight: '700',
-  },
-  addBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: colors.goldMuted,
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  addBtnText: {
-    color: colors.gold,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  listContent: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  planCard: {
-    backgroundColor: '#0F1216',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.28)',
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 12,
-  },
-  ptCardBorder: {
-    borderColor: 'rgba(239, 161, 0, 0.35)',
-  },
-  inactiveCard: {
-    opacity: 0.6,
-  },
-  planHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-  },
-  planTitleContainer: {
-    flex: 1,
-    marginRight: 10,
-  },
-  planName: {
-    color: colors.textPrimary,
-    fontSize: typography.sizes.lg,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  durationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 3,
-  },
-  durationText: {
-    color: colors.textSecondary,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.inter,
-  },
-  planPrice: {
-    color: colors.gold,
-    fontSize: typography.sizes.xl,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  ptPerSessionSubtitle: {
-    fontFamily: typography.fonts.inter,
-    fontSize: 11,
-    color: colors.textMuted,
-    marginTop: 2,
-  },
-  ptDescription: {
-    fontFamily: typography.fonts.inter,
-    fontSize: 12,
-    color: '#8A92A6',
-    marginTop: 6,
-  },
-  limitBadge: {
-    backgroundColor: colors.goldMuted,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    alignSelf: 'flex-start',
-    marginTop: 8,
-  },
-  limitText: {
-    color: colors.gold,
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  cardActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.06)',
-    paddingTop: 12,
-    marginTop: 12,
-  },
-  statusToggleBtn: {
-    borderWidth: 1,
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  activeBtn: {
-    borderColor: colors.successBorder,
-    backgroundColor: colors.successMuted,
-  },
-  inactiveBtn: {
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-  },
-  statusToggleText: {
-    fontSize: 10,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  rightActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  iconActionBtn: {
-    padding: 6,
-    borderRadius: 6,
-    backgroundColor: colors.goldMuted,
-  },
-  deleteBtn: {
-    backgroundColor: colors.errorMuted,
-  },
-  featuresContainer: {
-    marginTop: 12,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.06)',
-    gap: 6,
-  },
-  featureItemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-  },
-  featureCheckIcon: {
-    flexShrink: 0,
-  },
-  featureItemText: {
-    color: '#BFC3C7',
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.inter,
-    flex: 1,
-  },
-});
+const getPlansStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    tabContainer: {
+      flexDirection: 'row',
+      backgroundColor: colors.surface,
+      marginHorizontal: 16,
+      marginTop: 10,
+      marginBottom: 6,
+      borderRadius: 10,
+      padding: 4,
+      borderWidth: 1,
+      borderColor: colors.borderDark,
+    },
+    tabButton: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      paddingVertical: 8,
+      borderRadius: 8,
+    },
+    tabButtonActive: {
+      backgroundColor: colors.gold,
+    },
+    tabButtonText: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 11,
+      color: colors.textMuted,
+      letterSpacing: 0.5,
+    },
+    tabButtonTextActive: {
+      color: '#050505',
+      fontWeight: '700',
+    },
+    addBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: colors.goldMuted,
+      borderWidth: 1,
+      borderColor: colors.goldBorder,
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    addBtnText: {
+      color: colors.gold,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    listContent: {
+      padding: 16,
+      paddingBottom: 40,
+    },
+    planCard: {
+      backgroundColor: colors.cardBackground,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.28)' : 'rgba(217, 130, 0, 0.25)',
+      borderRadius: 14,
+      padding: 16,
+      marginBottom: 12,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: isDark ? 0.3 : 0.06,
+      shadowRadius: 6,
+      elevation: 3,
+    },
+    ptCardBorder: {
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.35)' : 'rgba(217, 130, 0, 0.3)',
+    },
+    inactiveCard: {
+      opacity: 0.6,
+    },
+    planHeader: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+    },
+    planTitleContainer: {
+      flex: 1,
+      marginRight: 10,
+    },
+    planName: {
+      color: colors.textPrimary,
+      fontSize: typography.sizes.lg,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    durationRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      marginTop: 3,
+    },
+    durationText: {
+      color: colors.textSecondary,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.inter,
+    },
+    planPrice: {
+      color: colors.gold,
+      fontSize: typography.sizes.xl,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    ptPerSessionSubtitle: {
+      fontFamily: typography.fonts.inter,
+      fontSize: 11,
+      color: colors.textMuted,
+      marginTop: 2,
+    },
+    ptDescription: {
+      fontFamily: typography.fonts.inter,
+      fontSize: 12,
+      color: colors.textSecondary,
+      marginTop: 6,
+    },
+    limitBadge: {
+      backgroundColor: colors.goldMuted,
+      borderRadius: 6,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      alignSelf: 'flex-start',
+      marginTop: 8,
+    },
+    limitText: {
+      color: colors.gold,
+      fontSize: 11,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    cardActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      borderTopWidth: 1,
+      borderTopColor: colors.borderDark,
+      paddingTop: 12,
+      marginTop: 12,
+    },
+    statusToggleBtn: {
+      borderWidth: 1,
+      borderRadius: 6,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+    },
+    activeBtn: {
+      borderColor: colors.successBorder,
+      backgroundColor: colors.successMuted,
+    },
+    inactiveBtn: {
+      borderColor: colors.borderDark,
+      backgroundColor: colors.surface,
+    },
+    statusToggleText: {
+      fontSize: 10,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 0.5,
+    },
+    rightActions: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    iconActionBtn: {
+      padding: 6,
+      borderRadius: 6,
+      backgroundColor: colors.goldMuted,
+    },
+    deleteBtn: {
+      backgroundColor: colors.errorMuted,
+    },
+    featuresContainer: {
+      marginTop: 12,
+      paddingTop: 10,
+      borderTopWidth: 1,
+      borderTopColor: colors.borderDark,
+      gap: 6,
+    },
+    featureItemRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 7,
+    },
+    featureCheckIcon: {
+      flexShrink: 0,
+    },
+    featureItemText: {
+      color: colors.textSecondary,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.inter,
+      flex: 1,
+    },
+  });

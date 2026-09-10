@@ -17,7 +17,8 @@ import { FVEInput } from '@/components/common/FVEInput';
 import { supabase } from '@/api/supabase';
 import { visitLimitStatus, consumeVisitDay } from '@/utils/visitLimit';
 import { getLocalDateStr, formatDate } from '@/utils/date';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
+import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { useAuth } from '@/contexts/AuthContext';
 import { haptics } from '@/utils/haptics';
@@ -28,6 +29,8 @@ export function QRScannerScreen() {
   const navigation = useNavigation();
   const qc = useQueryClient();
   const { user } = useAuth();
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => getScannerStyles(colors, isDark), [colors, isDark]);
   const [permission, requestPermission] = useCameraPermissions();
 
   const [scanned, setScanned] = useState(false);
@@ -417,199 +420,210 @@ export function QRScannerScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#000000',
-  },
-  centered: {
-    flex: 1,
-    backgroundColor: '#050505',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  permissionTitle: {
-    color: colors.textPrimary,
-    fontSize: typography.sizes.lg,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  permissionSubtitle: {
-    color: colors.textSecondary,
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.fonts.inter,
-    textAlign: 'center',
-    marginTop: 8,
-    lineHeight: 20,
-  },
-  permissionText: {
-    color: colors.gold,
-    fontSize: typography.sizes.base,
-    fontFamily: typography.fonts.rajdhani,
-  },
-  overlay: {
-    flex: 1,
-    justifyContent: 'space-between',
-  },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 10,
-  },
-  overlayTitle: {
-    color: colors.gold,
-    fontSize: typography.sizes.base,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
-  topRightControls: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  controlBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  activeControlBtn: {
-    borderColor: colors.gold,
-    backgroundColor: colors.goldMuted,
-  },
-  reticleContainer: {
-    alignItems: 'center',
-  },
-  reticle: {
-    width: 250,
-    height: 250,
-    position: 'relative',
-  },
-  corner: {
-    position: 'absolute',
-    width: 36,
-    height: 36,
-    borderColor: colors.gold,
-  },
-  topLeft: {
-    top: 0,
-    left: 0,
-    borderTopWidth: 3.5,
-    borderLeftWidth: 3.5,
-  },
-  topRight: {
-    top: 0,
-    right: 0,
-    borderTopWidth: 3.5,
-    borderRightWidth: 3.5,
-  },
-  bottomLeft: {
-    bottom: 0,
-    left: 0,
-    borderBottomWidth: 3.5,
-    borderLeftWidth: 3.5,
-  },
-  bottomRight: {
-    bottom: 0,
-    right: 0,
-    borderBottomWidth: 3.5,
-    borderRightWidth: 3.5,
-  },
-  scanInstruction: {
-    color: '#FFFFFF',
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.inter,
-    marginTop: 18,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  bottomBar: {
-    padding: 20,
-    alignItems: 'center',
-  },
-  manualCodeToggle: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
-    borderRadius: 8,
-    marginBottom: 8,
-  },
-  manualCodeToggleText: {
-    color: colors.gold,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  manualInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: '100%',
-  },
-  resultModalBackdrop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.85)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  resultCard: {
-    width: '100%',
-    backgroundColor: '#111418',
-    borderRadius: 16,
-    borderWidth: 1.5,
-    padding: 24,
-    alignItems: 'center',
-  },
-  cardSuccess: {
-    borderColor: colors.success,
-  },
-  cardAlready: {
-    borderColor: colors.warning,
-  },
-  cardError: {
-    borderColor: colors.error,
-  },
-  resultTitle: {
-    color: colors.textPrimary,
-    fontSize: typography.sizes.xl,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  resultMemberId: {
-    color: colors.gold,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    marginTop: 2,
-  },
-  resultMessage: {
-    color: colors.textSecondary,
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.fonts.inter,
-    textAlign: 'center',
-    marginTop: 8,
-    lineHeight: 18,
-  },
-  resultExpiry: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontFamily: typography.fonts.inter,
-    marginTop: 6,
-    textAlign: 'center',
-  },
-});
+const getScannerStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: '#000000',
+    },
+    camera: {
+      flex: 1,
+    },
+    centered: {
+      flex: 1,
+      backgroundColor: colors.bgPrimary,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 24,
+    },
+    permissionContainer: {
+      flex: 1,
+      backgroundColor: colors.bgPrimary,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 24,
+    },
+    permissionTitle: {
+      color: colors.textPrimary,
+      fontSize: typography.sizes.lg,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      textAlign: 'center',
+    },
+    permissionSubtitle: {
+      color: colors.textSecondary,
+      fontSize: typography.sizes.sm,
+      fontFamily: typography.fonts.inter,
+      textAlign: 'center',
+      marginTop: 8,
+      lineHeight: 20,
+    },
+    permissionText: {
+      color: colors.gold,
+      fontSize: typography.sizes.base,
+      fontFamily: typography.fonts.rajdhani,
+    },
+    overlay: {
+      flex: 1,
+      justifyContent: 'space-between',
+    },
+    topBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 20,
+      paddingTop: 10,
+    },
+    overlayTitle: {
+      color: colors.gold,
+      fontSize: typography.sizes.base,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 1,
+    },
+    topRightControls: {
+      flexDirection: 'row',
+      gap: 10,
+    },
+    controlBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: 'rgba(0, 0, 0, 0.6)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.2)',
+    },
+    activeControlBtn: {
+      borderColor: colors.gold,
+      backgroundColor: colors.goldMuted,
+    },
+    reticleContainer: {
+      alignItems: 'center',
+    },
+    reticle: {
+      width: 250,
+      height: 250,
+      position: 'relative',
+    },
+    corner: {
+      position: 'absolute',
+      width: 36,
+      height: 36,
+      borderColor: colors.gold,
+    },
+    topLeft: {
+      top: 0,
+      left: 0,
+      borderTopWidth: 3.5,
+      borderLeftWidth: 3.5,
+    },
+    topRight: {
+      top: 0,
+      right: 0,
+      borderTopWidth: 3.5,
+      borderRightWidth: 3.5,
+    },
+    bottomLeft: {
+      bottom: 0,
+      left: 0,
+      borderBottomWidth: 3.5,
+      borderLeftWidth: 3.5,
+    },
+    bottomRight: {
+      bottom: 0,
+      right: 0,
+      borderBottomWidth: 3.5,
+      borderRightWidth: 3.5,
+    },
+    scanInstruction: {
+      color: '#FFFFFF',
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.inter,
+      marginTop: 18,
+      backgroundColor: 'rgba(0, 0, 0, 0.65)',
+      paddingHorizontal: 16,
+      paddingVertical: 6,
+      borderRadius: 20,
+    },
+    bottomBar: {
+      padding: 20,
+      alignItems: 'center',
+    },
+    manualCodeToggle: {
+      paddingVertical: 8,
+      paddingHorizontal: 14,
+      backgroundColor: 'rgba(0, 0, 0, 0.65)',
+      borderRadius: 8,
+      marginBottom: 8,
+    },
+    manualCodeToggleText: {
+      color: colors.gold,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    manualInputRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      width: '100%',
+    },
+    resultModalBackdrop: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.85)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 24,
+    },
+    resultCard: {
+      width: '100%',
+      backgroundColor: colors.card,
+      borderRadius: 16,
+      borderWidth: 1.5,
+      padding: 24,
+      alignItems: 'center',
+    },
+    cardSuccess: {
+      borderColor: colors.success,
+    },
+    cardAlready: {
+      borderColor: colors.warning,
+    },
+    cardError: {
+      borderColor: colors.error,
+    },
+    resultTitle: {
+      color: colors.textPrimary,
+      fontSize: typography.sizes.xl,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      textAlign: 'center',
+    },
+    resultMemberId: {
+      color: colors.gold,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      marginTop: 2,
+    },
+    resultMessage: {
+      color: colors.textSecondary,
+      fontSize: typography.sizes.sm,
+      fontFamily: typography.fonts.inter,
+      textAlign: 'center',
+      marginTop: 8,
+      lineHeight: 18,
+    },
+    resultExpiry: {
+      color: colors.textMuted,
+      fontSize: 11,
+      fontFamily: typography.fonts.inter,
+      marginTop: 6,
+      textAlign: 'center',
+    },
+  });

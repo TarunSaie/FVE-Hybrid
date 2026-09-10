@@ -18,7 +18,7 @@ import {
   Trash2,
   HelpCircle,
 } from 'lucide-react-native';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
 import { typography } from '@/constants/typography';
 import { haptics } from '@/utils/haptics';
 import { FVEButton } from './FVEButton';
@@ -50,6 +50,7 @@ export function FVEDialog({
   cancelable = true,
   onDismiss,
 }: FVEDialogProps) {
+  const { colors, isDark } = useTheme();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.92)).current;
 
@@ -104,7 +105,6 @@ export function FVEDialog({
 
   if (!visible) return null;
 
-  // Infer visual theme based on dialog type & buttons
   const isDestructive =
     type === 'danger' ||
     buttons.some((b) => b.style === 'destructive') ||
@@ -131,48 +131,48 @@ export function FVEDialog({
   const renderIcon = () => {
     if (title.toLowerCase().includes('sign out') || title.toLowerCase().includes('logout')) {
       return (
-        <View style={[styles.iconHalo, styles.dangerHalo]}>
+        <View style={[styles.iconHalo, { backgroundColor: colors.errorMuted, borderColor: colors.errorBorder }]}>
           <LogOut size={28} color={colors.error} />
         </View>
       );
     }
     if (title.toLowerCase().includes('delete')) {
       return (
-        <View style={[styles.iconHalo, styles.dangerHalo]}>
+        <View style={[styles.iconHalo, { backgroundColor: colors.errorMuted, borderColor: colors.errorBorder }]}>
           <Trash2 size={28} color={colors.error} />
         </View>
       );
     }
     if (isDestructive || isError) {
       return (
-        <View style={[styles.iconHalo, styles.dangerHalo]}>
+        <View style={[styles.iconHalo, { backgroundColor: colors.errorMuted, borderColor: colors.errorBorder }]}>
           <AlertCircle size={28} color={colors.error} />
         </View>
       );
     }
     if (isWarning) {
       return (
-        <View style={[styles.iconHalo, styles.warningHalo]}>
+        <View style={[styles.iconHalo, { backgroundColor: colors.warningMuted, borderColor: colors.warningBorder }]}>
           <AlertTriangle size={28} color={colors.warning} />
         </View>
       );
     }
     if (isSuccess) {
       return (
-        <View style={[styles.iconHalo, styles.successHalo]}>
+        <View style={[styles.iconHalo, { backgroundColor: colors.successMuted, borderColor: colors.successBorder }]}>
           <CheckCircle2 size={28} color={colors.success} />
         </View>
       );
     }
     if (buttons.length > 1) {
       return (
-        <View style={[styles.iconHalo, styles.goldHalo]}>
+        <View style={[styles.iconHalo, { backgroundColor: colors.goldMuted, borderColor: colors.goldBorder }]}>
           <HelpCircle size={28} color={colors.gold} />
         </View>
       );
     }
     return (
-      <View style={[styles.iconHalo, styles.goldHalo]}>
+      <View style={[styles.iconHalo, { backgroundColor: colors.goldMuted, borderColor: colors.goldBorder }]}>
         <Info size={28} color={colors.gold} />
       </View>
     );
@@ -200,6 +200,13 @@ export function FVEDialog({
     }
   };
 
+  const cardBg = isDark ? '#12151B' : colors.cardBackground;
+  const cardBorder = isDestructive
+    ? colors.errorBorder
+    : isDark
+    ? colors.goldBorder
+    : colors.border;
+
   return (
     <Modal
       transparent
@@ -210,7 +217,7 @@ export function FVEDialog({
     >
       <View style={styles.overlay}>
         {/* Backdrop */}
-        <Animated.View style={[styles.backdrop, { opacity: fadeAnim }]}>
+        <Animated.View style={[styles.backdrop, { backgroundColor: colors.overlay, opacity: fadeAnim }]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={handleBackdropPress} />
         </Animated.View>
 
@@ -218,24 +225,30 @@ export function FVEDialog({
         <Animated.View
           style={[
             styles.card,
-            isDestructive && styles.cardDestructive,
             {
+              backgroundColor: cardBg,
+              borderColor: cardBorder,
               opacity: fadeAnim,
               transform: [{ scale: scaleAnim }],
             },
           ]}
         >
           {/* Top subtle highlight */}
-          <View style={[styles.glowLine, isDestructive && styles.glowLineDanger]} />
+          <View
+            style={[
+              styles.glowLine,
+              { backgroundColor: isDestructive ? colors.error : colors.gold },
+            ]}
+          />
 
           {/* Icon Header */}
           <View style={styles.iconContainer}>{renderIcon()}</View>
 
           {/* Title & Message */}
-          <Text style={styles.title} numberOfLines={2}>
+          <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={2}>
             {title}
           </Text>
-          {message ? <Text style={styles.message}>{message}</Text> : null}
+          {message ? <Text style={[styles.message, { color: colors.textSecondary }]}>{message}</Text> : null}
 
           {/* Action Buttons */}
           <View
@@ -289,27 +302,21 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.78)',
   },
   card: {
     width: Math.min(width - 48, 350),
-    backgroundColor: '#12151B',
     borderRadius: 22,
     borderWidth: 1.5,
-    borderColor: 'rgba(239, 161, 0, 0.28)',
     paddingTop: 26,
     paddingBottom: 22,
     paddingHorizontal: 22,
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.65,
+    shadowOpacity: 0.35,
     shadowRadius: 24,
     elevation: 20,
     overflow: 'hidden',
-  },
-  cardDestructive: {
-    borderColor: 'rgba(239, 68, 68, 0.35)',
   },
   glowLine: {
     position: 'absolute',
@@ -317,11 +324,7 @@ const styles = StyleSheet.create({
     left: '20%',
     right: '20%',
     height: 2,
-    backgroundColor: colors.gold,
     opacity: 0.8,
-  },
-  glowLineDanger: {
-    backgroundColor: colors.error,
   },
   iconContainer: {
     marginBottom: 16,
@@ -332,31 +335,11 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
+    borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  goldHalo: {
-    backgroundColor: 'rgba(239, 161, 0, 0.12)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(239, 161, 0, 0.35)',
-  },
-  dangerHalo: {
-    backgroundColor: 'rgba(239, 68, 68, 0.12)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(239, 68, 68, 0.35)',
-  },
-  warningHalo: {
-    backgroundColor: 'rgba(245, 158, 11, 0.12)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(245, 158, 11, 0.35)',
-  },
-  successHalo: {
-    backgroundColor: 'rgba(34, 197, 94, 0.12)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(34, 197, 94, 0.35)',
-  },
   title: {
-    color: colors.textPrimary,
     fontSize: typography.sizes.lg,
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '700',
@@ -365,7 +348,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   message: {
-    color: colors.textSecondary,
     fontSize: typography.sizes.sm,
     fontFamily: typography.fonts.inter,
     lineHeight: 20,

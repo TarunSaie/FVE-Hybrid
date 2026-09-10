@@ -25,13 +25,16 @@ import { FVEEmptyState } from '@/components/common/FVEEmptyState';
 import { Notification } from '@/types';
 import { supabase } from '@/api/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
+import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { formatDateTime } from '@/utils/date';
 import { haptics } from '@/utils/haptics';
 
 export function NotificationsScreen() {
   const navigation = useNavigation();
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => getNotificationsStyles(colors, isDark), [colors, isDark]);
   const { user } = useAuth();
   const qc = useQueryClient();
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
@@ -283,144 +286,152 @@ export function NotificationsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#050505',
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  tabBar: {
-    flexDirection: 'row',
-    backgroundColor: '#0D1015',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    gap: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  tabBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: '#151920',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tabBtnActive: {
-    backgroundColor: 'rgba(239, 161, 0, 0.12)',
-    borderColor: colors.gold,
-  },
-  tabBtnText: {
-    fontSize: 12,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    color: colors.textMuted,
-    letterSpacing: 0.5,
-  },
-  tabBtnTextActive: {
-    color: colors.gold,
-  },
-  readAllBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: colors.goldMuted,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  readAllBtnText: {
-    color: colors.gold,
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  clearBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  clearBtnText: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  listContent: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  notifCard: {
-    backgroundColor: '#0F1216',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.15)',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 8,
-  },
-  unreadCard: {
-    borderColor: colors.goldBorder,
-    backgroundColor: '#141820',
-  },
-  notifRow: {
-    flexDirection: 'row',
-  },
-  iconCol: {
-    marginRight: 12,
-    marginTop: 2,
-  },
-  textCol: {
-    flex: 1,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  notifTitle: {
-    color: colors.textPrimary,
-    fontSize: typography.sizes.base,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    flex: 1,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginLeft: 6,
-  },
-  unreadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.gold,
-  },
-  deleteItemBtn: {
-    padding: 2,
-    opacity: 0.7,
-  },
-  notifMessage: {
-    color: colors.textSecondary,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.inter,
-    marginTop: 4,
-    lineHeight: 16,
-  },
-  notifTime: {
-    color: colors.textMuted,
-    fontSize: 10,
-    fontFamily: typography.fonts.inter,
-    marginTop: 6,
-  },
-});
+const getNotificationsStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.bgPrimary,
+    },
+    headerActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    tabBar: {
+      flexDirection: 'row',
+      backgroundColor: colors.bgSecondary,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      gap: 10,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.borderDefault,
+    },
+    tabBtn: {
+      flex: 1,
+      paddingVertical: 8,
+      borderRadius: 8,
+      backgroundColor: colors.bgTertiary,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    tabBtnActive: {
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : 'rgba(239, 161, 0, 0.15)',
+      borderColor: colors.gold,
+    },
+    tabBtnText: {
+      fontSize: 12,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      color: colors.textMuted,
+      letterSpacing: 0.5,
+    },
+    tabBtnTextActive: {
+      color: colors.gold,
+    },
+    readAllBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: isDark ? colors.goldMuted : 'rgba(239, 161, 0, 0.12)',
+      borderRadius: 6,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+    },
+    readAllBtnText: {
+      color: colors.gold,
+      fontSize: 11,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    clearBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+      borderRadius: 6,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+    },
+    clearBtnText: {
+      color: colors.textMuted,
+      fontSize: 11,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    listContent: {
+      padding: 16,
+      paddingBottom: 40,
+    },
+    notifCard: {
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+      borderRadius: 12,
+      padding: 14,
+      marginBottom: 8,
+      elevation: isDark ? 0 : 2,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: isDark ? 0 : 0.05,
+      shadowRadius: 2,
+    },
+    unreadCard: {
+      borderColor: colors.goldBorder,
+      backgroundColor: isDark ? '#141820' : '#FFFFFF',
+    },
+    notifRow: {
+      flexDirection: 'row',
+    },
+    iconCol: {
+      marginRight: 12,
+      marginTop: 2,
+    },
+    textCol: {
+      flex: 1,
+    },
+    titleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    notifTitle: {
+      color: colors.textPrimary,
+      fontSize: typography.sizes.base,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      flex: 1,
+      flexShrink: 1,
+      marginRight: 6,
+    },
+    actionRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginLeft: 6,
+    },
+    unreadDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: colors.gold,
+    },
+    deleteItemBtn: {
+      padding: 2,
+      opacity: 0.7,
+    },
+    notifMessage: {
+      color: colors.textSecondary,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.inter,
+      marginTop: 4,
+      lineHeight: 16,
+    },
+    notifTime: {
+      color: colors.textMuted,
+      fontSize: 10,
+      fontFamily: typography.fonts.inter,
+      marginTop: 6,
+    },
+  });

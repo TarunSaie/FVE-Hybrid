@@ -13,7 +13,8 @@ import { FVEInput } from '@/components/common/FVEInput';
 import { FVEButton } from '@/components/common/FVEButton';
 import { MembershipPlan } from '@/types';
 import { supabase } from '@/api/supabase';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
+import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { parseFeatures } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
@@ -39,6 +40,8 @@ export function PlanFormModal({
   onSaved,
   plan,
 }: PlanFormModalProps) {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => getPlanFormStyles(colors, isDark), [colors, isDark]);
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
@@ -301,104 +304,105 @@ export function PlanFormModal({
   );
 }
 
-const styles = StyleSheet.create({
-  form: {
-    paddingBottom: 24,
-  },
-  sectionContainer: {
-    marginBottom: 16,
-  },
-  sectionLabel: {
-    color: colors.textSecondary,
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    letterSpacing: 1,
-    marginBottom: 8,
-  },
-  presetsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  presetButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: 8,
-    backgroundColor: '#12161B',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  presetButtonActive: {
-    backgroundColor: colors.gold,
-    borderColor: colors.gold,
-  },
-  presetButtonText: {
-    color: colors.textSecondary,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.inter,
-    fontWeight: '500',
-  },
-  presetButtonTextActive: {
-    color: '#050505',
-    fontWeight: '700',
-  },
-  customDurationContainer: {
-    marginTop: 10,
-  },
-  helperText: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontFamily: typography.fonts.inter,
-    marginTop: 4,
-  },
-  featuresHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  featuresLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  addFeatureBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: colors.goldMuted,
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 6,
-  },
-  addFeatureText: {
-    color: colors.gold,
-    fontSize: 12,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  featureRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
-  },
-  featureInputWrap: {
-    flex: 1,
-  },
-  removeFeatureBtn: {
-    width: 38,
-    height: 44,
-    borderRadius: 8,
-    backgroundColor: colors.errorMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 68, 68, 0.25)',
-  },
-  saveButton: {
-    marginTop: 14,
-  },
-});
+const getPlanFormStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    form: {
+      paddingBottom: 24,
+    },
+    sectionContainer: {
+      marginBottom: 16,
+    },
+    sectionLabel: {
+      color: colors.textSecondary,
+      fontSize: 11,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 1,
+      marginBottom: 8,
+    },
+    presetsGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    presetButton: {
+      paddingHorizontal: 12,
+      paddingVertical: 9,
+      borderRadius: 8,
+      backgroundColor: colors.bgSecondary,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+    },
+    presetButtonActive: {
+      backgroundColor: colors.gold,
+      borderColor: colors.gold,
+    },
+    presetButtonText: {
+      color: colors.textSecondary,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.inter,
+      fontWeight: '500',
+    },
+    presetButtonTextActive: {
+      color: '#050505',
+      fontWeight: '700',
+    },
+    customDurationContainer: {
+      marginTop: 10,
+    },
+    helperText: {
+      color: colors.textMuted,
+      fontSize: 11,
+      fontFamily: typography.fonts.inter,
+      marginTop: 4,
+    },
+    featuresHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 8,
+    },
+    featuresLabelRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    addFeatureBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: isDark ? colors.goldMuted : 'rgba(239, 161, 0, 0.12)',
+      borderWidth: 1,
+      borderColor: colors.goldBorder,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 6,
+    },
+    addFeatureText: {
+      color: colors.gold,
+      fontSize: 12,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    featureRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 8,
+    },
+    featureInputWrap: {
+      flex: 1,
+    },
+    removeFeatureBtn: {
+      width: 38,
+      height: 44,
+      borderRadius: 8,
+      backgroundColor: colors.errorMuted,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: 'rgba(255, 68, 68, 0.25)',
+    },
+    saveButton: {
+      marginTop: 14,
+    },
+  });

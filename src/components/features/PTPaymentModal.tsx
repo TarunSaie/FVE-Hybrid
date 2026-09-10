@@ -6,7 +6,8 @@ import { FVEInput } from '@/components/common/FVEInput';
 import { FVEButton } from '@/components/common/FVEButton';
 import { supabase } from '@/api/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
+import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { haptics } from '@/utils/haptics';
 import { PersonalTraining, PAYMENT_METHODS, Payment } from '@/types';
@@ -28,6 +29,8 @@ export function PTPaymentModal({
   onSaved,
   pt,
 }: PTPaymentModalProps) {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => getPTPaymentStyles(colors, isDark), [colors, isDark]);
   const { user } = useAuth();
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const [paymentMethod, setPaymentMethod] = useState<string>('Cash');
@@ -254,92 +257,93 @@ export function PTPaymentModal({
   );
 }
 
-const styles = StyleSheet.create({
-  summaryCard: {
-    padding: 12,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    marginBottom: 10,
-    gap: 6,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  summaryLabel: {
-    fontSize: 12,
-    color: colors.textMuted,
-    fontFamily: typography.fonts.inter,
-  },
-  summaryVal: {
-    fontSize: 12,
-    color: colors.textPrimary,
-    fontWeight: '600',
-    fontFamily: typography.fonts.inter,
-  },
-  summaryValGold: {
-    fontSize: 12,
-    color: colors.gold,
-    fontWeight: '700',
-    fontFamily: typography.fonts.rajdhani,
-  },
-  protectionBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(34, 197, 94, 0.08)',
-    borderColor: 'rgba(34, 197, 94, 0.3)',
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 14,
-  },
-  protectionText: {
-    flex: 1,
-    fontSize: 11,
-    color: colors.success,
-    fontFamily: typography.fonts.inter,
-    fontWeight: '500',
-  },
-  fieldLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.textMuted,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginBottom: 8,
-    fontFamily: typography.fonts.rajdhani,
-  },
-  methodGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  methodBtn: {
-    flex: 1,
-    minWidth: '45%',
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.02)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    alignItems: 'center',
-  },
-  methodBtnActive: {
-    backgroundColor: 'rgba(239, 161, 0, 0.15)',
-    borderColor: colors.gold,
-  },
-  methodText: {
-    fontSize: 12,
-    color: colors.textMuted,
-    fontWeight: '600',
-    fontFamily: typography.fonts.inter,
-  },
-  methodTextActive: {
-    color: colors.gold,
-    fontWeight: '700',
-  },
-});
+const getPTPaymentStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    summaryCard: {
+      padding: 12,
+      borderRadius: 10,
+      backgroundColor: colors.bgSecondary,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+      marginBottom: 10,
+      gap: 6,
+    },
+    summaryRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    summaryLabel: {
+      fontSize: 12,
+      color: colors.textMuted,
+      fontFamily: typography.fonts.inter,
+    },
+    summaryVal: {
+      fontSize: 12,
+      color: colors.textPrimary,
+      fontWeight: '600',
+      fontFamily: typography.fonts.inter,
+    },
+    summaryValGold: {
+      fontSize: 12,
+      color: colors.gold,
+      fontWeight: '700',
+      fontFamily: typography.fonts.rajdhani,
+    },
+    protectionBox: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor: isDark ? 'rgba(34, 197, 94, 0.08)' : 'rgba(34, 197, 94, 0.1)',
+      borderColor: isDark ? 'rgba(34, 197, 94, 0.3)' : 'rgba(34, 197, 94, 0.35)',
+      borderWidth: 1,
+      borderRadius: 8,
+      padding: 10,
+      marginBottom: 14,
+    },
+    protectionText: {
+      flex: 1,
+      fontSize: 11,
+      color: colors.success,
+      fontFamily: typography.fonts.inter,
+      fontWeight: '500',
+    },
+    fieldLabel: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.textMuted,
+      letterSpacing: 1,
+      textTransform: 'uppercase',
+      marginBottom: 8,
+      fontFamily: typography.fonts.rajdhani,
+    },
+    methodGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    methodBtn: {
+      flex: 1,
+      minWidth: '45%',
+      paddingVertical: 10,
+      borderRadius: 8,
+      backgroundColor: colors.bgSecondary,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+      alignItems: 'center',
+    },
+    methodBtnActive: {
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.15)' : 'rgba(239, 161, 0, 0.18)',
+      borderColor: colors.gold,
+    },
+    methodText: {
+      fontSize: 12,
+      color: colors.textMuted,
+      fontWeight: '600',
+      fontFamily: typography.fonts.inter,
+    },
+    methodTextActive: {
+      color: colors.gold,
+      fontWeight: '700',
+    },
+  });

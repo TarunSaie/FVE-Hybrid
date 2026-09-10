@@ -2,7 +2,7 @@ import React, { useRef } from 'react';
 import { View, Text, StyleSheet, Image, Pressable, Animated } from 'react-native';
 import { Clock, QrCode, UserCheck } from 'lucide-react-native';
 import { Attendance } from '@/types';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
 import { typography } from '@/constants/typography';
 
 interface AttendanceItemProps {
@@ -11,6 +11,7 @@ interface AttendanceItemProps {
 }
 
 export function AttendanceItem({ item, onPress }: AttendanceItemProps) {
+  const { colors, isDark } = useTheme();
   const memberName = item.members?.full_name || 'Member';
   const memberId = item.members?.member_id;
   const photo = item.members?.profile_photo;
@@ -22,7 +23,6 @@ export function AttendanceItem({ item, onPress }: AttendanceItemProps) {
   const handlePressIn = () => Animated.spring(scale, { toValue: 0.975, useNativeDriver: true, speed: 35, bounciness: 4 }).start();
   const handlePressOut = () => Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 35, bounciness: 4 }).start();
 
-  // Format check_in_time
   const formatTime = (timeStr?: string | null) => {
     if (!timeStr) return '';
     try {
@@ -45,64 +45,79 @@ export function AttendanceItem({ item, onPress }: AttendanceItemProps) {
         onPress={onPress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
-        style={styles.container}
-        android_ripple={{ color: 'rgba(239,161,0,0.08)', borderless: false }}
-      >
-      <View style={styles.leftRow}>
-        {photo ? (
-          <Image source={{ uri: photo }} style={styles.avatar} />
-        ) : (
-          <View style={styles.fallbackAvatar}>
-            <Text style={styles.fallbackText}>{initial}</Text>
-          </View>
-        )}
-
-        <View style={styles.details}>
-          <View style={styles.nameRow}>
-            <Text numberOfLines={1} style={styles.name}>
-              {memberName}
-            </Text>
-            {memberId && (
-              <View style={styles.idBadge}>
-                <Text style={styles.idText}>{memberId}</Text>
-              </View>
-            )}
-          </View>
-
-          <View style={styles.timeRow}>
-            <Clock size={12} color={colors.textMuted} />
-            <Text style={styles.timeText}>{formatTime(item.check_in_time)}</Text>
-            {item.date ? (
-              <Text style={styles.dateText}>· {item.date}</Text>
-            ) : null}
-          </View>
-        </View>
-      </View>
-
-      {/* Check-in Method Badge */}
-      <View
         style={[
-          styles.methodBadge,
+          styles.container,
           {
-            backgroundColor: isQR ? colors.goldMuted : 'rgba(59, 130, 246, 0.12)',
-            borderColor: isQR ? colors.goldBorder : colors.blueBorder,
+            backgroundColor: colors.cardBackground,
+            borderColor: colors.borderDark,
+            shadowColor: colors.shadowColor,
           },
         ]}
+        android_ripple={{ color: colors.goldMuted, borderless: false }}
       >
-        {isQR ? (
-          <QrCode size={12} color={colors.gold} style={styles.methodIcon} />
-        ) : (
-          <UserCheck size={12} color={colors.blueLight} style={styles.methodIcon} />
-        )}
-        <Text
+        <View style={styles.leftRow}>
+          {photo ? (
+            <Image source={{ uri: photo }} style={[styles.avatar, { borderColor: colors.goldBorder }]} />
+          ) : (
+            <View
+              style={[
+                styles.fallbackAvatar,
+                {
+                  backgroundColor: isDark ? '#181C24' : '#EDF2F7',
+                  borderColor: colors.goldBorder,
+                },
+              ]}
+            >
+              <Text style={[styles.fallbackText, { color: colors.gold }]}>{initial}</Text>
+            </View>
+          )}
+
+          <View style={styles.details}>
+            <View style={styles.nameRow}>
+              <Text numberOfLines={1} style={[styles.name, { color: colors.textPrimary }]}>
+                {memberName}
+              </Text>
+              {memberId && (
+                <View style={[styles.idBadge, { backgroundColor: colors.goldMuted, borderColor: colors.goldBorder }]}>
+                  <Text style={[styles.idText, { color: colors.gold }]}>{memberId}</Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.timeRow}>
+              <Clock size={12} color={colors.textMuted} />
+              <Text numberOfLines={1} style={[styles.timeText, { color: colors.textSecondary }]}>
+                {formatTime(item.check_in_time)}
+                {item.date ? ` · ${item.date}` : ''}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Check-in Method Badge */}
+        <View
           style={[
-            styles.methodText,
-            { color: isQR ? colors.gold : colors.blueLight },
+            styles.methodBadge,
+            {
+              backgroundColor: isQR ? colors.goldMuted : colors.blueMuted,
+              borderColor: isQR ? colors.goldBorder : colors.blueBorder,
+            },
           ]}
         >
-          {isQR ? 'QR SCAN' : 'MANUAL'}
-        </Text>
-      </View>
+          {isQR ? (
+            <QrCode size={12} color={colors.gold} style={styles.methodIcon} />
+          ) : (
+            <UserCheck size={12} color={colors.blue} style={styles.methodIcon} />
+          )}
+          <Text
+            style={[
+              styles.methodText,
+              { color: isQR ? colors.gold : colors.blue },
+            ]}
+          >
+            {isQR ? 'QR SCAN' : 'MANUAL'}
+          </Text>
+        </View>
       </Pressable>
     </Animated.View>
   );
@@ -113,15 +128,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#11141A',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
     borderRadius: 16,
     padding: 13,
     marginBottom: 8,
-    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 2,
   },
@@ -129,28 +141,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
+    marginRight: 8,
   },
   avatar: {
     width: 44,
     height: 44,
     borderRadius: 22,
     borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.3)',
     marginRight: 12,
   },
   fallbackAvatar: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#181C24',
     borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.25)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
   },
   fallbackText: {
-    color: colors.gold,
     fontSize: typography.sizes.base,
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '700',
@@ -163,21 +172,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     marginBottom: 2,
+    flexWrap: 'nowrap',
   },
   name: {
-    color: colors.textPrimary,
+    flexShrink: 1,
     fontSize: typography.sizes.base,
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '700',
   },
   idBadge: {
-    backgroundColor: colors.goldMuted,
+    borderWidth: 1,
     borderRadius: 4,
     paddingHorizontal: 4,
     paddingVertical: 1,
   },
   idText: {
-    color: colors.gold,
     fontSize: 9,
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '700',
@@ -188,23 +197,18 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   timeText: {
-    color: colors.textSecondary,
     fontSize: typography.sizes.xs,
     fontFamily: typography.fonts.inter,
-  },
-  dateText: {
-    color: colors.textMuted,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.inter,
+    flexShrink: 1,
   },
   methodBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderRadius: 6,
+    borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    marginLeft: 8,
+    marginLeft: 4,
   },
   methodIcon: {
     marginRight: 4,

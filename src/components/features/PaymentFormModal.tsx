@@ -10,7 +10,8 @@ import { getLocalDateStr, calculateExpiryDate, formatDate } from '@/utils/date';
 import { formatCurrency, generateReceiptNumber, getFriendlyErrorMessage } from '@/utils/format';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQueryClient } from '@tanstack/react-query';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
+import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { sounds } from '@/utils/sounds';
 
@@ -28,6 +29,8 @@ export function PaymentFormModal({
   preselectedMemberId,
 }: PaymentFormModalProps) {
   const { user } = useAuth();
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => getPaymentFormStyles(colors, isDark), [colors, isDark]);
   const qc = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
@@ -494,234 +497,236 @@ export function PaymentFormModal({
   );
 }
 
-const styles = StyleSheet.create({
-  form: {
-    paddingBottom: 20,
-  },
-  fieldSection: {
-    marginBottom: 16,
-  },
-  sectionLabel: {
-    color: colors.textSecondary,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhaniMedium,
-    fontWeight: '600',
-    letterSpacing: 0.8,
-    marginBottom: 8,
-  },
-  chipsScroll: {
-    flexDirection: 'row',
-  },
-  chip: {
-    backgroundColor: '#161A20',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.2)',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginRight: 8,
-  },
-  selectedChip: {
-    backgroundColor: colors.goldMuted,
-    borderColor: colors.gold,
-  },
-  chipText: {
-    color: colors.textSecondary,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.inter,
-  },
-  selectedChipText: {
-    color: colors.gold,
-    fontWeight: '700',
-  },
-  methodRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  methodButton: {
-    backgroundColor: '#161A20',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.2)',
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    flex: 1,
-    minWidth: '45%',
-    alignItems: 'center',
-  },
-  selectedMethodButton: {
-    backgroundColor: colors.goldMuted,
-    borderColor: colors.gold,
-  },
-  methodButtonText: {
-    color: colors.textSecondary,
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '600',
-  },
-  selectedMethodButtonText: {
-    color: colors.gold,
-    fontWeight: '700',
-  },
-  submitButton: {
-    marginTop: 10,
-  },
-  selectedMemberCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#161A20',
-    borderWidth: 1.5,
-    borderColor: 'rgba(239, 161, 0, 0.45)',
-    borderRadius: 12,
-    padding: 12,
-    gap: 12,
-  },
-  selectedMemberAvatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: 'rgba(239, 161, 0, 0.15)',
-    borderWidth: 1.5,
-    borderColor: colors.gold,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  selectedMemberInitial: {
-    color: colors.gold,
-    fontSize: 16,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  selectedMemberInfo: {
-    flex: 1,
-  },
-  selectedMemberNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 3,
-  },
-  selectedMemberName: {
-    color: colors.textPrimary,
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  selectedMemberMobile: {
-    color: colors.textMuted,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.inter,
-  },
-  idBadge: {
-    backgroundColor: 'rgba(239, 161, 0, 0.15)',
-    borderWidth: 1,
-    borderColor: colors.gold,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 6,
-  },
-  idBadgeText: {
-    color: colors.gold,
-    fontSize: 10,
-    fontFamily: typography.fonts.orbitron,
-    fontWeight: '700',
-  },
-  changeMemberBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.3)',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-  },
-  changeMemberText: {
-    color: colors.error,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.interSemiBold,
-  },
-  searchMemberContainer: {
-    marginBottom: 4,
-  },
-  memberResultsBox: {
-    backgroundColor: '#0E1116',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.18)',
-    borderRadius: 10,
-    maxHeight: 200,
-    overflow: 'hidden',
-  },
-  memberResultRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
-  },
-  memberResultLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flex: 1,
-  },
-  memberMiniAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#1C2128',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.3)',
-  },
-  memberMiniInitial: {
-    color: colors.gold,
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  memberResultNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  memberResultName: {
-    color: colors.textPrimary,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.interSemiBold,
-  },
-  memberResultMobile: {
-    color: colors.textMuted,
-    fontSize: 10,
-    fontFamily: typography.fonts.inter,
-    marginTop: 1,
-  },
-  idBadgeSm: {
-    backgroundColor: 'rgba(239, 161, 0, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.35)',
-    paddingHorizontal: 5,
-    paddingVertical: 0.5,
-    borderRadius: 4,
-  },
-  idBadgeSmText: {
-    color: colors.gold,
-    fontSize: 9,
-    fontFamily: typography.fonts.orbitron,
-    fontWeight: '700',
-  },
-  emptySearchBox: {
-    padding: 16,
-    alignItems: 'center',
-  },
-  emptySearchText: {
-    color: colors.textMuted,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.inter,
-  },
-});
+const getPaymentFormStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    form: {
+      paddingBottom: 20,
+    },
+    fieldSection: {
+      marginBottom: 16,
+    },
+    sectionLabel: {
+      color: colors.textSecondary,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhaniMedium,
+      fontWeight: '600',
+      letterSpacing: 0.8,
+      marginBottom: 8,
+    },
+    chipsScroll: {
+      flexDirection: 'row',
+    },
+    chip: {
+      backgroundColor: colors.bgSecondary,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      marginRight: 8,
+    },
+    selectedChip: {
+      backgroundColor: isDark ? colors.goldMuted : 'rgba(239, 161, 0, 0.15)',
+      borderColor: colors.gold,
+    },
+    chipText: {
+      color: colors.textSecondary,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.inter,
+    },
+    selectedChipText: {
+      color: colors.gold,
+      fontWeight: '700',
+    },
+    methodRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    methodButton: {
+      backgroundColor: colors.bgSecondary,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+      borderRadius: 8,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      flex: 1,
+      minWidth: '45%',
+      alignItems: 'center',
+    },
+    selectedMethodButton: {
+      backgroundColor: isDark ? colors.goldMuted : 'rgba(239, 161, 0, 0.15)',
+      borderColor: colors.gold,
+    },
+    methodButtonText: {
+      color: colors.textSecondary,
+      fontSize: typography.sizes.sm,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '600',
+    },
+    selectedMethodButtonText: {
+      color: colors.gold,
+      fontWeight: '700',
+    },
+    submitButton: {
+      marginTop: 10,
+    },
+    selectedMemberCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.bgSecondary,
+      borderWidth: 1.5,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.45)' : colors.goldBorder,
+      borderRadius: 12,
+      padding: 12,
+      gap: 12,
+    },
+    selectedMemberAvatar: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.15)' : 'rgba(239, 161, 0, 0.12)',
+      borderWidth: 1.5,
+      borderColor: colors.gold,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    selectedMemberInitial: {
+      color: colors.gold,
+      fontSize: 16,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    selectedMemberInfo: {
+      flex: 1,
+    },
+    selectedMemberNameRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 3,
+    },
+    selectedMemberName: {
+      color: colors.textPrimary,
+      fontSize: typography.sizes.sm,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      flexShrink: 1,
+    },
+    selectedMemberMobile: {
+      color: colors.textMuted,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.inter,
+    },
+    idBadge: {
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.15)' : 'rgba(239, 161, 0, 0.12)',
+      borderWidth: 1,
+      borderColor: colors.gold,
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+      borderRadius: 6,
+    },
+    idBadgeText: {
+      color: colors.gold,
+      fontSize: 10,
+      fontFamily: typography.fonts.orbitron,
+      fontWeight: '700',
+    },
+    changeMemberBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: isDark ? 'rgba(239, 68, 68, 0.1)' : 'rgba(239, 68, 68, 0.12)',
+      borderWidth: 1,
+      borderColor: 'rgba(239, 68, 68, 0.3)',
+      borderRadius: 8,
+      paddingHorizontal: 8,
+      paddingVertical: 5,
+    },
+    changeMemberText: {
+      color: colors.error,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.interSemiBold,
+    },
+    searchMemberContainer: {
+      marginBottom: 4,
+    },
+    memberResultsBox: {
+      backgroundColor: colors.bgSecondary,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+      borderRadius: 10,
+      maxHeight: 200,
+      overflow: 'hidden',
+    },
+    memberResultRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderDefault,
+    },
+    memberResultLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      flex: 1,
+    },
+    memberMiniAvatar: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: colors.bgTertiary,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.3)' : colors.goldBorder,
+    },
+    memberMiniInitial: {
+      color: colors.gold,
+      fontSize: 11,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    memberResultNameRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    memberResultName: {
+      color: colors.textPrimary,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.interSemiBold,
+    },
+    memberResultMobile: {
+      color: colors.textMuted,
+      fontSize: 10,
+      fontFamily: typography.fonts.inter,
+      marginTop: 1,
+    },
+    idBadgeSm: {
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : 'rgba(239, 161, 0, 0.1)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.35)' : colors.goldBorder,
+      paddingHorizontal: 5,
+      paddingVertical: 0.5,
+      borderRadius: 4,
+    },
+    idBadgeSmText: {
+      color: colors.gold,
+      fontSize: 9,
+      fontFamily: typography.fonts.orbitron,
+      fontWeight: '700',
+    },
+    emptySearchBox: {
+      padding: 16,
+      alignItems: 'center',
+    },
+    emptySearchText: {
+      color: colors.textMuted,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.inter,
+    },
+  });

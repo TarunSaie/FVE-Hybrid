@@ -21,6 +21,7 @@ import {
   Inter_700Bold,
 } from '@expo-google-fonts/inter';
 import * as SplashScreen from 'expo-splash-screen';
+import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
 import { DialogProvider } from '@/contexts/DialogContext';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { RootNavigator } from '@/navigation/RootNavigator';
@@ -39,6 +40,50 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+interface AppContentProps {
+  fontsLoaded: boolean;
+}
+
+function AppContent({ fontsLoaded }: AppContentProps) {
+  const { isDark, colors } = useTheme();
+
+  const navFonts = fontsLoaded
+    ? {
+        regular: { fontFamily: 'Inter_400Regular', fontWeight: '400' as const },
+        medium: { fontFamily: 'Inter_500Medium', fontWeight: '500' as const },
+        bold: { fontFamily: 'Rajdhani_700Bold', fontWeight: '700' as const },
+        heavy: { fontFamily: 'Orbitron_900Black', fontWeight: '900' as const },
+      }
+    : {
+        regular: { fontFamily: 'sans-serif', fontWeight: '400' as const },
+        medium: { fontFamily: 'sans-serif-medium', fontWeight: '500' as const },
+        bold: { fontFamily: 'sans-serif', fontWeight: '700' as const },
+        heavy: { fontFamily: 'sans-serif', fontWeight: '900' as const },
+      };
+
+  return (
+    <SafeAreaProvider style={{ flex: 1, backgroundColor: colors.background }}>
+      <NavigationContainer
+        theme={{
+          dark: isDark,
+          colors: {
+            primary: colors.gold,
+            background: colors.background,
+            card: colors.cardBackground,
+            text: colors.textPrimary,
+            border: colors.borderDark,
+            notification: colors.error,
+          },
+          fonts: navFonts,
+        }}
+      >
+        <StatusBar style={isDark ? 'light' : 'dark'} />
+        <RootNavigator />
+      </NavigationContainer>
+    </SafeAreaProvider>
+  );
+}
 
 export default function App() {
   const [fontsLoaded, fontError] = useFonts({
@@ -81,47 +126,17 @@ export default function App() {
     );
   }
 
-  const navFonts = fontsLoaded
-    ? {
-        regular: { fontFamily: 'Inter_400Regular', fontWeight: '400' as const },
-        medium: { fontFamily: 'Inter_500Medium', fontWeight: '500' as const },
-        bold: { fontFamily: 'Rajdhani_700Bold', fontWeight: '700' as const },
-        heavy: { fontFamily: 'Orbitron_900Black', fontWeight: '900' as const },
-      }
-    : {
-        regular: { fontFamily: 'sans-serif', fontWeight: '400' as const },
-        medium: { fontFamily: 'sans-serif-medium', fontWeight: '500' as const },
-        bold: { fontFamily: 'sans-serif', fontWeight: '700' as const },
-        heavy: { fontFamily: 'sans-serif', fontWeight: '900' as const },
-      };
-
   return (
     <ErrorBoundary>
-      <SafeAreaProvider style={{ flex: 1, backgroundColor: '#050505' }}>
-        <QueryClientProvider client={queryClient}>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
           <DialogProvider>
             <AuthProvider>
-              <NavigationContainer
-                theme={{
-                  dark: true,
-                  colors: {
-                    primary: '#EFA100',
-                    background: '#050505',
-                    card: '#0A0A0A',
-                    text: '#FFFFFF',
-                    border: 'rgba(239, 161, 0, 0.25)',
-                    notification: '#EF4444',
-                  },
-                  fonts: navFonts,
-                }}
-              >
-                <StatusBar style="light" />
-                <RootNavigator />
-              </NavigationContainer>
+              <AppContent fontsLoaded={fontsLoaded} />
             </AuthProvider>
           </DialogProvider>
-        </QueryClientProvider>
-      </SafeAreaProvider>
+        </ThemeProvider>
+      </QueryClientProvider>
     </ErrorBoundary>
   );
 }

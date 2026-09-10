@@ -511,11 +511,8 @@ export function generateReceiptHtml(data: ReceiptData): string {
           <span class="label">Visits Allotted:</span>
           <span class="val val-gold">${data.visitDayLimit} Days</span>
         </div>
-        <div style="font-size: 10px; color: #8A92A6; margin-top: 4px; margin-bottom: 6px; line-height: 1.4;">
-          <div>Visits: ${data.visitDayLimit} days allotted throughout your entire subscription period.</div>
-          <div style="color: #EFA100; font-weight: 600; margin-top: 2px;">
-            ${data.actualVisitsUsed ?? data.visitDaysUsed ?? 0}/${data.visitDayLimit} visits used. ${(data.remainingVisits ?? (data.visitDayLimit - (data.actualVisitsUsed ?? data.visitDaysUsed ?? 0))) > 1 ? `You can visit for ${data.remainingVisits ?? (data.visitDayLimit - (data.actualVisitsUsed ?? data.visitDaysUsed ?? 0))} more days during your plan.` : (data.remainingVisits ?? (data.visitDayLimit - (data.actualVisitsUsed ?? data.visitDaysUsed ?? 0))) === 1 ? `You can visit for 1 more day during your plan.` : `All allotted visit days have been used.`}
-          </div>
+        <div style="font-size: 10px; color: #8A92A6; margin-top: 2px; margin-bottom: 6px; line-height: 1.4;">
+          Visits: ${data.visitDayLimit} days allotted throughout your entire subscription period. You can visit on any ${data.visitDayLimit} days during your plan.
         </div>` : ''}
         `}
         <div class="row">

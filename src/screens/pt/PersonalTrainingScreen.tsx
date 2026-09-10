@@ -34,7 +34,8 @@ import { PersonalTraining, PTSession } from '@/types';
 import { supabase } from '@/api/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDialog } from '@/contexts/DialogContext';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
+import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { formatDate, getLocalDateStr } from '@/utils/date';
 import { formatCurrency } from '@/utils/format';
@@ -50,6 +51,8 @@ export function PersonalTrainingScreen() {
   const qc = useQueryClient();
   const { user } = useAuth();
   const dialog = useDialog();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => getPTScreenStyles(colors, isDark), [colors, isDark]);
 
   const [activeTab, setActiveTab] = useState<TabType>('active');
   const [searchQuery, setSearchQuery] = useState('');
@@ -600,246 +603,253 @@ export function PersonalTrainingScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#050505',
-  },
-  tabBar: {
-    flexDirection: 'row',
-    backgroundColor: '#0F1216',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(239, 161, 0, 0.2)',
-    paddingHorizontal: 12,
-  },
-  tabBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 12,
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-  },
-  tabBtnActive: {
-    borderBottomColor: colors.gold,
-  },
-  tabText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textMuted,
-    fontFamily: typography.fonts.rajdhani,
-  },
-  tabTextActive: {
-    color: colors.gold,
-    fontWeight: '700',
-  },
-  badgeCount: {
-    backgroundColor: colors.gold,
-    borderRadius: 10,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-  },
-  badgeCountText: {
-    fontSize: 10,
-    color: '#000',
-    fontWeight: '800',
-  },
-  searchWrapper: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    backgroundColor: '#050505',
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 50,
-  },
-  card: {
-    backgroundColor: '#0F1216',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.07)',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 12,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
-  },
-  memberName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    fontFamily: typography.fonts.rajdhani,
-  },
-  packageTitle: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    fontFamily: typography.fonts.inter,
-    marginTop: 2,
-  },
-  priceTag: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.gold,
-    fontFamily: typography.fonts.rajdhani,
-    marginTop: 4,
-  },
-  trainerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 8,
-  },
-  trainerLabel: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    fontFamily: typography.fonts.inter,
-  },
-  progressContainer: {
-    marginVertical: 6,
-  },
-  progressHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  progressLabel: {
-    fontSize: 10,
-    color: colors.textMuted,
-    fontFamily: typography.fonts.inter,
-  },
-  progressVal: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    fontFamily: typography.fonts.rajdhani,
-  },
-  progressTrack: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: colors.gold,
-    borderRadius: 3,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 10,
-  },
-  actionBtnGold: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: colors.gold,
-  },
-  actionBtnGoldText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#000',
-    fontFamily: typography.fonts.rajdhani,
-  },
-  actionBtnOutline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
-  },
-  actionBtnOutlineText: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    fontFamily: typography.fonts.inter,
-  },
-  goalsBox: {
-    padding: 8,
-    borderRadius: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
-    marginTop: 6,
-  },
-  goalsLabel: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: colors.gold,
-    letterSpacing: 0.5,
-    fontFamily: typography.fonts.rajdhani,
-  },
-  goalsText: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    marginTop: 2,
-    fontFamily: typography.fonts.inter,
-  },
-  sessionDateTime: {
-    fontSize: 11,
-    color: colors.gold,
-    fontWeight: '600',
-    fontFamily: typography.fonts.rajdhani,
-  },
-  sessionWorkoutNotes: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    fontFamily: typography.fonts.inter,
-    marginTop: 4,
-  },
-  sessionFeedback: {
-    fontSize: 11,
-    color: '#86EFAC',
-    fontFamily: typography.fonts.inter,
-    marginTop: 2,
-  },
-  completeBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: 'rgba(34, 197, 94, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(34, 197, 94, 0.3)',
-  },
-  completeBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.success,
-    fontFamily: typography.fonts.rajdhani,
-  },
-  emptyCard: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 30,
-    marginTop: 30,
-  },
-  emptyTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginTop: 12,
-    fontFamily: typography.fonts.rajdhani,
-  },
-  emptySubtitle: {
-    fontSize: 12,
-    color: colors.textMuted,
-    textAlign: 'center',
-    marginTop: 6,
-    lineHeight: 18,
-    fontFamily: typography.fonts.inter,
-  },
-});
+const getPTScreenStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    tabBar: {
+      flexDirection: 'row',
+      backgroundColor: colors.surface,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderDark,
+      paddingHorizontal: 12,
+    },
+    tabBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      paddingVertical: 12,
+      borderBottomWidth: 2,
+      borderBottomColor: 'transparent',
+    },
+    tabBtnActive: {
+      borderBottomColor: colors.gold,
+    },
+    tabText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.textMuted,
+      fontFamily: typography.fonts.rajdhani,
+    },
+    tabTextActive: {
+      color: colors.gold,
+      fontWeight: '700',
+    },
+    badgeCount: {
+      backgroundColor: colors.gold,
+      borderRadius: 10,
+      paddingHorizontal: 5,
+      paddingVertical: 1,
+    },
+    badgeCountText: {
+      fontSize: 10,
+      color: '#000',
+      fontWeight: '800',
+    },
+    searchWrapper: {
+      paddingHorizontal: 16,
+      paddingTop: 12,
+      backgroundColor: colors.background,
+    },
+    scrollContent: {
+      padding: 16,
+      paddingBottom: 50,
+    },
+    card: {
+      backgroundColor: colors.cardBackground,
+      borderWidth: 1,
+      borderColor: colors.borderDark,
+      borderRadius: 12,
+      padding: 14,
+      marginBottom: 12,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: isDark ? 0.3 : 0.06,
+      shadowRadius: 6,
+      elevation: 2,
+    },
+    cardHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      marginBottom: 8,
+    },
+    memberName: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      fontFamily: typography.fonts.rajdhani,
+      flexShrink: 1,
+    },
+    packageTitle: {
+      fontSize: 12,
+      color: colors.textSecondary,
+      fontFamily: typography.fonts.inter,
+      marginTop: 2,
+    },
+    priceTag: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.gold,
+      fontFamily: typography.fonts.rajdhani,
+      marginTop: 4,
+    },
+    trainerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      marginBottom: 8,
+    },
+    trainerLabel: {
+      fontSize: 11,
+      color: colors.textSecondary,
+      fontFamily: typography.fonts.inter,
+    },
+    progressContainer: {
+      marginVertical: 6,
+    },
+    progressHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginBottom: 4,
+    },
+    progressLabel: {
+      fontSize: 10,
+      color: colors.textMuted,
+      fontFamily: typography.fonts.inter,
+    },
+    progressVal: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      fontFamily: typography.fonts.rajdhani,
+    },
+    progressTrack: {
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
+      overflow: 'hidden',
+    },
+    progressFill: {
+      height: '100%',
+      backgroundColor: colors.gold,
+      borderRadius: 3,
+    },
+    actionRow: {
+      flexDirection: 'row',
+      gap: 8,
+      marginTop: 10,
+    },
+    actionBtnGold: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      paddingVertical: 8,
+      borderRadius: 8,
+      backgroundColor: colors.gold,
+    },
+    actionBtnGoldText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: '#000',
+      fontFamily: typography.fonts.rajdhani,
+    },
+    actionBtnOutline: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.borderDark,
+    },
+    actionBtnOutlineText: {
+      fontSize: 12,
+      color: colors.textSecondary,
+      fontFamily: typography.fonts.inter,
+    },
+    goalsBox: {
+      padding: 8,
+      borderRadius: 6,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.03)',
+      borderWidth: 1,
+      borderColor: colors.borderDark,
+      marginTop: 6,
+    },
+    goalsLabel: {
+      fontSize: 9,
+      fontWeight: '700',
+      color: colors.gold,
+      letterSpacing: 0.5,
+      fontFamily: typography.fonts.rajdhani,
+    },
+    goalsText: {
+      fontSize: 11,
+      color: colors.textSecondary,
+      marginTop: 2,
+      fontFamily: typography.fonts.inter,
+    },
+    sessionDateTime: {
+      fontSize: 11,
+      color: colors.gold,
+      fontWeight: '600',
+      fontFamily: typography.fonts.rajdhani,
+    },
+    sessionWorkoutNotes: {
+      fontSize: 11,
+      color: colors.textSecondary,
+      fontFamily: typography.fonts.inter,
+      marginTop: 4,
+    },
+    sessionFeedback: {
+      fontSize: 11,
+      color: '#16A34A',
+      fontFamily: typography.fonts.inter,
+      marginTop: 2,
+    },
+    completeBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      paddingVertical: 8,
+      borderRadius: 8,
+      backgroundColor: 'rgba(34, 197, 94, 0.12)',
+      borderWidth: 1,
+      borderColor: 'rgba(34, 197, 94, 0.3)',
+    },
+    completeBtnText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.success,
+      fontFamily: typography.fonts.rajdhani,
+    },
+    emptyCard: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 30,
+      marginTop: 30,
+    },
+    emptyTitle: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      marginTop: 12,
+      fontFamily: typography.fonts.rajdhani,
+    },
+    emptySubtitle: {
+      fontSize: 12,
+      color: colors.textMuted,
+      textAlign: 'center',
+      marginTop: 6,
+      lineHeight: 18,
+      fontFamily: typography.fonts.inter,
+    },
+  });

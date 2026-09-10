@@ -12,7 +12,7 @@ import {
   Keyboard,
   Platform,
 } from 'react-native';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
 import { typography } from '@/constants/typography';
 
 export interface FVEInputProps extends TextInputProps {
@@ -25,12 +25,7 @@ export interface FVEInputProps extends TextInputProps {
   isFocused?: boolean;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Global Focus Coordinator
-// Guarantees that ONLY ONE FVEInput can EVER have focus styling at any moment.
-// When any input receives focus, all other inputs are immediately notified and
-// their focus outlines are cleared, eliminating sticky/multi-field focus bugs.
-// ─────────────────────────────────────────────────────────────────────────────
 type FocusListener = (activeId: string | null) => void;
 const focusListeners = new Set<FocusListener>();
 let activeInputId: string | null = null;
@@ -65,6 +60,7 @@ export const FVEInput = forwardRef<TextInput, FVEInputProps>(function FVEInput(
   },
   ref
 ) {
+  const { colors, isDark } = useTheme();
   const inputId = useRef(`fve_input_${Math.random().toString(36).substring(2, 9)}`).current;
   const internalRef = useRef<TextInput | null>(null);
   const [internalFocused, setInternalFocused] = useState(false);
@@ -104,16 +100,43 @@ export const FVEInput = forwardRef<TextInput, FVEInputProps>(function FVEInput(
     }
   };
 
+  const containerBg = isDark
+    ? isInputFocused
+      ? '#161A22'
+      : '#11141A'
+    : isInputFocused
+    ? '#FFFFFF'
+    : '#F8FAFC';
+
+  const containerBorder = isDark
+    ? isInputFocused
+      ? colors.gold
+      : 'rgba(255, 255, 255, 0.1)'
+    : isInputFocused
+    ? colors.gold
+    : colors.borderDark;
+
   return (
     <View style={[styles.wrapper, containerStyle]}>
-      {label && <Text style={styles.label}>{label}</Text>}
+      {label && <Text style={[styles.label, { color: colors.textSecondary }]}>{label}</Text>}
 
       <Pressable
         onPress={handleContainerPress}
         style={[
           styles.inputContainer,
-          isInputFocused && styles.focusedContainer,
-          !!error && styles.errorContainer,
+          {
+            backgroundColor: containerBg,
+            borderColor: containerBorder,
+          },
+          isInputFocused && {
+            borderColor: colors.gold,
+            shadowColor: colors.gold,
+            shadowOffset: { width: 0, height: 0 },
+            shadowOpacity: isDark ? 0.35 : 0.2,
+            shadowRadius: 6,
+            elevation: 2,
+          },
+          !!error && { borderColor: colors.error },
           !editable && styles.disabledContainer,
         ]}
       >
@@ -129,7 +152,6 @@ export const FVEInput = forwardRef<TextInput, FVEInputProps>(function FVEInput(
           placeholderTextColor={colors.textSubtle}
           selectionColor={colors.gold}
           cursorColor={colors.gold}
-          // Disable OS autofill grouping — prevents multi-field highlight
           textContentType="none"
           importantForAutofill="no"
           autoComplete="off"
@@ -146,7 +168,13 @@ export const FVEInput = forwardRef<TextInput, FVEInputProps>(function FVEInput(
             }
             onBlur?.(e);
           }}
-          style={[styles.input, style]}
+          style={[
+            styles.input,
+            {
+              color: colors.textPrimary,
+            },
+            style,
+          ]}
           {...rest}
         />
 
@@ -162,7 +190,7 @@ export const FVEInput = forwardRef<TextInput, FVEInputProps>(function FVEInput(
         )}
       </Pressable>
 
-      {!!error && <Text style={styles.errorText}>{error}</Text>}
+      {!!error && <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>}
     </View>
   );
 });
@@ -172,7 +200,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   label: {
-    color: colors.textSecondary,
     fontSize: typography.sizes.xs,
     fontFamily: typography.fonts.rajdhaniMedium,
     fontWeight: '600',
@@ -183,24 +210,10 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#11141A',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
     borderRadius: 14,
     paddingHorizontal: 14,
-    minHeight: 52,
-  },
-  focusedContainer: {
-    borderColor: colors.gold,
-    backgroundColor: '#161A22',
-    shadowColor: colors.gold,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  errorContainer: {
-    borderColor: colors.error,
+    minHeight: 50,
   },
   disabledContainer: {
     opacity: 0.6,
@@ -218,14 +231,12 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    color: colors.textPrimary,
     fontSize: typography.sizes.base,
     fontFamily: typography.fonts.inter,
     paddingVertical: 12,
-    minHeight: 48,
+    minHeight: 46,
   },
   errorText: {
-    color: colors.error,
     fontSize: typography.sizes.xs,
     fontFamily: typography.fonts.inter,
     marginTop: 4,

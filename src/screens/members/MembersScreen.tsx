@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -23,7 +23,8 @@ import { FVELogoLoader } from '@/components/common/FVELogoLoader';
 import { SkeletonMemberCard } from '@/components/common/FVESkeleton';
 import { Member, MemberWithMembership } from '@/types';
 import { supabase } from '@/api/supabase';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
+import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { RootStackParamList } from '@/navigation/types';
 
@@ -88,6 +89,8 @@ function parseMemberIdNum(id?: string | null): number {
 export function MembersScreen() {
   const navigation = useNavigation<NavigationProp>();
   const qc = useQueryClient();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => getMembersStyles(colors, isDark), [colors, isDark]);
 
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -580,240 +583,241 @@ export function MembersScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#050505',
-  },
-  addHeaderBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: colors.goldMuted,
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  addHeaderBtnText: {
-    color: colors.gold,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  searchSection: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    backgroundColor: '#080A0D',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  searchContainer: {
-    marginBottom: 10,
-  },
-  filterScroll: {
-    paddingBottom: 10,
-  },
-  filterChip: {
-    backgroundColor: '#11141A',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    marginRight: 8,
-  },
-  selectedFilterChip: {
-    backgroundColor: 'rgba(239, 161, 0, 0.15)',
-    borderColor: 'rgba(239, 161, 0, 0.35)',
-  },
-  selectedExpiredChip: {
-    backgroundColor: 'rgba(239, 68, 68, 0.18)',
-    borderColor: 'rgba(239, 68, 68, 0.45)',
-  },
-  filterChipText: {
-    color: colors.textSecondary,
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  selectedFilterChipText: {
-    color: colors.gold,
-  },
-  selectedExpiredChipText: {
-    color: '#F87171',
-  },
-  expiredBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(127, 29, 29, 0.22)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.35)',
-    borderRadius: 14,
-    marginHorizontal: 16,
-    marginTop: 12,
-    marginBottom: 4,
-    padding: 12,
-    gap: 12,
-  },
-  expiredBannerIconBox: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    backgroundColor: 'rgba(239, 68, 68, 0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.35)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  expiredBannerContent: {
-    flex: 1,
-  },
-  expiredBannerHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 2,
-  },
-  expiredBannerTitle: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  expiredCountBadge: {
-    backgroundColor: 'rgba(239, 68, 68, 0.25)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.4)',
-    borderRadius: 10,
-    paddingHorizontal: 7,
-    paddingVertical: 1,
-  },
-  expiredCountBadgeText: {
-    color: '#FCA5A5',
-    fontSize: 10,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  expiredBannerText: {
-    color: '#BFC3C7',
-    fontSize: 11,
-    fontFamily: typography.fonts.inter,
-    lineHeight: 15,
-  },
-  sortRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(255, 255, 255, 0.06)',
-  },
-  sortLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  sortLabel: {
-    color: colors.textMuted,
-    fontSize: 10,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  sortBtn: {
-    backgroundColor: '#11141A',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  sortBtnText: {
-    color: colors.gold,
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  sortModalScroll: {
-    maxHeight: 460,
-    marginBottom: 10,
-  },
-  sortOptionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    backgroundColor: '#11141A',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
-    marginBottom: 8,
-  },
-  sortOptionItemActive: {
-    backgroundColor: 'rgba(239, 161, 0, 0.12)',
-    borderColor: colors.gold,
-  },
-  sortOptionTextContainer: {
-    flex: 1,
-    marginRight: 12,
-  },
-  sortOptionTitle: {
-    fontSize: 14,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: 2,
-  },
-  sortOptionTitleActive: {
-    color: colors.gold,
-  },
-  sortOptionDesc: {
-    fontSize: 11,
-    fontFamily: typography.fonts.inter,
-    color: colors.textMuted,
-  },
-  sortRadioCircle: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sortRadioCircleActive: {
-    backgroundColor: colors.gold,
-    borderColor: colors.gold,
-  },
-  listContent: {
-    padding: 16,
-    paddingBottom: 110,
-  },
-  fab: {
-    position: 'absolute',
-    bottom: 96,
-    right: 20,
-    borderRadius: 30,
-    shadowColor: colors.gold,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.5,
-    shadowRadius: 12,
-    elevation: 10,
-  },
-  fabGradient: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+const getMembersStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    addHeaderBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: colors.goldMuted,
+      borderWidth: 1,
+      borderColor: colors.goldBorder,
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    addHeaderBtnText: {
+      color: colors.gold,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    searchSection: {
+      paddingHorizontal: 16,
+      paddingTop: 12,
+      backgroundColor: isDark ? '#080A0D' : colors.cardBackground,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.borderDark,
+    },
+    searchContainer: {
+      marginBottom: 10,
+    },
+    filterScroll: {
+      paddingBottom: 10,
+    },
+    filterChip: {
+      backgroundColor: isDark ? '#11141A' : colors.surfaceLight,
+      borderWidth: 1,
+      borderColor: colors.borderDark,
+      borderRadius: 20,
+      paddingHorizontal: 14,
+      paddingVertical: 7,
+      marginRight: 8,
+    },
+    selectedFilterChip: {
+      backgroundColor: colors.goldMuted,
+      borderColor: colors.goldBorder,
+    },
+    selectedExpiredChip: {
+      backgroundColor: colors.errorMuted,
+      borderColor: colors.errorBorder,
+    },
+    filterChipText: {
+      color: colors.textSecondary,
+      fontSize: 11,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 0.5,
+    },
+    selectedFilterChipText: {
+      color: colors.gold,
+    },
+    selectedExpiredChipText: {
+      color: colors.error,
+    },
+    expiredBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: isDark ? 'rgba(127, 29, 29, 0.22)' : '#FEF2F2',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 68, 68, 0.35)' : 'rgba(220, 38, 38, 0.3)',
+      borderRadius: 14,
+      marginHorizontal: 16,
+      marginTop: 12,
+      marginBottom: 4,
+      padding: 12,
+      gap: 12,
+    },
+    expiredBannerIconBox: {
+      width: 38,
+      height: 38,
+      borderRadius: 10,
+      backgroundColor: colors.errorMuted,
+      borderWidth: 1,
+      borderColor: colors.errorBorder,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    expiredBannerContent: {
+      flex: 1,
+    },
+    expiredBannerHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 2,
+    },
+    expiredBannerTitle: {
+      color: colors.textPrimary,
+      fontSize: 12,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 0.5,
+    },
+    expiredCountBadge: {
+      backgroundColor: colors.errorMuted,
+      borderWidth: 1,
+      borderColor: colors.errorBorder,
+      borderRadius: 10,
+      paddingHorizontal: 7,
+      paddingVertical: 1,
+    },
+    expiredCountBadgeText: {
+      color: colors.error,
+      fontSize: 10,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    expiredBannerText: {
+      color: colors.textSecondary,
+      fontSize: 11,
+      fontFamily: typography.fonts.inter,
+      lineHeight: 15,
+    },
+    sortRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: 8,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.borderDark,
+    },
+    sortLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    sortLabel: {
+      color: colors.textMuted,
+      fontSize: 10,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 0.5,
+    },
+    sortBtn: {
+      backgroundColor: isDark ? '#11141A' : colors.surfaceLight,
+      borderWidth: 1,
+      borderColor: colors.borderDark,
+      borderRadius: 12,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    sortBtnText: {
+      color: colors.gold,
+      fontSize: 11,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    sortModalScroll: {
+      maxHeight: 460,
+      marginBottom: 10,
+    },
+    sortOptionItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      borderRadius: 12,
+      backgroundColor: isDark ? '#11141A' : colors.cardBackground,
+      borderWidth: 1,
+      borderColor: colors.borderDark,
+      marginBottom: 8,
+    },
+    sortOptionItemActive: {
+      backgroundColor: colors.goldMuted,
+      borderColor: colors.gold,
+    },
+    sortOptionTextContainer: {
+      flex: 1,
+      marginRight: 12,
+    },
+    sortOptionTitle: {
+      fontSize: 14,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      marginBottom: 2,
+    },
+    sortOptionTitleActive: {
+      color: colors.gold,
+    },
+    sortOptionDesc: {
+      fontSize: 11,
+      fontFamily: typography.fonts.inter,
+      color: colors.textMuted,
+    },
+    sortRadioCircle: {
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      borderWidth: 1.5,
+      borderColor: colors.borderDark,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    sortRadioCircleActive: {
+      backgroundColor: colors.gold,
+      borderColor: colors.gold,
+    },
+    listContent: {
+      padding: 16,
+      paddingBottom: 110,
+    },
+    fab: {
+      position: 'absolute',
+      bottom: 96,
+      right: 20,
+      borderRadius: 30,
+      shadowColor: colors.gold,
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.4,
+      shadowRadius: 12,
+      elevation: 8,
+    },
+    fabGradient: {
+      width: 58,
+      height: 58,
+      borderRadius: 29,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+  });
 

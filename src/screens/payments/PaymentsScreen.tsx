@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -22,7 +22,8 @@ import { FVEEmptyState } from '@/components/common/FVEEmptyState';
 import { FVELogoLoader } from '@/components/common/FVELogoLoader';
 import { Payment, PAYMENT_METHODS } from '@/types';
 import { supabase } from '@/api/supabase';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
+import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { formatCurrency, openWhatsAppLink } from '@/utils/format';
 import { formatDate } from '@/utils/date';
@@ -37,6 +38,8 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 export function PaymentsScreen() {
   const navigation = useNavigation<NavigationProp>();
   const qc = useQueryClient();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => getPaymentsStyles(colors, isDark), [colors, isDark]);
 
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -69,7 +72,7 @@ export function PaymentsScreen() {
 
       let q = supabase
         .from('payments')
-        .select('*, members(full_name, mobile, member_id, profile_photo), memberships(id, start_date, expiry_date, membership_plans(name))')
+        .select('*, members(full_name, mobile, member_id, profile_photo), memberships(id, start_date, expiry_date, status, visit_day_limit, visit_days_used, membership_plans(name, duration_days))')
         .order('created_at', { ascending: false });
 
       if (methodFilter) {
@@ -286,119 +289,120 @@ export function PaymentsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#050505',
-  },
-  addHeaderBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: colors.goldMuted,
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  addHeaderBtnText: {
-    color: colors.gold,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  summaryCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#11141A',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: 18,
-    margin: 16,
-    marginBottom: 10,
-    padding: 18,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  summaryLabel: {
-    color: colors.textMuted,
-    fontSize: 10,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-  },
-  summaryValue: {
-    color: colors.gold,
-    fontSize: typography.sizes.xxl,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-    marginTop: 2,
-  },
-  recordCountBox: {
-    backgroundColor: 'rgba(239, 161, 0, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.25)',
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  recordCountText: {
-    color: colors.gold,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  filterSection: {
-    paddingHorizontal: 16,
-    paddingBottom: 10,
-  },
-  filterChip: {
-    backgroundColor: '#11141A',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    marginRight: 8,
-  },
-  selectedFilterChip: {
-    backgroundColor: 'rgba(239, 161, 0, 0.15)',
-    borderColor: 'rgba(239, 161, 0, 0.35)',
-  },
-  filterChipText: {
-    color: colors.textSecondary,
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  selectedFilterChipText: {
-    color: colors.gold,
-  },
-  listContent: {
-    padding: 16,
-    paddingBottom: 110,
-  },
-  fab: {
-    position: 'absolute',
-    bottom: 96,
-    right: 20,
-    borderRadius: 30,
-    shadowColor: colors.gold,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.5,
-    shadowRadius: 12,
-    elevation: 10,
-  },
-  fabGradient: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+const getPaymentsStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    addHeaderBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: colors.goldMuted,
+      borderWidth: 1,
+      borderColor: colors.goldBorder,
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    addHeaderBtnText: {
+      color: colors.gold,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    summaryCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: colors.cardBackground,
+      borderWidth: 1,
+      borderColor: colors.borderDark,
+      borderRadius: 18,
+      margin: 16,
+      marginBottom: 10,
+      padding: 18,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: isDark ? 0.3 : 0.08,
+      shadowRadius: 8,
+      elevation: 4,
+    },
+    summaryLabel: {
+      color: colors.textMuted,
+      fontSize: 10,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 0.8,
+    },
+    summaryValue: {
+      color: colors.gold,
+      fontSize: typography.sizes.xxl,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '800',
+      marginTop: 2,
+    },
+    recordCountBox: {
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : 'rgba(217, 130, 0, 0.12)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.25)' : 'rgba(217, 130, 0, 0.25)',
+      borderRadius: 10,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    recordCountText: {
+      color: colors.gold,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    filterSection: {
+      paddingHorizontal: 16,
+      paddingBottom: 10,
+    },
+    filterChip: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.borderDark,
+      borderRadius: 20,
+      paddingHorizontal: 14,
+      paddingVertical: 7,
+      marginRight: 8,
+    },
+    selectedFilterChip: {
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.15)' : 'rgba(217, 130, 0, 0.15)',
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.35)' : 'rgba(217, 130, 0, 0.35)',
+    },
+    filterChipText: {
+      color: colors.textSecondary,
+      fontSize: 11,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    selectedFilterChipText: {
+      color: colors.gold,
+    },
+    listContent: {
+      padding: 16,
+      paddingBottom: 110,
+    },
+    fab: {
+      position: 'absolute',
+      bottom: 96,
+      right: 20,
+      borderRadius: 30,
+      shadowColor: colors.gold,
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.5,
+      shadowRadius: 12,
+      elevation: 10,
+    },
+    fabGradient: {
+      width: 58,
+      height: 58,
+      borderRadius: 29,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+  });
