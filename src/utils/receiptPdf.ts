@@ -27,11 +27,21 @@ export interface ReceiptData {
   serviceType?: string;
   visitDayLimit?: number | null;
   visitDaysUsed?: number | null;
+  actualVisitsUsed?: number | null;
+  remainingVisits?: number | null;
+  actualPTSessionsCompleted?: number | null;
+  remainingPTSessions?: number | null;
 }
 
 export function buildReceiptDataFromPayment(
   payment: Payment,
-  pt?: PersonalTraining | null
+  pt?: PersonalTraining | null,
+  usageStats?: {
+    actualVisitsUsed?: number | null;
+    remainingVisits?: number | null;
+    actualPTSessionsCompleted?: number | null;
+    remainingPTSessions?: number | null;
+  }
 ): ReceiptData {
   const memberName = payment.members?.full_name || 'Member';
   const memberMobile = payment.members?.mobile;
@@ -82,7 +92,15 @@ export function buildReceiptDataFromPayment(
 
   const receiptNo = payment.receipt_number || 'FVE-N/A';
   const dateStr = formatDate(payment.payment_date || payment.created_at);
-  const memberQrCode = payment.members?.qr_code || payment.members?.id || null;
+  const memberQrCode = payment.members?.qr_code || payment.members?.id || payment.member_id || null;
+  const visitDayLimit = payment.memberships?.visit_day_limit ?? null;
+  const visitDaysUsed = payment.memberships?.visit_days_used ?? 0;
+
+  const actualVisits = usageStats?.actualVisitsUsed ?? visitDaysUsed;
+  const remainingVis = usageStats?.remainingVisits ?? (visitDayLimit != null ? Math.max(0, visitDayLimit - actualVisits) : null);
+
+  const actualPTCompleted = usageStats?.actualPTSessionsCompleted ?? pt?.sessions_completed ?? 0;
+  const remainingPT = usageStats?.remainingPTSessions ?? (totalSessions != null ? Math.max(0, totalSessions - actualPTCompleted) : null);
 
   return {
     receiptNumber: receiptNo,
@@ -102,8 +120,12 @@ export function buildReceiptDataFromPayment(
     trainerName,
     totalSessions,
     serviceType: isPT ? 'PERSONAL TRAINING ADD-ON' : 'GYM MEMBERSHIP',
-    visitDayLimit: payment.memberships?.visit_day_limit ?? null,
-    visitDaysUsed: payment.memberships?.visit_days_used ?? 0,
+    visitDayLimit,
+    visitDaysUsed,
+    actualVisitsUsed: actualVisits,
+    remainingVisits: remainingVis,
+    actualPTSessionsCompleted: actualPTCompleted,
+    remainingPTSessions: remainingPT,
   };
 }
 
@@ -450,8 +472,14 @@ export function generateReceiptHtml(data: ReceiptData): string {
         </div>` : ''}
         ${data.totalSessions ? `
         <div class="row">
-          <span class="label">Sessions:</span>
+          <span class="label">Sessions Allotted:</span>
           <span class="val val-gold">${data.totalSessions} Guided Sessions</span>
+        </div>
+        <div style="font-size: 10px; color: #8A92A6; margin-top: 4px; margin-bottom: 6px; line-height: 1.4;">
+          <div>Sessions: ${data.totalSessions} sessions allotted throughout your entire subscription period.</div>
+          <div style="color: #EFA100; font-weight: 600; margin-top: 2px;">
+            ${data.actualPTSessionsCompleted ?? 0}/${data.totalSessions} sessions completed. ${(data.remainingPTSessions ?? (data.totalSessions - (data.actualPTSessionsCompleted ?? 0))) > 1 ? `You can attend ${data.remainingPTSessions ?? (data.totalSessions - (data.actualPTSessionsCompleted ?? 0))} more sessions during your plan.` : (data.remainingPTSessions ?? (data.totalSessions - (data.actualPTSessionsCompleted ?? 0))) === 1 ? `You can attend 1 more session during your plan.` : `All allotted sessions have been completed.`}
+          </div>
         </div>` : ''}
         ${data.startDate && data.endDate ? `
         <div class="row">
@@ -484,7 +512,10 @@ export function generateReceiptHtml(data: ReceiptData): string {
           <span class="val val-gold">${data.visitDayLimit} Days</span>
         </div>
         <div style="font-size: 10px; color: #8A92A6; margin-top: 4px; margin-bottom: 6px; line-height: 1.4;">
-          Visits: ${data.visitDayLimit} days allotted throughout your entire subscription period. You can visit on any ${data.visitDayLimit} days during your plan.
+          <div>Visits: ${data.visitDayLimit} days allotted throughout your entire subscription period.</div>
+          <div style="color: #EFA100; font-weight: 600; margin-top: 2px;">
+            ${data.actualVisitsUsed ?? data.visitDaysUsed ?? 0}/${data.visitDayLimit} visits used. ${(data.remainingVisits ?? (data.visitDayLimit - (data.actualVisitsUsed ?? data.visitDaysUsed ?? 0))) > 1 ? `You can visit for ${data.remainingVisits ?? (data.visitDayLimit - (data.actualVisitsUsed ?? data.visitDaysUsed ?? 0))} more days during your plan.` : (data.remainingVisits ?? (data.visitDayLimit - (data.actualVisitsUsed ?? data.visitDaysUsed ?? 0))) === 1 ? `You can visit for 1 more day during your plan.` : `All allotted visit days have been used.`}
+          </div>
         </div>` : ''}
         `}
         <div class="row">

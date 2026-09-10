@@ -96,6 +96,64 @@ export function PaymentReceiptScreen() {
     ? (ptRecord?.package_name ? `Personal Training — ${ptRecord.package_name}` : 'Personal Training Add-On')
     : (plan?.name || 'Gym Subscription');
 
+  const memberDbId = payment.member_id;
+  const membershipStart = payment.memberships?.start_date;
+  const membershipExpiry = payment.memberships?.expiry_date;
+  const visitDayLimit = payment.memberships?.visit_day_limit ?? null;
+
+  // Query actual attendance records for this member within the membership period
+  const { data: attendanceCount } = useQuery({
+    queryKey: ['receipt-member-attendance', memberDbId, membershipStart, membershipExpiry],
+    queryFn: async () => {
+      if (!memberDbId) return 0;
+      let q = supabase
+        .from('attendance')
+        .select('id', { count: 'exact', head: true })
+        .eq('member_id', memberDbId);
+
+      if (membershipStart) q = q.gte('date', membershipStart);
+      if (membershipExpiry) q = q.lte('date', membershipExpiry);
+
+      const { count, error } = await q;
+      if (error) {
+        console.error('Error fetching attendance count for receipt:', error);
+        return null;
+      }
+      return count ?? 0;
+    },
+    enabled: !!memberDbId && visitDayLimit != null,
+    refetchInterval: 5000,
+  });
+
+  const actualVisitsUsed = attendanceCount ?? payment.memberships?.visit_days_used ?? 0;
+  const remainingVisits = visitDayLimit != null ? Math.max(0, visitDayLimit - actualVisitsUsed) : null;
+
+  // Query completed PT sessions if this is a personal training receipt
+  const ptId = ptRecord?.id;
+  const { data: completedPTSessionsCount } = useQuery({
+    queryKey: ['receipt-pt-sessions-completed', ptId],
+    queryFn: async () => {
+      if (!ptId) return 0;
+      const { count, error } = await supabase
+        .from('pt_sessions')
+        .select('id', { count: 'exact', head: true })
+        .eq('personal_training_id', ptId)
+        .eq('status', 'COMPLETED');
+
+      if (error) {
+        console.error('Error fetching PT sessions count for receipt:', error);
+        return null;
+      }
+      return count ?? 0;
+    },
+    enabled: !!ptId && isPT,
+    refetchInterval: 5000,
+  });
+
+  const actualPTSessionsCompleted = completedPTSessionsCount ?? ptRecord?.sessions_completed ?? 0;
+  const totalPTSessions = ptRecord?.total_sessions ?? null;
+  const remainingPTSessions = totalPTSessions != null ? Math.max(0, totalPTSessions - actualPTSessionsCompleted) : null;
+
   const receiptNo = payment.receipt_number || 'FVE-N/A';
   const dateStr = formatDate(payment.payment_date || payment.created_at);
   const startDate = isPT && ptRecord?.start_date
@@ -104,10 +162,6 @@ export function PaymentReceiptScreen() {
   const endDate = isPT && ptRecord?.expiry_date
     ? formatDate(ptRecord.expiry_date)
     : (payment.memberships?.expiry_date ? formatDate(payment.memberships.expiry_date) : null);
-  const validityLine = startDate && endDate ? `Validity: ${startDate} TO ${endDate}\n` : '';
-
-  const visitDayLimit = payment.memberships?.visit_day_limit;
-  const visitDaysUsed = payment.memberships?.visit_days_used ?? 0;
 
   const [pdfGenerating, setPdfGenerating] = useState(false);
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
@@ -119,8 +173,17 @@ export function PaymentReceiptScreen() {
       `Service: Personal Training Add-On\n` +
       `Package: ${displayPlanName}\n` +
       (ptRecord?.trainer?.full_name ? `Trainer: ${ptRecord.trainer.full_name}\n` : '') +
-      (ptRecord?.total_sessions ? `Sessions: ${ptRecord.total_sessions} Sessions\n` : '') +
+      (totalPTSessions ? `Sessions: ${totalPTSessions} Sessions\n` : '') +
       (startDate && endDate ? `Validity: ${startDate} TO ${endDate}\n` : '') +
+      (totalPTSessions != null
+        ? `Sessions: ${totalPTSessions} sessions allotted throughout your entire subscription period.\n` +
+          `${actualPTSessionsCompleted}/${totalPTSessions} sessions completed. ` +
+          (remainingPTSessions != null && remainingPTSessions > 1
+            ? `You can attend ${remainingPTSessions} more sessions during your plan.\n`
+            : remainingPTSessions === 1
+            ? `You can attend 1 more session during your plan.\n`
+            : `All allotted sessions have been completed.\n`)
+        : '') +
       `Amount Paid: ${formatCurrency(payment.amount)}\n` +
       `Payment Method: ${payment.payment_method?.toUpperCase() || 'CASH'}\n` +
       `Date: ${dateStr}\n\n` +
@@ -134,7 +197,15 @@ export function PaymentReceiptScreen() {
       `Member: ${memberName}${memberId ? ` (${memberId})` : ''}\n` +
       `Plan: ${displayPlanName}\n` +
       (startDate && endDate ? `Validity: ${startDate} TO ${endDate}\n` : '') +
-      (visitDayLimit != null ? `Visits: ${visitDayLimit} days allotted throughout your entire subscription period. You can visit on any ${visitDayLimit} days during your plan.\n` : '') +
+      (visitDayLimit != null
+        ? `Visits: ${visitDayLimit} days allotted throughout your entire subscription period.\n` +
+          `${actualVisitsUsed}/${visitDayLimit} visits used. ` +
+          (remainingVisits != null && remainingVisits > 1
+            ? `You can visit for ${remainingVisits} more days during your plan.\n`
+            : remainingVisits === 1
+            ? `You can visit for 1 more day during your plan.\n`
+            : `All allotted visit days have been used.\n`)
+        : '') +
       `Amount Paid: ${formatCurrency(payment.amount)}\n\n` +
       `THANKS FOR TRAINING WITH US\n` +
       `DISCIPLINE • STRENGTH • TRANSFORMATION\n\n` +
@@ -147,7 +218,12 @@ export function PaymentReceiptScreen() {
     haptics.medium();
     setPdfGenerating(true);
     try {
-      const receiptData = buildReceiptDataFromPayment(payment, ptRecord);
+      const receiptData = buildReceiptDataFromPayment(payment, ptRecord, {
+        actualVisitsUsed,
+        remainingVisits,
+        actualPTSessionsCompleted,
+        remainingPTSessions,
+      });
       await sharePdfReceipt(receiptData);
     } catch (err: unknown) {
       haptics.error();
@@ -167,7 +243,12 @@ export function PaymentReceiptScreen() {
       await Clipboard.setStringAsync(whatsAppReceiptText);
 
       // 2. Generate and open PDF sharing
-      const receiptData = buildReceiptDataFromPayment(payment, ptRecord);
+      const receiptData = buildReceiptDataFromPayment(payment, ptRecord, {
+        actualVisitsUsed,
+        remainingVisits,
+        actualPTSessionsCompleted,
+        remainingPTSessions,
+      });
       await sharePdfReceipt(receiptData);
 
       // 3. User feedback
@@ -188,7 +269,12 @@ export function PaymentReceiptScreen() {
     if (!payment) return;
     haptics.light();
     try {
-      const receiptData = buildReceiptDataFromPayment(payment, ptRecord);
+      const receiptData = buildReceiptDataFromPayment(payment, ptRecord, {
+        actualVisitsUsed,
+        remainingVisits,
+        actualPTSessionsCompleted,
+        remainingPTSessions,
+      });
       await printPdfReceipt(receiptData);
     } catch (err: unknown) {
       haptics.error();
@@ -322,13 +408,28 @@ export function PaymentReceiptScreen() {
                     </Text>
                   </View>
                 )}
-                {ptRecord?.total_sessions != null && (
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>TOTAL SESSIONS</Text>
-                    <Text style={styles.detailValue}>
-                      {ptRecord.total_sessions} Sessions
-                    </Text>
-                  </View>
+                {totalPTSessions != null && (
+                  <>
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>TOTAL SESSIONS</Text>
+                      <Text style={[styles.detailValue, { color: colors.gold }]}>
+                        {totalPTSessions} Sessions ({actualPTSessionsCompleted} completed)
+                      </Text>
+                    </View>
+                    <View style={{ marginTop: 2, marginBottom: 8 }}>
+                      <Text style={{ fontSize: 11, color: colors.textMuted, lineHeight: 15 }}>
+                        Sessions: {totalPTSessions} sessions allotted throughout your entire subscription period.
+                      </Text>
+                      <Text style={{ fontSize: 11, color: colors.gold, fontWeight: '600', marginTop: 2, lineHeight: 15 }}>
+                        {actualPTSessionsCompleted}/{totalPTSessions} sessions completed.{' '}
+                        {remainingPTSessions != null && remainingPTSessions > 1
+                          ? `You can attend ${remainingPTSessions} more sessions during your plan.`
+                          : remainingPTSessions === 1
+                          ? `You can attend 1 more session during your plan.`
+                          : `All allotted sessions have been completed.`}
+                      </Text>
+                    </View>
+                  </>
                 )}
                 {startDate && endDate && (
                   <View style={styles.detailRow}>
@@ -358,12 +459,22 @@ export function PaymentReceiptScreen() {
                     <View style={styles.detailRow}>
                       <Text style={styles.detailLabel}>VISITS ALLOTTED</Text>
                       <Text style={[styles.detailValue, { color: colors.gold }]}>
-                        {visitDayLimit} Days ({visitDaysUsed} used)
+                        {visitDayLimit} Days ({actualVisitsUsed} used)
                       </Text>
                     </View>
-                    <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 2, marginBottom: 8, lineHeight: 15 }}>
-                      Visits: {visitDayLimit} days allotted throughout your entire subscription period. You can visit on any {visitDayLimit} days during your plan.
-                    </Text>
+                    <View style={{ marginTop: 2, marginBottom: 8 }}>
+                      <Text style={{ fontSize: 11, color: colors.textMuted, lineHeight: 15 }}>
+                        Visits: {visitDayLimit} days allotted throughout your entire subscription period.
+                      </Text>
+                      <Text style={{ fontSize: 11, color: colors.gold, fontWeight: '600', marginTop: 2, lineHeight: 15 }}>
+                        {actualVisitsUsed}/{visitDayLimit} visits used.{' '}
+                        {remainingVisits != null && remainingVisits > 1
+                          ? `You can visit for ${remainingVisits} more days during your plan.`
+                          : remainingVisits === 1
+                          ? `You can visit for 1 more day during your plan.`
+                          : `All allotted visit days have been used.`}
+                      </Text>
+                    </View>
                   </>
                 )}
               </>
