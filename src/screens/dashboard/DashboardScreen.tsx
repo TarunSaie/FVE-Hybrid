@@ -29,12 +29,17 @@ import {
   Shield,
   Bell,
   ChevronRight,
+  ChevronLeft,
   TrendingUp,
   Activity,
   Sun,
   Moon,
   CheckCircle2,
   Sparkles,
+  PauseCircle,
+  Layers,
+  MessageCircle,
+  Clock,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { MemberFormModal } from '@/components/features/MemberFormModal';
@@ -72,6 +77,31 @@ export function DashboardScreen() {
   const todayStr = getLocalDateStr();
   const currentMonthStr = getLocalMonthStr();
 
+  const [filterMonth, setFilterMonth] = useState(() => getLocalMonthStr());
+  const [checkInDate, setCheckInDate] = useState(() => getLocalDateStr());
+
+  const formattedMonthLabel = useMemo(() => {
+    if (!filterMonth) return '';
+    const [y, m] = filterMonth.split('-');
+    const d = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
+    return d.toLocaleString('en-IN', { month: 'short', year: 'numeric' });
+  }, [filterMonth]);
+
+  const handlePrevMonth = () => {
+    haptics.light();
+    const [y, m] = filterMonth.split('-').map(Number);
+    const d = new Date(y, m - 2, 1);
+    setFilterMonth(getLocalMonthStr(d));
+  };
+
+  const handleNextMonth = () => {
+    if (filterMonth >= currentMonthStr) return;
+    haptics.light();
+    const [y, m] = filterMonth.split('-').map(Number);
+    const d = new Date(y, m, 1);
+    setFilterMonth(getLocalMonthStr(d));
+  };
+
   // Dynamic greeting by time of day
   const greetingTime = useMemo(() => {
     const hour = new Date().getHours();
@@ -82,12 +112,12 @@ export function DashboardScreen() {
 
   // Fetch Dashboard Statistics
   const { data: stats, isLoading, refetch } = useQuery({
-    queryKey: ['mobile-dashboard-stats', todayStr, currentMonthStr],
+    queryKey: ['mobile-dashboard-stats', checkInDate, filterMonth],
     queryFn: async () => {
-      const [year, month] = currentMonthStr.split('-');
+      const [year, month] = filterMonth.split('-');
       const lastDayOfMonth = new Date(parseInt(year, 10), parseInt(month, 10), 0).getDate();
-      const monthStart = `${currentMonthStr}-01`;
-      const monthEnd = `${currentMonthStr}-${String(lastDayOfMonth).padStart(2, '0')}`;
+      const monthStart = `${filterMonth}-01`;
+      const monthEnd = `${filterMonth}-${String(lastDayOfMonth).padStart(2, '0')}`;
 
       const [
         activeRes,
@@ -107,7 +137,7 @@ export function DashboardScreen() {
         supabase
           .from('attendance')
           .select('*', { count: 'exact', head: true })
-          .eq('date', todayStr),
+          .eq('date', checkInDate),
 
         supabase
           .from('payments')
@@ -167,6 +197,66 @@ export function DashboardScreen() {
         .limit(10);
 
       return data || [];
+    },
+  });
+
+  // Fetch On-Hold Members
+  const { data: holdMembers = [] } = useQuery({
+    queryKey: ['mobile-hold-members'],
+    queryFn: async () => {
+      try {
+        const { data, error } = await supabase
+          .from('members_with_membership')
+          .select('id, member_id, full_name, mobile, profile_photo, plan_name, membership_expiry_date, membership_status')
+          .eq('membership_status', 'HOLD')
+          .order('membership_expiry_date', { ascending: false })
+          .limit(8);
+
+        if (!error && data && data.length > 0) {
+          return data;
+        }
+      } catch {}
+
+      const { data } = await supabase
+        .from('memberships')
+        .select('*, members(id, full_name, mobile, profile_photo, member_id), membership_plans(name)')
+        .eq('status', 'HOLD')
+        .order('expiry_date', { ascending: false })
+        .limit(8);
+
+      return (data || []).map((m: any) => ({
+        id: m.members?.id || m.id,
+        member_id: m.members?.member_id,
+        full_name: m.members?.full_name || 'Member',
+        mobile: m.members?.mobile,
+        profile_photo: m.members?.profile_photo,
+        plan_name: m.membership_plans?.name || 'Standard Plan',
+        membership_expiry_date: m.expiry_date,
+      }));
+    },
+  });
+
+  // Fetch Plan Distribution
+  const { data: planDistribution = [] } = useQuery({
+    queryKey: ['mobile-plan-distribution'],
+    queryFn: async () => {
+      const { data: plans } = await supabase
+        .from('membership_plans')
+        .select('id, name')
+        .eq('active', true);
+      if (!plans) return [];
+      const result: { name: string; count: number }[] = [];
+      for (const plan of plans.slice(0, 6)) {
+        const { count } = await supabase
+          .from('memberships')
+          .select('*', { count: 'exact', head: true })
+          .eq('plan_id', plan.id)
+          .eq('status', 'ACTIVE');
+        if ((count || 0) > 0) {
+          result.push({ name: plan.name, count: count || 0 });
+        }
+      }
+      return result;
     },
   });
 
@@ -251,6 +341,42 @@ export function DashboardScreen() {
     );
     const msg = `Hi ${member.full_name || 'Member'}, your ${planName || 'gym'} membership at FitVerse Elite expires on ${formatDate(expiryDate)} (${daysLeft <= 0 ? 'today' : `in ${daysLeft} days`}). Please renew to continue your training uninterrupted. - FitVerse Elite`;
     openWhatsAppLink(member.mobile, msg);
+  };
+
+  const handleNotifyAll = () => {
+    if (!expiringList?.length) return;
+    const withMobile = expiringList.filter((m: any) => {
+      const mob = m.members?.mobile;
+      return Boolean(mob?.trim());
+    });
+
+    if (withMobile.length === 0) {
+      Alert.alert('No Mobile Numbers', 'No expiring members have a mobile phone number recorded.');
+      return;
+    }
+
+    Alert.alert(
+      'Notify All Expiring Members',
+      `Send WhatsApp renewal reminders to ${withMobile.length} member${withMobile.length > 1 ? 's' : ''}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send Reminders',
+          onPress: () => {
+            const first = withMobile[0];
+            const member = first.members as any;
+            const plan = first.membership_plans as any;
+            handleWhatsAppReminder(member || {}, first.expiry_date, plan?.name);
+            if (withMobile.length > 1) {
+              Alert.alert(
+                'Sequential Reminders',
+                `Reminder opened for ${member?.full_name || 'Member'}. Tap the WhatsApp icon on each member below to notify the rest.`
+              );
+            }
+          },
+        },
+      ]
+    );
   };
 
   const isFinancialVisible = user?.role === 'OWNER' || user?.role === 'ADMIN';
@@ -437,6 +563,53 @@ export function DashboardScreen() {
           </TouchableOpacity>
         </ScrollView>
 
+        {/* ── EXECUTIVE PERFORMANCE & OPERATIONS FILTER BAR ── */}
+        <View style={styles.execFilterBar}>
+          <View style={styles.execFilterLeft}>
+            <Text style={styles.execFilterHeading}>FILTER OPERATIONS</Text>
+            <View style={styles.execFilterMonthRow}>
+              <TouchableOpacity onPress={handlePrevMonth} style={styles.execMonthArrow}>
+                <ChevronLeft size={16} color={colors.gold} />
+              </TouchableOpacity>
+              <View style={styles.execMonthBadge}>
+                <Calendar size={12} color={colors.gold} style={{ marginRight: 4 }} />
+                <Text style={styles.execMonthText}>{formattedMonthLabel}</Text>
+              </View>
+              <TouchableOpacity
+                onPress={handleNextMonth}
+                disabled={filterMonth >= currentMonthStr}
+                style={[styles.execMonthArrow, filterMonth >= currentMonthStr && { opacity: 0.3 }]}
+              >
+                <ChevronRight size={16} color={filterMonth >= currentMonthStr ? colors.textMuted : colors.gold} />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.execFilterRight}>
+            <Text style={styles.execFilterHeading}>CHECK-IN DATE</Text>
+            <TouchableOpacity
+              onPress={() => {
+                haptics.selection();
+                setCheckInDate(todayStr);
+              }}
+              style={[
+                styles.execDatePill,
+                checkInDate === todayStr && styles.execDatePillActive,
+              ]}
+            >
+              <Clock size={11} color={checkInDate === todayStr ? '#050505' : colors.gold} />
+              <Text
+                style={[
+                  styles.execDatePillText,
+                  checkInDate === todayStr && styles.execDatePillTextActive,
+                ]}
+              >
+                {checkInDate === todayStr ? 'TODAY' : formatDate(checkInDate)}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* ── BENTO METRICS ARCHITECTURE ── */}
 
         {/* Primary Bento Hero: Month Revenue (or Total Strength) */}
@@ -586,9 +759,21 @@ export function DashboardScreen() {
               <AlertTriangle size={16} color={colors.warning} />
               <Text style={styles.sectionTitle}>EXPIRING THIS WEEK</Text>
             </View>
-            <Text style={styles.sectionBadge}>
-              {expiringList?.length || 0} Members
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              {expiringList && expiringList.length > 0 && (
+                <TouchableOpacity
+                  onPress={handleNotifyAll}
+                  style={styles.notifyAllBtn}
+                  activeOpacity={0.8}
+                >
+                  <MessageCircle size={12} color="#050505" />
+                  <Text style={styles.notifyAllBtnText}>Notify All</Text>
+                </TouchableOpacity>
+              )}
+              <Text style={styles.sectionBadge}>
+                {expiringList?.length || 0} Members
+              </Text>
+            </View>
           </View>
 
           {(!expiringList || expiringList.length === 0) ? (
@@ -671,6 +856,64 @@ export function DashboardScreen() {
                   </View>
                 );
               })}
+            </ScrollView>
+          )}
+        </View>
+
+        {/* ── ON-HOLD ATHLETES CAROUSEL ── */}
+        <View style={styles.sectionContainer}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleRow}>
+              <PauseCircle size={16} color="#FBBF24" />
+              <Text style={styles.sectionTitle}>ON-HOLD ATHLETES</Text>
+            </View>
+            <Text style={[styles.sectionBadge, { backgroundColor: 'rgba(251, 191, 36, 0.12)', color: '#FBBF24', borderColor: 'rgba(251, 191, 36, 0.3)' }]}>
+              {holdMembers?.length || 0} Paused
+            </Text>
+          </View>
+
+          {(!holdMembers || holdMembers.length === 0) ? (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyText}>No memberships currently on hold.</Text>
+            </View>
+          ) : (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.expiringCarousel}
+            >
+              {holdMembers.map((item: any) => (
+                <TouchableOpacity
+                  key={item.id}
+                  onPress={() => {
+                    haptics.light();
+                    navigation.navigate('MemberDetail', { memberId: item.id });
+                  }}
+                  style={styles.holdCard}
+                  activeOpacity={0.85}
+                >
+                  <View style={styles.expiringCardTop}>
+                    <View style={[styles.expiringAvatar, { borderColor: 'rgba(251, 191, 36, 0.4)' }]}>
+                      <Text style={[styles.expiringAvatarInitial, { color: '#FBBF24' }]}>
+                        {item.full_name?.charAt(0) || 'M'}
+                      </Text>
+                    </View>
+                    <View style={styles.holdBadgePill}>
+                      <Text style={styles.holdBadgeText}>ON HOLD</Text>
+                    </View>
+                  </View>
+
+                  <Text numberOfLines={1} style={styles.expiringCardName}>
+                    {item.full_name}
+                  </Text>
+                  <Text numberOfLines={1} style={styles.expiringCardPlan}>
+                    {item.plan_name || 'Standard'}
+                  </Text>
+                  <Text style={styles.expiringCardDate}>
+                    {item.membership_expiry_date ? `Expiry: ${formatDate(item.membership_expiry_date)}` : 'Paused'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </ScrollView>
           )}
         </View>
@@ -777,6 +1020,58 @@ export function DashboardScreen() {
             })
           )}
         </View>
+
+        {/* ── PLAN DISTRIBUTION BREAKDOWN ── */}
+        {planDistribution && planDistribution.length > 0 && (
+          <View style={styles.sectionContainer}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionTitleRow}>
+                <Layers size={16} color={colors.gold} />
+                <Text style={styles.sectionTitle}>PLAN DISTRIBUTION</Text>
+              </View>
+              <Text style={styles.sectionBadge}>
+                {planDistribution.reduce((s, p) => s + p.count, 0)} Active Athletes
+              </Text>
+            </View>
+
+            <View style={styles.planDistributionGrid}>
+              {planDistribution.map((plan, idx) => (
+                <View key={plan.name} style={styles.planDistItem}>
+                  <View style={styles.planDistHeader}>
+                    <Text numberOfLines={1} style={styles.planDistName}>
+                      {plan.name}
+                    </Text>
+                    <Text style={styles.planDistCount}>{plan.count} athletes</Text>
+                  </View>
+                  <View style={styles.planDistBarBg}>
+                    <View
+                      style={[
+                        styles.planDistBarFill,
+                        {
+                          width: `${Math.min(
+                            100,
+                            Math.max(
+                              12,
+                              (plan.count /
+                                Math.max(...planDistribution.map((p) => p.count), 1)) *
+                                100
+                            )
+                          )}%`,
+                          backgroundColor:
+                            idx === 0
+                              ? colors.gold
+                              : idx === 1
+                              ? colors.blueLight
+                              : colors.success,
+                        },
+                      ]}
+                    />
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
 
         {/* Bottom padding for tabbar float */}
         <View style={{ height: 50 }} />
@@ -1516,5 +1811,161 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: typography.sizes.sm,
     fontFamily: typography.fonts.inter,
+  },
+  // Executive Filter Bar Styles
+  execFilterBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#0C0F14',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 161, 0, 0.22)',
+    borderRadius: 14,
+    marginHorizontal: 16,
+    marginBottom: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  execFilterLeft: {
+    flex: 1,
+  },
+  execFilterRight: {
+    alignItems: 'flex-end',
+  },
+  execFilterHeading: {
+    color: colors.textMuted,
+    fontSize: 9,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    marginBottom: 4,
+  },
+  execFilterMonthRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  execMonthArrow: {
+    padding: 4,
+    borderRadius: 6,
+    backgroundColor: 'rgba(239, 161, 0, 0.08)',
+  },
+  execMonthBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(239, 161, 0, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 161, 0, 0.3)',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  execMonthText: {
+    color: colors.gold,
+    fontSize: 11,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+  },
+  execDatePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#141820',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  execDatePillActive: {
+    backgroundColor: colors.gold,
+    borderColor: colors.goldBright,
+  },
+  execDatePillText: {
+    color: colors.gold,
+    fontSize: 10,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  execDatePillTextActive: {
+    color: '#050505',
+  },
+  notifyAllBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.gold,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  notifyAllBtnText: {
+    color: '#050505',
+    fontSize: 10,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '800',
+  },
+  holdCard: {
+    width: 170,
+    backgroundColor: '#11141A',
+    borderWidth: 1,
+    borderColor: 'rgba(251, 191, 36, 0.25)',
+    borderRadius: 14,
+    padding: 12,
+    marginRight: 10,
+  },
+  holdBadgePill: {
+    backgroundColor: 'rgba(251, 191, 36, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(251, 191, 36, 0.4)',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  holdBadgeText: {
+    color: '#FBBF24',
+    fontSize: 9,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  // Plan Distribution Styles
+  planDistributionGrid: {
+    backgroundColor: '#0E1116',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    borderRadius: 14,
+    padding: 14,
+    gap: 12,
+  },
+  planDistItem: {
+    gap: 4,
+  },
+  planDistHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  planDistName: {
+    color: colors.textPrimary,
+    fontSize: 12,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+  },
+  planDistCount: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontFamily: typography.fonts.inter,
+  },
+  planDistBarBg: {
+    height: 6,
+    backgroundColor: '#1A1E26',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  planDistBarFill: {
+    height: '100%',
+    borderRadius: 3,
   },
 });

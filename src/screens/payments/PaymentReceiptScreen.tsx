@@ -106,6 +106,9 @@ export function PaymentReceiptScreen() {
     : (payment.memberships?.expiry_date ? formatDate(payment.memberships.expiry_date) : null);
   const validityLine = startDate && endDate ? `Validity: ${startDate} TO ${endDate}\n` : '';
 
+  const visitDayLimit = payment.memberships?.visit_day_limit;
+  const visitDaysUsed = payment.memberships?.visit_days_used ?? 0;
+
   const [pdfGenerating, setPdfGenerating] = useState(false);
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
 
@@ -116,25 +119,28 @@ export function PaymentReceiptScreen() {
       `Service: Personal Training Add-On\n` +
       `Package: ${displayPlanName}\n` +
       (ptRecord?.trainer?.full_name ? `Trainer: ${ptRecord.trainer.full_name}\n` : '') +
-      (ptRecord?.total_sessions ? `Sessions: ${ptRecord.total_sessions} Guided Sessions\n` : '') +
+      (ptRecord?.total_sessions ? `Sessions: ${ptRecord.total_sessions} Sessions\n` : '') +
       (startDate && endDate ? `Validity: ${startDate} TO ${endDate}\n` : '') +
       `Amount Paid: ${formatCurrency(payment.amount)}\n` +
-      `Payment Method: ${payment.payment_method}\n` +
+      `Payment Method: ${payment.payment_method?.toUpperCase() || 'CASH'}\n` +
       `Date: ${dateStr}\n\n` +
-      `*DISCIPLINE • STRENGTH • TRANSFORMATION*\n` +
-      `FitVerse Elite Gym Management\n` +
-      `Powered by Chirvex (https://chirvex.in/)`
-    : `*FitVerse Elite Official Receipt*\n` +
+      `*THANKS FOR TRAINING WITH US*\n` +
+      `DISCIPLINE • STRENGTH • TRANSFORMATION\n\n` +
+      `This is an automated receipt generated and sent by Chirvex.\n` +
+      `Chirvex builds high-converting websites, SEO strategies, and lead generation solutions that help businesses grow.\n` +
+      `www.chirvex.in`
+    : `FitVerse Elite Receipt\n` +
       `Receipt No: #${receiptNo}\n` +
       `Member: ${memberName}${memberId ? ` (${memberId})` : ''}\n` +
       `Plan: ${displayPlanName}\n` +
-      validityLine +
-      `Amount Paid: ${formatCurrency(payment.amount)}\n` +
-      `Payment Method: ${payment.payment_method}\n` +
-      `Date: ${dateStr}\n\n` +
-      `*DISCIPLINE • STRENGTH • TRANSFORMATION*\n` +
-      `FitVerse Elite Gym Management\n` +
-      `Powered by Chirvex (https://chirvex.in/)`;
+      (startDate && endDate ? `Validity: ${startDate} TO ${endDate}\n` : '') +
+      (visitDayLimit != null ? `Visits: ${visitDayLimit} days allotted throughout your entire subscription period. You can visit on any ${visitDayLimit} days during your plan.\n` : '') +
+      `Amount Paid: ${formatCurrency(payment.amount)}\n\n` +
+      `THANKS FOR TRAINING WITH US\n` +
+      `DISCIPLINE • STRENGTH • TRANSFORMATION\n\n` +
+      `This is an automated receipt generated and sent by Chirvex.\n` +
+      `Chirvex builds high-converting websites, SEO strategies, and lead generation solutions that help businesses grow.\n` +
+      `www.chirvex.in`;
 
   const handleSharePdf = async () => {
     if (!payment) return;
@@ -212,6 +218,8 @@ export function PaymentReceiptScreen() {
     }
   };
 
+  const memberQrCode = payment.members?.qr_code || payment.members?.id || payment.member_id || payment.receipt_number;
+
   return (
     <View style={styles.container}>
       <FVEHeader
@@ -242,28 +250,35 @@ export function PaymentReceiptScreen() {
               resizeMode="contain"
             />
             <Text style={styles.brandTitle}>FITVERSE ELITE</Text>
-            <Text style={styles.brandTagline}>DISCIPLINE • STRENGTH • TRANSFORMATION</Text>
-            
             {isPT ? (
               <View style={styles.ptTag}>
                 <Dumbbell size={12} color={colors.gold} />
                 <Text style={styles.ptTagText}>PERSONAL TRAINING ADD-ON</Text>
               </View>
-            ) : null}
-
-            <View style={styles.successTag}>
-              <CheckCircle2 size={14} color={colors.success} />
-              <Text style={styles.successTagText}>PAYMENT COMPLETED</Text>
-            </View>
+            ) : (
+              <Text style={styles.receiptSubHeader}>MEMBERSHIP RECEIPT</Text>
+            )}
+            <Text style={styles.proofText}>
+              {isPT ? 'PERSONAL TRAINING RECEIPT' : 'OFFICIAL PROOF OF PAYMENT'}
+            </Text>
           </View>
 
           <View style={styles.divider} />
 
-          {/* Amount Showcase */}
-          <View style={styles.amountBox}>
-            <Text style={styles.amountLabel}>AMOUNT RECEIVED</Text>
-            <Text style={styles.amountValue}>{formatCurrency(payment.amount)}</Text>
-            <Text style={styles.receiptNumber}>Receipt #{receiptNo}</Text>
+          {/* Receipt Meta */}
+          <View style={styles.metaRow}>
+            <View style={styles.metaCol}>
+              <Text style={styles.metaLabel}>RECEIPT NO</Text>
+              <Text style={styles.metaValue}>#{receiptNo}</Text>
+            </View>
+            <View style={[styles.metaCol, { alignItems: 'center' }]}>
+              <Text style={styles.metaLabel}>DATE</Text>
+              <Text style={styles.metaValue}>{dateStr}</Text>
+            </View>
+            <View style={[styles.metaCol, { alignItems: 'flex-end' }]}>
+              <Text style={styles.metaLabel}>PAYMENT</Text>
+              <Text style={styles.metaValue}>{(payment.payment_method || 'CASH').toUpperCase()}</Text>
+            </View>
           </View>
 
           <View style={styles.divider} />
@@ -271,32 +286,37 @@ export function PaymentReceiptScreen() {
           {/* Details Table */}
           <View style={styles.detailsList}>
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>MEMBER NAME</Text>
+              <Text style={styles.detailLabel}>MEMBER</Text>
               <Text style={styles.detailValue}>{memberName}</Text>
             </View>
 
             {memberId && (
               <View style={styles.detailRow}>
                 <Text style={styles.detailLabel}>MEMBER ID</Text>
-                <Text style={styles.detailValue}>#{memberId}</Text>
+                <Text style={[styles.detailValue, { color: colors.gold, fontFamily: typography.fonts.rajdhani, fontWeight: '700' }]}>
+                  {memberId}
+                </Text>
+              </View>
+            )}
+
+            {memberMobile && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>MOBILE</Text>
+                <Text style={styles.detailValue}>{memberMobile}</Text>
               </View>
             )}
 
             {isPT ? (
               <>
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>SERVICE</Text>
+                  <Text style={styles.detailLabel}>PACKAGE / SERVICE</Text>
                   <Text style={[styles.detailValue, { color: colors.gold, fontWeight: '700' }]}>
-                    Personal Training Add-On
+                    {displayPlanName}
                   </Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>PACKAGE</Text>
-                  <Text style={styles.detailValue}>{displayPlanName}</Text>
                 </View>
                 {ptRecord?.trainer?.full_name && (
                   <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>TRAINER</Text>
+                    <Text style={styles.detailLabel}>ASSIGNED TRAINER</Text>
                     <Text style={[styles.detailValue, { color: colors.gold, fontWeight: '700' }]}>
                       {ptRecord.trainer.full_name}
                     </Text>
@@ -306,15 +326,15 @@ export function PaymentReceiptScreen() {
                   <View style={styles.detailRow}>
                     <Text style={styles.detailLabel}>TOTAL SESSIONS</Text>
                     <Text style={styles.detailValue}>
-                      {ptRecord.total_sessions} Guided Sessions
+                      {ptRecord.total_sessions} Sessions
                     </Text>
                   </View>
                 )}
                 {startDate && endDate && (
                   <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>PT VALIDITY</Text>
-                    <Text style={styles.detailValue}>
-                      {startDate} - {endDate}
+                    <Text style={styles.detailLabel}>PT VALIDITY PERIOD</Text>
+                    <Text style={[styles.detailValue, { color: colors.gold, fontWeight: '700' }]}>
+                      {startDate} TO {endDate}
                     </Text>
                   </View>
                 )}
@@ -322,29 +342,32 @@ export function PaymentReceiptScreen() {
             ) : (
               <>
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>MEMBERSHIP PLAN</Text>
+                  <Text style={styles.detailLabel}>PLAN</Text>
                   <Text style={styles.detailValue}>{displayPlanName}</Text>
                 </View>
                 {startDate && endDate && (
                   <View style={styles.detailRow}>
                     <Text style={styles.detailLabel}>VALIDITY</Text>
-                    <Text style={styles.detailValue}>
-                      {startDate} - {endDate}
+                    <Text style={[styles.detailValue, { color: colors.gold, fontWeight: '700' }]}>
+                      {startDate} TO {endDate}
                     </Text>
                   </View>
                 )}
+                {visitDayLimit != null && (
+                  <>
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>VISITS ALLOTTED</Text>
+                      <Text style={[styles.detailValue, { color: colors.gold }]}>
+                        {visitDayLimit} Days ({visitDaysUsed} used)
+                      </Text>
+                    </View>
+                    <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 2, marginBottom: 8, lineHeight: 15 }}>
+                      Visits: {visitDayLimit} days allotted throughout your entire subscription period. You can visit on any {visitDayLimit} days during your plan.
+                    </Text>
+                  </>
+                )}
               </>
             )}
-
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>PAYMENT METHOD</Text>
-              <Text style={styles.detailValue}>{payment.payment_method || 'CASH'}</Text>
-            </View>
-
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>DATE & TIME</Text>
-              <Text style={styles.detailValue}>{dateStr}</Text>
-            </View>
 
             {payment.transaction_reference && (
               <View style={styles.detailRow}>
@@ -357,24 +380,48 @@ export function PaymentReceiptScreen() {
           <View style={styles.divider} />
 
           {/* Receipt QR Code */}
-          {payment.receipt_number && (
+          {memberQrCode && (
             <View style={styles.qrSection}>
               <View style={styles.qrContainer}>
                 <QRCode
-                  value={`FVE-RECEIPT:${payment.receipt_number}:${payment.amount}`}
-                  size={100}
+                  value={memberQrCode}
+                  size={110}
                   color={colors.gold}
                   backgroundColor="#0A0A0A"
                 />
               </View>
-              <Text style={styles.qrFooterText}>Scan to verify authentic receipt</Text>
+              <Text style={styles.qrFooterText}>
+                {isPT ? 'MEMBER ATTENDANCE & PT QR CODE' : 'MEMBER QR CODE'}
+              </Text>
             </View>
           )}
 
+          {/* Amount Paid Showcase */}
+          <View style={styles.amountBox}>
+            <Text style={styles.amountLabel}>AMOUNT PAID</Text>
+            <Text style={styles.amountValue}>
+              {`Rs. ${Number(payment.amount || 0).toLocaleString('en-IN')}/-`}
+            </Text>
+          </View>
+
+          {/* THANKS FOR TRAINING WITH US */}
+          <View style={styles.thanksSection}>
+            <Text style={styles.thanksTitle}>THANKS FOR TRAINING WITH US</Text>
+            <Text style={styles.thanksSubtitle}>DISCIPLINE • STRENGTH • TRANSFORMATION</Text>
+          </View>
+
+          <View style={styles.divider} />
+
           {/* Footer Branding */}
-          <Text style={styles.receiptFooter}>
-            FitVerse Elite SaaS · Powered by Chirvex (chirvex.in)
-          </Text>
+          <View style={styles.footerBranding}>
+            <Text style={styles.receiptFooter}>
+              FITVERSE ELITE • {isPT ? 'PERSONAL TRAINING' : 'MEMBERSHIP'} RECEIPT
+            </Text>
+            <Text style={styles.chirvexTagline}>
+              Built with <Text style={{ color: colors.gold, fontWeight: '700' }}>Chirvex</Text> © 2026
+            </Text>
+            <Text style={styles.chirvexLink}>https://chirvex.in/</Text>
+          </View>
         </View>
 
         {/* Action Buttons */}
@@ -719,5 +766,80 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: typography.fonts.inter,
     lineHeight: 15,
+  },
+  receiptSubHeader: {
+    color: '#7B8088',
+    fontSize: 11,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginTop: 4,
+  },
+  proofText: {
+    color: '#7B8088',
+    fontSize: 10,
+    fontFamily: typography.fonts.inter,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginTop: 2,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 2,
+  },
+  metaCol: {
+    flex: 1,
+  },
+  metaLabel: {
+    color: '#7B8088',
+    fontSize: 9,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    marginBottom: 2,
+  },
+  metaValue: {
+    color: colors.textPrimary,
+    fontSize: 12,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+  },
+  thanksSection: {
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingBottom: 2,
+  },
+  thanksTitle: {
+    color: colors.textSecondary,
+    fontSize: 11,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  thanksSubtitle: {
+    color: colors.textMuted,
+    fontSize: 9,
+    fontFamily: typography.fonts.inter,
+    letterSpacing: 0.8,
+    marginTop: 2,
+  },
+  footerBranding: {
+    alignItems: 'center',
+    paddingTop: 6,
+  },
+  chirvexTagline: {
+    color: colors.textMuted,
+    fontSize: 10,
+    fontFamily: typography.fonts.inter,
+    marginTop: 3,
+  },
+  chirvexLink: {
+    color: colors.gold,
+    fontSize: 10,
+    fontFamily: typography.fonts.inter,
+    marginTop: 2,
   },
 });

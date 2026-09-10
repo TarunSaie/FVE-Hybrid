@@ -15,6 +15,7 @@ export interface ReportPdfData {
     active: number;
     expiring: number;
     expired: number;
+    hold?: number;
     total: number;
   };
   popularPlans?: {

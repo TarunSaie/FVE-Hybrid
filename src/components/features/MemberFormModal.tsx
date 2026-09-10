@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import {
@@ -14,14 +15,18 @@ import {
   Upload,
   Calendar,
   Trash2,
+  CreditCard,
+  Check,
+  Sparkles,
 } from 'lucide-react-native';
 import { FVEModal } from '@/components/common/FVEModal';
 import { FVEInput } from '@/components/common/FVEInput';
 import { FVEButton } from '@/components/common/FVEButton';
 import { FVEDatePickerModal } from '@/components/common/FVEDatePickerModal';
-import { Member, BLOOD_GROUPS } from '@/types';
+import { Member, MembershipPlan, BLOOD_GROUPS, PAYMENT_METHODS } from '@/types';
 import { supabase } from '@/api/supabase';
-import { getLocalDateStr, calculateAge, formatDate } from '@/utils/date';
+import { getLocalDateStr, calculateAge, formatDate, calculateExpiryDate } from '@/utils/date';
+import { formatCurrency, generateReceiptNumber } from '@/utils/format';
 import { useAuth } from '@/contexts/AuthContext';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
@@ -71,6 +76,15 @@ export function MemberFormModal({
   const [showDobPicker, setShowDobPicker] = useState(false);
   const [showJoiningPicker, setShowJoiningPicker] = useState(false);
 
+  // Instant plan enrollment state (only for new member registration)
+  const [enrollInPlan, setEnrollInPlan] = useState(false);
+  const [plans, setPlans] = useState<MembershipPlan[]>([]);
+  const [selectedPlanId, setSelectedPlanId] = useState('');
+  const [planStartDate, setPlanStartDate] = useState(getLocalDateStr());
+  const [showPlanStartDatePicker, setShowPlanStartDatePicker] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<string>('UPI');
+  const amountPaidRef = useRef('');
+
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -108,7 +122,25 @@ export function MemberFormModal({
       setProfilePhoto('');
     }
     setErrors({});
+
+    // If opening for a new member, fetch active membership plans
+    if (visible && !member) {
+      supabase
+        .from('membership_plans')
+        .select('*')
+        .eq('active', true)
+        .order('price')
+        .then(({ data }) => {
+          setPlans((data || []) as MembershipPlan[]);
+        });
+      setEnrollInPlan(false);
+      setSelectedPlanId('');
+      setPlanStartDate(getLocalDateStr());
+      amountPaidRef.current = '';
+    }
   }, [member, visible]);
+
+  const selectedPlan = plans.find(p => p.id === selectedPlanId);
 
   // Upload image to Supabase Storage
   const uploadImageToSupabase = async (uri: string) => {
@@ -320,8 +352,64 @@ export function MemberFormModal({
           console.warn('[MemberFormModal] Notification error:', notifErr);
         }
 
+        // If plan enrollment was enabled, create membership and payment record
+        if (enrollInPlan && selectedPlan && insertedMember?.id) {
+          try {
+            const planExpiry = calculateExpiryDate(
+              planStartDate,
+              selectedPlan.duration_days
+            );
+
+            const { data: newMembership, error: msErr } = await supabase
+              .from('memberships')
+              .insert({
+                member_id: insertedMember.id,
+                membership_plan_id: selectedPlan.id,
+                start_date: planStartDate,
+                expiry_date: planExpiry,
+                status: 'ACTIVE',
+                visit_day_limit: selectedPlan.visit_day_limit || null,
+                visit_days_used: 0,
+                created_by: user?.id || null,
+                created_at: new Date().toISOString(),
+              })
+              .select('id')
+              .single();
+
+            if (msErr) throw msErr;
+
+            const paidAmount = amountPaidRef.current.trim() || String(selectedPlan.price || 0);
+            const receiptNo = generateReceiptNumber();
+
+            const { error: payErr } = await supabase.from('payments').insert({
+              member_id: insertedMember.id,
+              membership_id: newMembership.id,
+              membership_plan_id: selectedPlan.id,
+              amount: paidAmount,
+              payment_method: paymentMethod,
+              receipt_no: receiptNo,
+              payment_date: planStartDate,
+              created_by: user?.id || null,
+              created_at: new Date().toISOString(),
+            });
+
+            if (payErr) console.warn('[MemberFormModal] Payment creation error:', payErr);
+
+            qc.invalidateQueries({ queryKey: ['payments'] });
+            qc.invalidateQueries({ queryKey: ['recent-payments'] });
+            qc.invalidateQueries({ queryKey: ['dashboard-stats'] });
+          } catch (enrollErr) {
+            console.warn('[MemberFormModal] Auto-enrollment error:', enrollErr);
+          }
+        }
+
         haptics.success();
-        Alert.alert('Success', `${fullNameRef.current} registered to FitVerse Elite!`);
+        Alert.alert(
+          'Success',
+          enrollInPlan && selectedPlan
+            ? `${fullNameRef.current} registered & enrolled in ${selectedPlan.name}!`
+            : `${fullNameRef.current} registered to FitVerse Elite!`
+        );
       }
 
       // Check if new/updated member's birthday is today and notify Admins/Owners
@@ -622,6 +710,148 @@ export function MemberFormModal({
             style={styles.multilineInput}
           />
 
+          {/* ── SECTION 4: INSTANT PLAN ENROLLMENT (OPTIONAL FOR NEW ATHLETES) ── */}
+          {!member && (
+            <View style={styles.planEnrollmentSection}>
+              <View style={styles.sectionHeader}>
+                <View style={styles.sectionAccent} />
+                <Text style={styles.sectionTitle}>MEMBERSHIP PLAN ENROLLMENT (OPTIONAL)</Text>
+              </View>
+
+              <TouchableOpacity
+                onPress={() => {
+                  haptics.selection();
+                  const next = !enrollInPlan;
+                  setEnrollInPlan(next);
+                  if (next && !selectedPlanId && plans.length > 0) {
+                    setSelectedPlanId(plans[0].id);
+                    amountPaidRef.current = String(plans[0].price);
+                  }
+                }}
+                style={[
+                  styles.enrollToggleCard,
+                  enrollInPlan && styles.enrollToggleCardActive,
+                ]}
+                activeOpacity={0.8}
+              >
+                <View style={styles.enrollToggleLeft}>
+                  <CreditCard size={18} color={enrollInPlan ? colors.gold : colors.textMuted} />
+                  <View style={styles.enrollToggleTextContainer}>
+                    <Text style={[styles.enrollToggleTitle, enrollInPlan && styles.enrollToggleTitleActive]}>
+                      {enrollInPlan ? 'Plan Enrollment Activated' : 'Enroll in Membership Plan Now'}
+                    </Text>
+                    <Text style={styles.enrollToggleSub}>
+                      {enrollInPlan
+                        ? 'Creates active subscription & payment record'
+                        : 'Tap to assign plan and collect initial fee immediately'}
+                    </Text>
+                  </View>
+                </View>
+                <View style={[styles.toggleCheckbox, enrollInPlan && styles.toggleCheckboxActive]}>
+                  {enrollInPlan && <Check size={14} color="#050505" strokeWidth={3} />}
+                </View>
+              </TouchableOpacity>
+
+              {enrollInPlan && (
+                <View style={styles.planEnrollmentBody}>
+                  {/* Active Plans Horizontal Picker */}
+                  <Text style={styles.fieldLabel}>SELECT ACTIVE PLAN</Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.planScroll}
+                  >
+                    {plans.map((p) => {
+                      const isSel = selectedPlanId === p.id;
+                      return (
+                        <TouchableOpacity
+                          key={p.id}
+                          onPress={() => {
+                            haptics.selection();
+                            setSelectedPlanId(p.id);
+                            amountPaidRef.current = String(p.price);
+                          }}
+                          style={[styles.planCardChip, isSel && styles.planCardChipActive]}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.planCardName, isSel && styles.planCardNameActive]}>
+                            {p.name}
+                          </Text>
+                          <Text style={styles.planCardPrice}>
+                            {formatCurrency(p.price)}
+                          </Text>
+                          <Text style={styles.planCardDuration}>
+                            {p.duration_type || `${p.duration_days} days`}
+                            {p.visit_day_limit ? ` • ${p.visit_day_limit} visits` : ''}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+
+                  {/* Plan Start Date */}
+                  <TouchableOpacity
+                    onPress={() => setShowPlanStartDatePicker(true)}
+                    style={styles.planDateBtn}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.planDateLeft}>
+                      <Calendar size={16} color={colors.gold} />
+                      <View>
+                        <Text style={styles.planDateLabel}>START DATE</Text>
+                        <Text style={styles.planDateVal}>{formatDate(planStartDate)}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.planDateChange}>Change</Text>
+                  </TouchableOpacity>
+
+                  {/* Calculated Expiry Card */}
+                  {selectedPlan && (
+                    <View style={styles.calculatedExpiryCard}>
+                      <Text style={styles.calculatedExpiryLabel}>ESTIMATED SUBSCRIPTION EXPIRY</Text>
+                      <Text style={styles.calculatedExpiryVal}>
+                        {formatDate(calculateExpiryDate(planStartDate, selectedPlan.duration_days))}
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* Payment Method Chips */}
+                  <View style={styles.fieldBlock}>
+                    <Text style={styles.fieldLabel}>PAYMENT METHOD</Text>
+                    <View style={styles.chipsRow}>
+                      {PAYMENT_METHODS.map((pm) => {
+                        const isSel = paymentMethod === pm;
+                        return (
+                          <TouchableOpacity
+                            key={pm}
+                            onPress={() => {
+                              haptics.selection();
+                              setPaymentMethod(pm);
+                            }}
+                            style={[styles.genderChip, isSel && styles.genderChipSelected]}
+                          >
+                            <Text style={[styles.genderChipText, isSel && styles.genderChipTextSelected]}>
+                              {pm}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+
+                  {/* Initial Fee Collected */}
+                  <FVEInput
+                    label="INITIAL FEE COLLECTED (₹)"
+                    defaultValue={amountPaidRef.current || (selectedPlan ? String(selectedPlan.price) : '')}
+                    onChangeText={(t) => { amountPaidRef.current = t; }}
+                    placeholder="Enter amount in Rupees"
+                    keyboardType="numeric"
+                  />
+                </View>
+              )}
+            </View>
+          )}
+
           <FVEButton
             title={member ? 'UPDATE ATHLETE RECORD' : 'SAVE & REGISTER MEMBER'}
             onPress={handleSave}
@@ -649,6 +879,15 @@ export function MemberFormModal({
         onSelectDate={(d) => setJoiningDate(d)}
         initialDate={joiningDate || getLocalDateStr()}
         title="SELECT JOINING DATE"
+      />
+
+      {/* Plan Start Date Picker */}
+      <FVEDatePickerModal
+        visible={showPlanStartDatePicker}
+        onClose={() => setShowPlanStartDatePicker(false)}
+        onSelectDate={(d) => setPlanStartDate(d)}
+        initialDate={planStartDate || getLocalDateStr()}
+        title="SELECT MEMBERSHIP START DATE"
       />
     </>
   );
@@ -904,5 +1143,166 @@ const styles = StyleSheet.create({
   submitBtn: {
     marginTop: 10,
     marginBottom: 10,
+  },
+  planEnrollmentSection: {
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  enrollToggleCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#11141A',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+  },
+  enrollToggleCardActive: {
+    backgroundColor: 'rgba(239, 161, 0, 0.08)',
+    borderColor: colors.gold,
+  },
+  enrollToggleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+    marginRight: 10,
+  },
+  enrollToggleTextContainer: {
+    flex: 1,
+  },
+  enrollToggleTitle: {
+    fontSize: 14,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  enrollToggleTitleActive: {
+    color: colors.gold,
+  },
+  enrollToggleSub: {
+    fontSize: 11,
+    fontFamily: typography.fonts.inter,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  toggleCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toggleCheckboxActive: {
+    backgroundColor: colors.gold,
+    borderColor: colors.gold,
+  },
+  planEnrollmentBody: {
+    backgroundColor: '#0D1015',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 161, 0, 0.2)',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 14,
+  },
+  planScroll: {
+    marginBottom: 14,
+  },
+  planCardChip: {
+    backgroundColor: '#151920',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 12,
+    padding: 12,
+    marginRight: 10,
+    minWidth: 130,
+  },
+  planCardChipActive: {
+    backgroundColor: 'rgba(239, 161, 0, 0.15)',
+    borderColor: colors.gold,
+  },
+  planCardName: {
+    fontSize: 13,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: 4,
+  },
+  planCardNameActive: {
+    color: colors.gold,
+  },
+  planCardPrice: {
+    fontSize: 15,
+    fontFamily: typography.fonts.orbitron,
+    fontWeight: '700',
+    color: colors.gold,
+    marginBottom: 2,
+  },
+  planCardDuration: {
+    fontSize: 10,
+    fontFamily: typography.fonts.inter,
+    color: colors.textMuted,
+  },
+  planDateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#151920',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  planDateLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  planDateLabel: {
+    fontSize: 10,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+    color: colors.textMuted,
+    letterSpacing: 0.5,
+  },
+  planDateVal: {
+    fontSize: 13,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginTop: 2,
+  },
+  planDateChange: {
+    fontSize: 12,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+    color: colors.gold,
+  },
+  calculatedExpiryCard: {
+    backgroundColor: 'rgba(0, 102, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 102, 255, 0.25)',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  calculatedExpiryLabel: {
+    fontSize: 10,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+    color: '#60A5FA',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  calculatedExpiryVal: {
+    fontSize: 14,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+    color: colors.textPrimary,
   },
 });

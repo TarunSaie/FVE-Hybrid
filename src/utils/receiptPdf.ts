@@ -25,6 +25,8 @@ export interface ReceiptData {
   trainerName?: string | null;
   totalSessions?: number | null;
   serviceType?: string;
+  visitDayLimit?: number | null;
+  visitDaysUsed?: number | null;
 }
 
 export function buildReceiptDataFromPayment(
@@ -100,6 +102,8 @@ export function buildReceiptDataFromPayment(
     trainerName,
     totalSessions,
     serviceType: isPT ? 'PERSONAL TRAINING ADD-ON' : 'GYM MEMBERSHIP',
+    visitDayLimit: payment.memberships?.visit_day_limit ?? null,
+    visitDaysUsed: payment.memberships?.visit_days_used ?? 0,
   };
 }
 
@@ -473,6 +477,14 @@ export function generateReceiptHtml(data: ReceiptData): string {
         <div class="row">
           <span class="label">Duration:</span>
           <span class="val duration-tag">${data.durationDays} Days Membership</span>
+        </div>` : ''}
+        ${data.visitDayLimit != null ? `
+        <div class="row">
+          <span class="label">Visits Allotted:</span>
+          <span class="val val-gold">${data.visitDayLimit} Days</span>
+        </div>
+        <div style="font-size: 10px; color: #8A92A6; margin-top: 4px; margin-bottom: 6px; line-height: 1.4;">
+          Visits: ${data.visitDayLimit} days allotted throughout your entire subscription period. You can visit on any ${data.visitDayLimit} days during your plan.
         </div>` : ''}
         `}
         <div class="row">

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,20 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, DollarSign, TrendingDown, Trash2, Edit, Filter, Search, X } from 'lucide-react-native';
+import {
+  Plus,
+  DollarSign,
+  TrendingDown,
+  TrendingUp,
+  Trash2,
+  Edit,
+  Filter,
+  Search,
+  X,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEInput } from '@/components/common/FVEInput';
 import { ExpenseFormModal } from '@/components/features/ExpenseFormModal';
@@ -23,11 +36,14 @@ import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { formatCurrency } from '@/utils/format';
 import { formatDate, getLocalMonthStr } from '@/utils/date';
+import { haptics } from '@/utils/haptics';
 
 export function ExpensesScreen() {
   const navigation = useNavigation();
   const qc = useQueryClient();
 
+  const currentMonthStr = getLocalMonthStr();
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthStr);
   const [categoryFilter, setCategoryFilter] = useState('');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -40,20 +56,46 @@ export function ExpensesScreen() {
     return () => clearTimeout(t);
   }, [search]);
 
-  const currentMonth = getLocalMonthStr();
+  // Month navigation
+  const formattedMonthLabel = useMemo(() => {
+    if (!selectedMonth) return '';
+    const [y, m] = selectedMonth.split('-');
+    const d = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
+    return d.toLocaleString('en-IN', { month: 'short', year: 'numeric' });
+  }, [selectedMonth]);
 
-  // Query expenses for current month
+  const handlePrevMonth = () => {
+    haptics.light();
+    const [y, m] = selectedMonth.split('-').map(Number);
+    const d = new Date(y, m - 2, 1);
+    setSelectedMonth(getLocalMonthStr(d));
+  };
+
+  const handleNextMonth = () => {
+    if (selectedMonth >= currentMonthStr) return;
+    haptics.light();
+    const [y, m] = selectedMonth.split('-').map(Number);
+    const d = new Date(y, m, 1);
+    setSelectedMonth(getLocalMonthStr(d));
+  };
+
+  const handleCurrentMonth = () => {
+    haptics.medium();
+    setSelectedMonth(currentMonthStr);
+  };
+
+  // 1. Query expenses for selected month & category
   const { data: expenses, isLoading, refetch } = useQuery({
-    queryKey: ['mobile-expenses', categoryFilter, currentMonth],
+    queryKey: ['mobile-expenses', categoryFilter, selectedMonth],
     queryFn: async () => {
-      const [year, month] = currentMonth.split('-');
+      const [year, month] = selectedMonth.split('-');
       const lastDay = new Date(parseInt(year, 10), parseInt(month, 10), 0).getDate();
 
       let q = supabase
         .from('expenses')
         .select('*')
-        .gte('expense_date', `${currentMonth}-01`)
-        .lte('expense_date', `${currentMonth}-${lastDay}`)
+        .gte('expense_date', `${selectedMonth}-01`)
+        .lte('expense_date', `${selectedMonth}-${String(lastDay).padStart(2, '0')}`)
         .order('expense_date', { ascending: false });
 
       if (categoryFilter) {
@@ -66,7 +108,41 @@ export function ExpensesScreen() {
     },
   });
 
-  const filteredExpenses = React.useMemo(() => {
+  // 2. Query Revenue for selected month (from payments table)
+  const { data: monthRevenue = 0 } = useQuery({
+    queryKey: ['mobile-expenses-revenue', selectedMonth],
+    queryFn: async () => {
+      const [year, month] = selectedMonth.split('-');
+      const lastDay = new Date(parseInt(year, 10), parseInt(month, 10), 0).getDate();
+      const { data, error } = await supabase
+        .from('payments')
+        .select('amount')
+        .gte('payment_date', `${selectedMonth}-01`)
+        .lte('payment_date', `${selectedMonth}-${String(lastDay).padStart(2, '0')}`);
+      if (error) throw error;
+      return (data || []).reduce((s, p) => s + Number(p.amount || 0), 0);
+    },
+  });
+
+  // 3. Query Total Expenses for selected month (unfiltered by category for accurate P&L)
+  const { data: monthTotalExpenses = 0 } = useQuery({
+    queryKey: ['mobile-expenses-total-pnl', selectedMonth],
+    queryFn: async () => {
+      const [year, month] = selectedMonth.split('-');
+      const lastDay = new Date(parseInt(year, 10), parseInt(month, 10), 0).getDate();
+      const { data, error } = await supabase
+        .from('expenses')
+        .select('amount')
+        .gte('expense_date', `${selectedMonth}-01`)
+        .lte('expense_date', `${selectedMonth}-${String(lastDay).padStart(2, '0')}`);
+      if (error) throw error;
+      return (data || []).reduce((s, e) => s + Number(e.amount || 0), 0);
+    },
+  });
+
+  const netProfit = monthRevenue - monthTotalExpenses;
+
+  const filteredExpenses = useMemo(() => {
     const term = debouncedSearch.trim().toLowerCase();
     if (!term) return expenses || [];
     return (expenses || []).filter(e =>
@@ -75,13 +151,11 @@ export function ExpensesScreen() {
     );
   }, [expenses, debouncedSearch]);
 
-  const totalExpenses = filteredExpenses.reduce(
-    (sum, e) => sum + Number(e.amount || 0),
-    0
-  );
-
   const onRefresh = useCallback(() => {
+    haptics.light();
     qc.invalidateQueries({ queryKey: ['mobile-expenses'] });
+    qc.invalidateQueries({ queryKey: ['mobile-expenses-revenue'] });
+    qc.invalidateQueries({ queryKey: ['mobile-expenses-total-pnl'] });
   }, [qc]);
 
   const handleDelete = (expense: Expense) => {
@@ -113,12 +187,13 @@ export function ExpensesScreen() {
   return (
     <View style={styles.container}>
       <FVEHeader
-        title="GYM EXPENSES"
+        title="GYM EXPENSES & P&L"
         showBack
         onBack={() => navigation.goBack()}
         rightAction={
           <TouchableOpacity
             onPress={() => {
+              haptics.light();
               setSelectedExpense(null);
               setShowModal(true);
             }}
@@ -130,13 +205,79 @@ export function ExpensesScreen() {
         }
       />
 
-      {/* Total Card */}
-      <View style={styles.summaryCard}>
-        <View>
-          <Text style={styles.summaryLabel}>THIS MONTH'S EXPENSES</Text>
-          <Text style={styles.summaryValue}>{formatCurrency(totalExpenses)}</Text>
+      {/* Month Navigation Toolbar */}
+      <View style={styles.monthNavBar}>
+        <TouchableOpacity
+          onPress={handlePrevMonth}
+          style={styles.monthNavBtn}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <ChevronLeft size={18} color={colors.gold} />
+        </TouchableOpacity>
+
+        <View style={styles.monthInfoBox}>
+          <Calendar size={14} color={colors.gold} style={{ marginRight: 6 }} />
+          <Text style={styles.monthInfoText}>{formattedMonthLabel}</Text>
         </View>
-        <TrendingDown size={28} color={colors.error} />
+
+        <View style={styles.monthNavRight}>
+          {selectedMonth !== currentMonthStr && (
+            <TouchableOpacity onPress={handleCurrentMonth} style={styles.currentMonthPill}>
+              <Text style={styles.currentMonthPillText}>THIS MONTH</Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            onPress={handleNextMonth}
+            disabled={selectedMonth >= currentMonthStr}
+            style={[styles.monthNavBtn, selectedMonth >= currentMonthStr && styles.monthNavBtnDisabled]}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <ChevronRight
+              size={18}
+              color={selectedMonth >= currentMonthStr ? colors.textMuted : colors.gold}
+            />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* 3-Card P&L Summary Grid Matching Web */}
+      <View style={styles.pnlGrid}>
+        {/* Card 1: REVENUE */}
+        <View style={styles.pnlCardRevenue}>
+          <View style={styles.pnlHeaderRow}>
+            <Text style={styles.pnlLabel}>REVENUE</Text>
+            <TrendingUp size={14} color={colors.success} />
+          </View>
+          <Text numberOfLines={1} style={styles.pnlValSuccess}>
+            {formatCurrency(monthRevenue)}
+          </Text>
+          <Text style={styles.pnlSubText}>Monthly Payments</Text>
+        </View>
+
+        {/* Card 2: EXPENSES */}
+        <View style={styles.pnlCardExpenses}>
+          <View style={styles.pnlHeaderRow}>
+            <Text style={styles.pnlLabel}>EXPENSES</Text>
+            <TrendingDown size={14} color={colors.error} />
+          </View>
+          <Text numberOfLines={1} style={styles.pnlValError}>
+            {formatCurrency(monthTotalExpenses)}
+          </Text>
+          <Text style={styles.pnlSubText}>Gym Expenditure</Text>
+        </View>
+
+        {/* Card 3: NET PROFIT / LOSS */}
+        <View style={[styles.pnlCardProfit, netProfit < 0 && styles.pnlCardLoss]}>
+          <View style={styles.pnlHeaderRow}>
+            <Text style={styles.pnlLabel}>{netProfit >= 0 ? 'NET PROFIT' : 'NET LOSS'}</Text>
+            <DollarSign size={14} color={netProfit >= 0 ? colors.gold : colors.error} />
+          </View>
+          <Text numberOfLines={1} style={[styles.pnlValProfit, netProfit < 0 && { color: colors.error }]}>
+            {formatCurrency(Math.abs(netProfit))}
+          </Text>
+          <Text style={styles.pnlSubText}>{netProfit >= 0 ? 'Surplus' : 'Deficit'}</Text>
+        </View>
       </View>
 
       {/* Search Bar */}
@@ -197,77 +338,78 @@ export function ExpensesScreen() {
       ) : (
         <FlatList
           data={filteredExpenses}
-        keyExtractor={item => item.id}
-        contentContainerStyle={styles.listContent}
-        keyboardDismissMode="on-drag"
-        keyboardShouldPersistTaps="handled"
-        initialNumToRender={15}
-        maxToRenderPerBatch={10}
-        windowSize={5}
-        removeClippedSubviews={true}
-        refreshControl={
-          <RefreshControl
-            refreshing={isLoading}
-            onRefresh={onRefresh}
-            tintColor={colors.gold}
-            colors={[colors.gold]}
-          />
-        }
-        renderItem={({ item }) => (
-          <View style={styles.expenseCard}>
-            <View style={styles.expenseInfo}>
-              <View style={styles.categoryRow}>
-                <View style={styles.categoryBadge}>
-                  <Text style={styles.categoryBadgeText}>{item.category}</Text>
-                </View>
-                <Text style={styles.dateText}>{formatDate(item.expense_date)}</Text>
-              </View>
-
-              {item.description ? (
-                <Text numberOfLines={2} style={styles.descriptionText}>
-                  {item.description}
-                </Text>
-              ) : null}
-            </View>
-
-            <View style={styles.rightColumn}>
-              <Text style={styles.amountText}>{formatCurrency(item.amount)}</Text>
-              <View style={styles.actionRow}>
-                <TouchableOpacity
-                  onPress={() => {
-                    setSelectedExpense(item);
-                    setShowModal(true);
-                  }}
-                  style={styles.iconBtn}
-                >
-                  <Edit size={14} color={colors.gold} />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={() => handleDelete(item)}
-                  style={[styles.iconBtn, styles.deleteIconBtn]}
-                >
-                  <Trash2 size={14} color={colors.error} />
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        )}
-        ListEmptyComponent={
-          !isLoading ? (
-            <FVEEmptyState
-              icon={<DollarSign size={40} color={colors.gold} />}
-              title="No Expenses Recorded"
-              description="Track rent, maintenance, equipment purchases and bills here."
-              actionTitle="+ Record Expense"
-              onAction={() => {
-                setSelectedExpense(null);
-                setShowModal(true);
-              }}
+          keyExtractor={item => item.id}
+          contentContainerStyle={styles.listContent}
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
+          initialNumToRender={15}
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          removeClippedSubviews={true}
+          refreshControl={
+            <RefreshControl
+              refreshing={isLoading}
+              onRefresh={onRefresh}
+              tintColor={colors.gold}
+              colors={[colors.gold]}
             />
-          ) : null
-        }
-      />
+          }
+          renderItem={({ item }) => (
+            <View style={styles.expenseCard}>
+              <View style={styles.expenseInfo}>
+                <View style={styles.categoryRow}>
+                  <View style={styles.categoryBadge}>
+                    <Text style={styles.categoryBadgeText}>{item.category}</Text>
+                  </View>
+                  <Text style={styles.dateText}>{formatDate(item.expense_date)}</Text>
+                </View>
+
+                {item.description ? (
+                  <Text numberOfLines={2} style={styles.descriptionText}>
+                    {item.description}
+                  </Text>
+                ) : null}
+              </View>
+
+              <View style={styles.rightColumn}>
+                <Text style={styles.amountText}>{formatCurrency(item.amount)}</Text>
+                <View style={styles.actionRow}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      haptics.light();
+                      setSelectedExpense(item);
+                      setShowModal(true);
+                    }}
+                    style={styles.iconBtn}
+                  >
+                    <Edit size={14} color={colors.gold} />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => handleDelete(item)}
+                    style={[styles.iconBtn, styles.deleteIconBtn]}
+                  >
+                    <Trash2 size={14} color={colors.error} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          )}
+          ListEmptyComponent={
+            !isLoading ? (
+              <FVEEmptyState
+                icon={<DollarSign size={40} color={colors.gold} />}
+                title="No Expenses Recorded"
+                description={`No expenses recorded for ${formattedMonthLabel}.`}
+                actionTitle="+ Record Expense"
+                onAction={() => {
+                  setSelectedExpense(null);
+                  setShowModal(true);
+                }}
+              />
+            ) : null
+          }
+        />
       )}
 
       <ExpenseFormModal
@@ -302,34 +444,129 @@ const styles = StyleSheet.create({
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '700',
   },
-  summaryCard: {
+  monthNavBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#0E1115',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.3)',
-    borderRadius: 12,
-    margin: 16,
-    marginBottom: 10,
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: '#0A0D12',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
   },
-  summaryLabel: {
-    color: colors.textSecondary,
+  monthNavBtn: {
+    padding: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(239, 161, 0, 0.1)',
+  },
+  monthNavBtnDisabled: {
+    opacity: 0.35,
+  },
+  monthInfoBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  monthInfoText: {
+    color: colors.textPrimary,
+    fontSize: typography.sizes.base,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  monthNavRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  currentMonthPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: colors.gold,
+  },
+  currentMonthPillText: {
+    color: '#050505',
     fontSize: 10,
     fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
+    fontWeight: '800',
     letterSpacing: 0.8,
   },
-  summaryValue: {
-    color: colors.error,
-    fontSize: typography.sizes.xxl,
+  // 3-Card P&L Grid Styles
+  pnlGrid: {
+    flexDirection: 'row',
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 6,
+    gap: 8,
+  },
+  pnlCardRevenue: {
+    flex: 1,
+    backgroundColor: 'rgba(34, 197, 94, 0.07)',
+    borderWidth: 1,
+    borderColor: 'rgba(34, 197, 94, 0.28)',
+    borderRadius: 12,
+    padding: 10,
+  },
+  pnlCardExpenses: {
+    flex: 1,
+    backgroundColor: 'rgba(239, 68, 68, 0.07)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.28)',
+    borderRadius: 12,
+    padding: 10,
+  },
+  pnlCardProfit: {
+    flex: 1,
+    backgroundColor: 'rgba(239, 161, 0, 0.07)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 161, 0, 0.32)',
+    borderRadius: 12,
+    padding: 10,
+  },
+  pnlCardLoss: {
+    backgroundColor: 'rgba(239, 68, 68, 0.09)',
+    borderColor: 'rgba(239, 68, 68, 0.35)',
+  },
+  pnlHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  pnlLabel: {
+    color: colors.textMuted,
+    fontSize: 9,
     fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
+    fontWeight: '800',
+    letterSpacing: 0.6,
+  },
+  pnlValSuccess: {
+    color: colors.success,
+    fontSize: typography.sizes.base,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '800',
+  },
+  pnlValError: {
+    color: '#F87171',
+    fontSize: typography.sizes.base,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '800',
+  },
+  pnlValProfit: {
+    color: colors.gold,
+    fontSize: typography.sizes.base,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '800',
+  },
+  pnlSubText: {
+    color: colors.textMuted,
+    fontSize: 9.5,
+    fontFamily: typography.fonts.inter,
     marginTop: 2,
   },
   searchContainer: {
     paddingHorizontal: 16,
+    paddingTop: 8,
     paddingBottom: 10,
   },
   filterSection: {

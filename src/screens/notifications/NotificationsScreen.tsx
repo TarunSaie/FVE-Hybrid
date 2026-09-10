@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -34,6 +34,7 @@ export function NotificationsScreen() {
   const navigation = useNavigation();
   const { user } = useAuth();
   const qc = useQueryClient();
+  const [filter, setFilter] = useState<'all' | 'unread'>('all');
 
   const { data: notifications, isLoading, refetch } = useQuery({
     queryKey: ['mobile-notifications', user?.id],
@@ -89,6 +90,31 @@ export function NotificationsScreen() {
     invalidateAll();
   };
 
+  const clearReadNotifications = async () => {
+    const readIds = (notifications || []).filter(n => n.read).map(n => n.id);
+    if (readIds.length === 0) return;
+    haptics.warning();
+    Alert.alert(
+      'Clear Read Notifications',
+      `Delete all ${readIds.length} read notifications?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear Read',
+          style: 'destructive',
+          onPress: async () => {
+            haptics.medium();
+            await supabase
+              .from('notifications')
+              .delete()
+              .in('id', readIds);
+            invalidateAll();
+          },
+        },
+      ]
+    );
+  };
+
   const clearAllNotifications = async () => {
     const allIds = (notifications || []).map(n => n.id);
     if (allIds.length === 0) return;
@@ -129,8 +155,14 @@ export function NotificationsScreen() {
     }
   };
 
-  const unreadCount = (notifications || []).filter(n => !n.read).length;
-  const totalCount = (notifications || []).length;
+  const allNotifications = notifications || [];
+  const unreadCount = allNotifications.filter(n => !n.read).length;
+  const readCount = allNotifications.filter(n => n.read).length;
+  const totalCount = allNotifications.length;
+
+  const filteredNotifications = filter === 'unread'
+    ? allNotifications.filter(n => !n.read)
+    : allNotifications;
 
   return (
     <View style={styles.container}>
@@ -139,22 +171,54 @@ export function NotificationsScreen() {
         showBack
         onBack={() => navigation.goBack()}
         rightAction={
-          unreadCount > 0 ? (
-            <TouchableOpacity onPress={markAllAsRead} style={styles.readAllBtn}>
-              <CheckCheck size={14} color={colors.gold} />
-              <Text style={styles.readAllBtnText}>Read All</Text>
-            </TouchableOpacity>
-          ) : totalCount > 0 ? (
-            <TouchableOpacity onPress={clearAllNotifications} style={styles.clearBtn}>
-              <Trash2 size={14} color={colors.textMuted} />
-              <Text style={styles.clearBtnText}>Clear All</Text>
-            </TouchableOpacity>
-          ) : undefined
+          <View style={styles.headerActions}>
+            {unreadCount > 0 && (
+              <TouchableOpacity onPress={markAllAsRead} style={styles.readAllBtn}>
+                <CheckCheck size={14} color={colors.gold} />
+                <Text style={styles.readAllBtnText}>Read All</Text>
+              </TouchableOpacity>
+            )}
+            {readCount > 0 && (
+              <TouchableOpacity onPress={clearReadNotifications} style={styles.clearBtn}>
+                <Trash2 size={13} color={colors.textMuted} />
+                <Text style={styles.clearBtnText}>Clear Read</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         }
       />
 
+      {/* Segmented Filter Bar: ALL vs UNREAD */}
+      <View style={styles.tabBar}>
+        <TouchableOpacity
+          onPress={() => {
+            haptics.selection();
+            setFilter('all');
+          }}
+          style={[styles.tabBtn, filter === 'all' && styles.tabBtnActive]}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.tabBtnText, filter === 'all' && styles.tabBtnTextActive]}>
+            ALL ({totalCount})
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => {
+            haptics.selection();
+            setFilter('unread');
+          }}
+          style={[styles.tabBtn, filter === 'unread' && styles.tabBtnActive]}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.tabBtnText, filter === 'unread' && styles.tabBtnTextActive]}>
+            UNREAD ({unreadCount})
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       <FlatList
-        data={notifications || []}
+        data={filteredNotifications}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.listContent}
         initialNumToRender={15}
@@ -205,8 +269,12 @@ export function NotificationsScreen() {
           !isLoading ? (
             <FVEEmptyState
               icon={<Bell size={40} color={colors.gold} />}
-              title="No Notifications"
-              description="System alerts and renewal reminders will show up here."
+              title={filter === 'unread' ? 'No Unread Notifications' : 'No Notifications'}
+              description={
+                filter === 'unread'
+                  ? 'All caught up! You have zero unread alerts.'
+                  : 'System alerts and renewal reminders will show up here.'
+              }
             />
           ) : null
         }
@@ -219,6 +287,44 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#050505',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: '#0D1015',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#151920',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabBtnActive: {
+    backgroundColor: 'rgba(239, 161, 0, 0.12)',
+    borderColor: colors.gold,
+  },
+  tabBtnText: {
+    fontSize: 12,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+    color: colors.textMuted,
+    letterSpacing: 0.5,
+  },
+  tabBtnTextActive: {
+    color: colors.gold,
   },
   readAllBtn: {
     flexDirection: 'row',

@@ -12,11 +12,12 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Search, UserPlus, Users, Filter, X, ArrowUpDown, AlertCircle } from 'lucide-react-native';
+import { Search, UserPlus, Users, Filter, X, ArrowUpDown, AlertCircle, Check, ChevronDown } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEInput } from '@/components/common/FVEInput';
 import { MemberCard } from '@/components/features/MemberCard';
 import { MemberFormModal } from '@/components/features/MemberFormModal';
+import { FVEModal } from '@/components/common/FVEModal';
 import { FVEEmptyState } from '@/components/common/FVEEmptyState';
 import { FVELogoLoader } from '@/components/common/FVELogoLoader';
 import { SkeletonMemberCard } from '@/components/common/FVESkeleton';
@@ -53,7 +54,28 @@ interface RawJoinedMember extends Member {
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
-export type MemberSortOption = 'id_asc' | 'id_desc' | 'name_asc' | 'expiry_asc' | 'join_desc';
+export type MemberSortOption =
+  | 'expiry_asc'
+  | 'expiry_desc'
+  | 'expired_first'
+  | 'name_asc'
+  | 'name_desc'
+  | 'id_asc'
+  | 'id_desc'
+  | 'join_desc'
+  | 'join_asc';
+
+export const SORT_OPTIONS: { id: MemberSortOption; label: string; desc: string }[] = [
+  { id: 'expiry_asc', label: 'Soonest Expiry First', desc: 'Active athletes expiring soonest appear first' },
+  { id: 'expiry_desc', label: 'Latest Expiry First', desc: 'Active memberships furthest in future appear first' },
+  { id: 'expired_first', label: 'Expired Members First', desc: 'Lapsed athlete memberships appear at top' },
+  { id: 'name_asc', label: 'Name (A → Z)', desc: 'Alphabetical athlete order from A to Z' },
+  { id: 'name_desc', label: 'Name (Z → A)', desc: 'Reverse alphabetical athlete order from Z to A' },
+  { id: 'id_asc', label: 'Member ID (Ascending)', desc: 'From lowest athlete ID to highest (e.g. FVE-01)' },
+  { id: 'id_desc', label: 'Member ID (Descending)', desc: 'From highest athlete ID to lowest (e.g. FVE-99)' },
+  { id: 'join_desc', label: 'Recently Joined First', desc: 'Newest gym athlete registrations appear first' },
+  { id: 'join_asc', label: 'Oldest Joined First', desc: 'Earliest founding gym athlete registrations' },
+];
 
 function parseMemberIdNum(id?: string | null): number {
   if (!id) return 999999999;
@@ -72,7 +94,8 @@ export function MembersScreen() {
 
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [genderFilter, setGenderFilter] = useState('ALL');
-  const [sortBy, setSortBy] = useState<MemberSortOption>('id_asc');
+  const [sortBy, setSortBy] = useState<MemberSortOption>('expiry_asc');
+  const [showSortModal, setShowSortModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [sharingMemberId, setSharingMemberId] = useState<string | null>(null);
 
@@ -153,32 +176,62 @@ export function MembersScreen() {
         };
       });
 
-      // Apply sorting
+      // Apply sorting for all 9 criteria matching web
       mappedMembers.sort((a, b) => {
-        if (sortBy === 'id_asc') {
-          const aNum = parseMemberIdNum(a.member_id);
-          const bNum = parseMemberIdNum(b.member_id);
-          if (aNum !== bNum) return aNum - bNum;
-          return (a.member_id || '').localeCompare(b.member_id || '');
-        } else if (sortBy === 'id_desc') {
-          const aNum = parseMemberIdNum(a.member_id);
-          const bNum = parseMemberIdNum(b.member_id);
-          if (aNum === 999999999 && bNum === 999999999) return 0;
-          if (aNum === 999999999) return 1;
-          if (bNum === 999999999) return -1;
-          if (aNum !== bNum) return bNum - aNum;
-          return (b.member_id || '').localeCompare(a.member_id || '');
-        } else if (sortBy === 'name_asc') {
-          return (a.full_name || '').localeCompare(b.full_name || '');
-        } else if (sortBy === 'expiry_asc') {
-          if (!a.membership_expiry_date && !b.membership_expiry_date) return 0;
-          if (!a.membership_expiry_date) return 1;
-          if (!b.membership_expiry_date) return -1;
-          return a.membership_expiry_date.localeCompare(b.membership_expiry_date);
-        } else if (sortBy === 'join_desc') {
-          return (b.joining_date || '').localeCompare(a.joining_date || '');
+        switch (sortBy) {
+          case 'name_asc':
+            return (a.full_name || '').localeCompare(b.full_name || '');
+          case 'name_desc':
+            return (b.full_name || '').localeCompare(a.full_name || '');
+          case 'id_asc': {
+            const aNum = parseMemberIdNum(a.member_id);
+            const bNum = parseMemberIdNum(b.member_id);
+            if (aNum !== bNum) return aNum - bNum;
+            return (a.member_id || '').localeCompare(b.member_id || '');
+          }
+          case 'id_desc': {
+            const aNum = parseMemberIdNum(a.member_id);
+            const bNum = parseMemberIdNum(b.member_id);
+            if (aNum === 999999999 && bNum === 999999999) return 0;
+            if (aNum === 999999999) return 1;
+            if (bNum === 999999999) return -1;
+            if (aNum !== bNum) return bNum - aNum;
+            return (b.member_id || '').localeCompare(a.member_id || '');
+          }
+          case 'join_desc':
+            return (b.joining_date || '').localeCompare(a.joining_date || '');
+          case 'join_asc':
+            return (a.joining_date || '').localeCompare(b.joining_date || '');
+          case 'expiry_desc': {
+            if (a.membership_expiry_date && b.membership_expiry_date) {
+              return b.membership_expiry_date.localeCompare(a.membership_expiry_date);
+            }
+            if (a.membership_expiry_date && !b.membership_expiry_date) return -1;
+            if (!a.membership_expiry_date && b.membership_expiry_date) return 1;
+            return (b.created_at || '').localeCompare(a.created_at || '');
+          }
+          case 'expired_first': {
+            const aExp = a.expiry_sort_group === 2 ? 1 : 0;
+            const bExp = b.expiry_sort_group === 2 ? 1 : 0;
+            if (aExp !== bExp) return bExp - aExp;
+            if (a.membership_expiry_date && b.membership_expiry_date) {
+              return b.membership_expiry_date.localeCompare(a.membership_expiry_date);
+            }
+            return (b.created_at || '').localeCompare(a.created_at || '');
+          }
+          case 'expiry_asc':
+          default: {
+            if (a.expiry_sort_group !== b.expiry_sort_group) {
+              return (a.expiry_sort_group || 3) - (b.expiry_sort_group || 3);
+            }
+            if (a.membership_expiry_date && b.membership_expiry_date) {
+              return a.membership_expiry_date.localeCompare(b.membership_expiry_date);
+            }
+            if (a.membership_expiry_date && !b.membership_expiry_date) return -1;
+            if (!a.membership_expiry_date && b.membership_expiry_date) return 1;
+            return (b.created_at || '').localeCompare(a.created_at || '');
+          }
         }
-        return 0;
       });
 
       return mappedMembers;
@@ -239,13 +292,9 @@ export function MembersScreen() {
     setStatusFilter(status);
   };
 
-  const handleSortToggle = () => {
+  const handleSortPress = () => {
     haptics.selection();
-    if (sortBy === 'id_asc') setSortBy('id_desc');
-    else if (sortBy === 'id_desc') setSortBy('name_asc');
-    else if (sortBy === 'name_asc') setSortBy('expiry_asc');
-    else if (sortBy === 'expiry_asc') setSortBy('join_desc');
-    else setSortBy('id_asc');
+    setShowSortModal(true);
   };
 
   const todayStr = getLocalDateStr();
@@ -367,20 +416,14 @@ export function MembersScreen() {
             <Text style={styles.sortLabel}>SORT BY:</Text>
           </View>
           <TouchableOpacity
-            onPress={handleSortToggle}
+            onPress={handleSortPress}
             style={styles.sortBtn}
+            activeOpacity={0.7}
           >
             <Text style={styles.sortBtnText}>
-              {sortBy === 'id_asc'
-                ? 'Member ID (FVE-01 ↑)'
-                : sortBy === 'id_desc'
-                ? 'Member ID (FVE-99 ↓)'
-                : sortBy === 'name_asc'
-                ? 'Name (A-Z)'
-                : sortBy === 'expiry_asc'
-                ? 'Expiry (Soonest)'
-                : 'Recently Joined'}
+              {SORT_OPTIONS.find(o => o.id === sortBy)?.label || 'Soonest Expiry First'}
             </Text>
+            <ChevronDown size={13} color={colors.gold} />
           </TouchableOpacity>
         </View>
       </View>
@@ -484,6 +527,55 @@ export function MembersScreen() {
         onClose={() => setShowAddModal(false)}
         onSaved={onRefresh}
       />
+
+      {/* Sort Options Modal */}
+      <FVEModal
+        visible={showSortModal}
+        onClose={() => setShowSortModal(false)}
+        title="SORT ATHLETES"
+        subtitle="Select sorting criteria matching web dashboard"
+      >
+        <ScrollView style={styles.sortModalScroll} showsVerticalScrollIndicator={false}>
+          {SORT_OPTIONS.map((opt) => {
+            const isSelected = sortBy === opt.id;
+            return (
+              <TouchableOpacity
+                key={opt.id}
+                onPress={() => {
+                  haptics.selection();
+                  setSortBy(opt.id);
+                  setShowSortModal(false);
+                }}
+                style={[
+                  styles.sortOptionItem,
+                  isSelected && styles.sortOptionItemActive,
+                ]}
+                activeOpacity={0.7}
+              >
+                <View style={styles.sortOptionTextContainer}>
+                  <Text
+                    style={[
+                      styles.sortOptionTitle,
+                      isSelected && styles.sortOptionTitleActive,
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
+                  <Text style={styles.sortOptionDesc}>{opt.desc}</Text>
+                </View>
+                <View
+                  style={[
+                    styles.sortRadioCircle,
+                    isSelected && styles.sortRadioCircleActive,
+                  ]}
+                >
+                  {isSelected && <Check size={14} color="#050505" strokeWidth={3} />}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </FVEModal>
     </View>
   );
 }
@@ -639,12 +731,67 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 10,
     paddingVertical: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   sortBtnText: {
     color: colors.gold,
     fontSize: 11,
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '700',
+  },
+  sortModalScroll: {
+    maxHeight: 460,
+    marginBottom: 10,
+  },
+  sortOptionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: '#11141A',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    marginBottom: 8,
+  },
+  sortOptionItemActive: {
+    backgroundColor: 'rgba(239, 161, 0, 0.12)',
+    borderColor: colors.gold,
+  },
+  sortOptionTextContainer: {
+    flex: 1,
+    marginRight: 12,
+  },
+  sortOptionTitle: {
+    fontSize: 14,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: 2,
+  },
+  sortOptionTitleActive: {
+    color: colors.gold,
+  },
+  sortOptionDesc: {
+    fontSize: 11,
+    fontFamily: typography.fonts.inter,
+    color: colors.textMuted,
+  },
+  sortRadioCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sortRadioCircleActive: {
+    backgroundColor: colors.gold,
+    borderColor: colors.gold,
   },
   listContent: {
     padding: 16,

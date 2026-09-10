@@ -23,13 +23,14 @@ import {
   CheckCircle2,
   Clock,
   Share2,
+  PauseCircle,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { supabase } from '@/api/supabase';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { formatCurrency } from '@/utils/format';
-import { getLocalDateStr, getLocalMonthStr, formatDate } from '@/utils/date';
+import { getLocalDateStr, getLocalMonthStr, formatDate, normalizeMembershipStatus } from '@/utils/date';
 import { haptics } from '@/utils/haptics';
 import { shareReportPdf } from '@/utils/reportPdf';
 
@@ -113,21 +114,35 @@ export function ReportsScreen() {
     },
   });
 
-  // Membership Health Statistics (Active, Expiring Soon, Expired, Total)
+  // Membership Health Statistics (Active, Expiring Soon, Expired, Hold, Total)
   const { data: memberStats } = useQuery({
     queryKey: ['mobile-reports-member-stats'],
     queryFn: async () => {
-      const [active, expiring, expired, total] = await Promise.all([
-        supabase.from('memberships').select('*', { count: 'exact', head: true }).eq('status', 'ACTIVE'),
-        supabase.from('memberships').select('*', { count: 'exact', head: true }).eq('status', 'EXPIRING_SOON'),
-        supabase.from('memberships').select('*', { count: 'exact', head: true }).eq('status', 'EXPIRED'),
-        supabase.from('members').select('*', { count: 'exact', head: true }),
-      ]);
+      const { data: memberships, error } = await supabase
+        .from('memberships')
+        .select('status, expiry_date');
+
+      if (error) throw error;
+
+      const summary = { active: 0, expiring: 0, expired: 0, hold: 0 };
+      for (const ms of memberships || []) {
+        const normalized = normalizeMembershipStatus(ms.status, ms.expiry_date);
+        if (normalized === 'ACTIVE') summary.active += 1;
+        else if (normalized === 'EXPIRING_SOON') summary.expiring += 1;
+        else if (normalized === 'EXPIRED') summary.expired += 1;
+        else if (normalized === 'HOLD') summary.hold += 1;
+      }
+
+      const { count: total } = await supabase
+        .from('members')
+        .select('*', { count: 'exact', head: true });
+
       return {
-        active: active.count || 0,
-        expiring: expiring.count || 0,
-        expired: expired.count || 0,
-        total: total.count || 0,
+        active: summary.active,
+        expiring: summary.expiring,
+        expired: summary.expired,
+        hold: summary.hold,
+        total: total || 0,
       };
     },
   });
@@ -347,6 +362,14 @@ export function ReportsScreen() {
               <Text style={styles.healthLabel}>EXPIRED</Text>
             </View>
 
+            <View style={[styles.healthItem, { borderColor: 'rgba(168, 85, 247, 0.3)' }]}>
+              <PauseCircle size={16} color="#C084FC" />
+              <Text style={[styles.healthVal, { color: '#C084FC' }]}>
+                {memberStats?.hold ?? 0}
+              </Text>
+              <Text style={styles.healthLabel}>ON HOLD</Text>
+            </View>
+
             <View style={[styles.healthItem, { borderColor: 'rgba(239, 161, 0, 0.3)' }]}>
               <Users size={16} color={colors.gold} />
               <Text style={[styles.healthVal, { color: colors.gold }]}>
@@ -552,15 +575,17 @@ const styles = StyleSheet.create({
   },
   healthGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
   },
   healthItem: {
-    flex: 1,
+    minWidth: '28%',
+    flexGrow: 1,
     backgroundColor: '#0E1116',
     borderWidth: 1,
     borderRadius: 12,
     paddingVertical: 12,
-    paddingHorizontal: 4,
+    paddingHorizontal: 8,
     alignItems: 'center',
     gap: 4,
   },
