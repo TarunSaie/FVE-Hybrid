@@ -15,14 +15,20 @@ import { NotificationsScreen } from '@/screens/notifications/NotificationsScreen
 import { PersonalTrainingScreen } from '@/screens/pt/PersonalTrainingScreen';
 import { RootStackParamList } from './types';
 import { useNotificationSoundListener } from '@/hooks/useNotificationSoundListener';
+import { useRenewalAlerts } from '@/hooks/useRenewalAlerts';
+import { useBirthdayAlerts } from '@/hooks/useBirthdayAlerts';
+import { useMembershipSync } from '@/hooks/useMembershipSync';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export function RootNavigator() {
   const { user, loading } = useAuth();
 
-  // Listen globally for incoming notifications and play chime sound
+  // Listen globally for incoming notifications and run daily background checks
   useNotificationSoundListener();
+  useRenewalAlerts();
+  useBirthdayAlerts();
+  useMembershipSync();
 
   if (loading) {
     return <FVELoading message="AUTHENTICATING PROFILE" />;

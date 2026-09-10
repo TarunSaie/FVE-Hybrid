@@ -131,3 +131,36 @@ export function normalizeMembershipStatus(
   return 'ACTIVE';
 }
 
+/**
+ * Calculates the inclusive duration in calendar days between two YYYY-MM-DD date strings.
+ * Both the start date and the end date are counted (e.g. Sept 8 to Oct 7 = 30 days).
+ */
+export function calculateMembershipDurationDays(
+  startDate?: string | null,
+  endDate?: string | null
+): number {
+  if (!startDate || !endDate) return 0;
+  const cleanStart = startDate.split('T')[0];
+  const cleanEnd = endDate.split('T')[0];
+  const startParts = cleanStart.split('-').map(Number);
+  const endParts = cleanEnd.split('-').map(Number);
+  if (
+    startParts.length === 3 &&
+    endParts.length === 3 &&
+    !isNaN(startParts[0]) &&
+    !isNaN(endParts[0])
+  ) {
+    const dStart = new Date(startParts[0], startParts[1] - 1, startParts[2]);
+    const dEnd = new Date(endParts[0], endParts[1] - 1, endParts[2]);
+    const diffMs = dEnd.getTime() - dStart.getTime();
+    if (diffMs < 0) return 0;
+    return Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1;
+  }
+  const dStart = new Date(startDate);
+  const dEnd = new Date(endDate);
+  const diffMs = dEnd.getTime() - dStart.getTime();
+  if (diffMs < 0) return 0;
+  return Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1;
+}
+
+

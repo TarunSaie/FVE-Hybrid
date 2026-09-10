@@ -721,7 +721,7 @@ export function MemberDetailScreen() {
                   <Text style={styles.detailLabel}>Usable Visits:</Text>
                   <Text style={styles.detailValue}>
                     {activeMembership.visit_days_used || 0} /{' '}
-                    {activeMembership.visit_day_limit} days used
+                    {activeMembership.visit_day_limit} visits used
                   </Text>
                 </View>
               )}

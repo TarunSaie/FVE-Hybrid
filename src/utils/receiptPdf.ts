@@ -3,7 +3,7 @@ import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Payment, PersonalTraining } from '@/types';
 import { formatCurrency } from '@/utils/format';
-import { formatDate } from '@/utils/date';
+import { formatDate, calculateMembershipDurationDays } from '@/utils/date';
 import { APP_NAME, TAGLINE, CHIRVEX_WEBSITE } from '@/constants/branding';
 import { GYM_LOGO_BASE64 } from '@/constants/logoBase64';
 
@@ -56,13 +56,9 @@ export function buildReceiptDataFromPayment(
   let durationDays =
     plan?.duration_days ||
     (payment.memberships?.start_date && payment.memberships?.expiry_date
-      ? Math.max(
-          1,
-          Math.round(
-            (new Date(payment.memberships.expiry_date).getTime() -
-              new Date(payment.memberships.start_date).getTime()) /
-              (1000 * 60 * 60 * 24)
-          )
+      ? calculateMembershipDurationDays(
+          payment.memberships.start_date,
+          payment.memberships.expiry_date
         )
       : null);
 
@@ -77,13 +73,7 @@ export function buildReceiptDataFromPayment(
       if (pt.start_date) startDate = formatDate(pt.start_date);
       if (pt.expiry_date) endDate = formatDate(pt.expiry_date);
       if (pt.start_date && pt.expiry_date) {
-        durationDays = Math.max(
-          1,
-          Math.round(
-            (new Date(pt.expiry_date).getTime() - new Date(pt.start_date).getTime()) /
-              (1000 * 60 * 60 * 24)
-          )
-        );
+        durationDays = calculateMembershipDurationDays(pt.start_date, pt.expiry_date);
       }
     } else {
       planName = 'Personal Training Add-On';
@@ -509,10 +499,10 @@ export function generateReceiptHtml(data: ReceiptData): string {
         ${data.visitDayLimit != null ? `
         <div class="row">
           <span class="label">Visits Allotted:</span>
-          <span class="val val-gold">${data.visitDayLimit} Days</span>
+          <span class="val val-gold">${data.visitDayLimit} Visits</span>
         </div>
         <div style="font-size: 10px; color: #8A92A6; margin-top: 2px; margin-bottom: 6px; line-height: 1.4;">
-          Visits: ${data.visitDayLimit} days allotted throughout your entire subscription period. You can visit on any ${data.visitDayLimit} days during your plan.
+          Visits: ${data.visitDayLimit} visits allotted throughout your entire subscription period. You can visit on any ${data.visitDayLimit} days during your plan.
         </div>` : ''}
         `}
         <div class="row">

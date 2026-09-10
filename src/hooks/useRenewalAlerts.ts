@@ -32,7 +32,7 @@ export function useRenewalAlerts() {
         const { data: expiring } = await supabase
           .from('memberships')
           .select('*, members(full_name), membership_plans(name)')
-          .eq('status', 'ACTIVE')
+          .in('status', ['ACTIVE', 'EXPIRING_SOON'])
           .lte('expiry_date', getLocalDateStr(sevenDaysLater))
           .gte('expiry_date', today);
 
@@ -91,7 +91,7 @@ export function useRenewalAlerts() {
         const { data: expired } = await supabase
           .from('memberships')
           .select('id')
-          .eq('status', 'ACTIVE')
+          .in('status', ['ACTIVE', 'EXPIRING_SOON'])
           .lt('expiry_date', today);
 
         if (expired && expired.length > 0) {

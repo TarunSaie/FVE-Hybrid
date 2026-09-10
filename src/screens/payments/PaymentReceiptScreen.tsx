@@ -24,7 +24,7 @@ import { Payment, PersonalTraining } from '@/types';
 import { supabase } from '@/api/supabase';
 import { typography } from '@/constants/typography';
 import { formatCurrency, openWhatsAppLink } from '@/utils/format';
-import { formatDate } from '@/utils/date';
+import { formatDate, calculateMembershipDurationDays } from '@/utils/date';
 import { sharePdfReceipt, printPdfReceipt, buildReceiptDataFromPayment } from '@/utils/receiptPdf';
 import { RootStackParamList } from '@/navigation/types';
 
@@ -209,12 +209,17 @@ export function PaymentReceiptScreen() {
 
   const receiptNo = payment.receipt_number || 'FVE-N/A';
   const dateStr = formatDate(payment.payment_date || payment.created_at);
-  const startDate = isPT && ptRecord?.start_date
-    ? formatDate(ptRecord.start_date)
-    : (payment.memberships?.start_date ? formatDate(payment.memberships.start_date) : null);
-  const endDate = isPT && ptRecord?.expiry_date
-    ? formatDate(ptRecord.expiry_date)
-    : (payment.memberships?.expiry_date ? formatDate(payment.memberships.expiry_date) : null);
+  const rawStart = isPT && ptRecord?.start_date
+    ? ptRecord.start_date
+    : payment.memberships?.start_date;
+  const rawEnd = isPT && ptRecord?.expiry_date
+    ? ptRecord.expiry_date
+    : payment.memberships?.expiry_date;
+  const startDate = rawStart ? formatDate(rawStart) : null;
+  const endDate = rawEnd ? formatDate(rawEnd) : null;
+  const durationDays =
+    plan?.duration_days ||
+    (rawStart && rawEnd ? calculateMembershipDurationDays(rawStart, rawEnd) : null);
 
   const [pdfGenerating, setPdfGenerating] = useState(false);
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
@@ -251,13 +256,13 @@ export function PaymentReceiptScreen() {
       `Plan: ${displayPlanName}\n` +
       (startDate && endDate ? `Validity: ${startDate} TO ${endDate}\n` : '') +
       (visitDayLimit != null
-        ? `Visits: ${visitDayLimit} days allotted throughout your entire subscription period.\n` +
+        ? `Visits: ${visitDayLimit} visits allotted throughout your entire subscription period.\n` +
           `${actualVisitsUsed}/${visitDayLimit} visits used. ` +
           (remainingVisits != null && remainingVisits > 1
-            ? `You can visit for ${remainingVisits} more days during your plan.\n`
+            ? `${remainingVisits} visits remaining during your plan.\n`
             : remainingVisits === 1
-            ? `You can visit for 1 more day during your plan.\n`
-            : `All allotted visit days have been used.\n`)
+            ? `1 visit remaining during your plan.\n`
+            : `All allotted visits have been used.\n`)
         : '') +
       `Amount Paid: ${formatCurrency(payment.amount)}\n\n` +
       `THANKS FOR TRAINING WITH US\n` +
@@ -500,12 +505,21 @@ export function PaymentReceiptScreen() {
                   </>
                 )}
                 {startDate && endDate && (
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>PT VALIDITY PERIOD</Text>
-                    <Text style={[styles.detailValue, { color: colors.gold, fontWeight: '700' }]}>
-                      {startDate} TO {endDate}
-                    </Text>
-                  </View>
+                  <>
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>PT VALIDITY PERIOD</Text>
+                      <Text style={[styles.detailValue, { color: colors.gold, fontWeight: '700' }]}>
+                        {startDate} TO {endDate}
+                      </Text>
+                    </View>
+                    {durationDays != null && durationDays > 0 && (
+                      <View style={{ marginTop: -4, marginBottom: 4 }}>
+                        <Text style={{ fontSize: 11, color: colors.textMuted }}>
+                          {durationDays} Days Personal Training Validity
+                        </Text>
+                      </View>
+                    )}
+                  </>
                 )}
               </>
             ) : (
@@ -515,32 +529,41 @@ export function PaymentReceiptScreen() {
                   <Text style={styles.detailValue}>{displayPlanName}</Text>
                 </View>
                 {startDate && endDate && (
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>VALIDITY</Text>
-                    <Text style={[styles.detailValue, { color: colors.gold, fontWeight: '700' }]}>
-                      {startDate} TO {endDate}
-                    </Text>
-                  </View>
+                  <>
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>VALIDITY</Text>
+                      <Text style={[styles.detailValue, { color: colors.gold, fontWeight: '700' }]}>
+                        {startDate} TO {endDate}
+                      </Text>
+                    </View>
+                    {durationDays != null && durationDays > 0 && (
+                      <View style={{ marginTop: -4, marginBottom: 4 }}>
+                        <Text style={{ fontSize: 11, color: colors.textMuted }}>
+                          {durationDays} Days Membership
+                        </Text>
+                      </View>
+                    )}
+                  </>
                 )}
                 {visitDayLimit != null && (
                   <>
                     <View style={styles.detailRow}>
                       <Text style={styles.detailLabel}>VISITS ALLOTTED</Text>
                       <Text style={[styles.detailValue, { color: colors.gold }]}>
-                        {visitDayLimit} Days ({actualVisitsUsed} used)
+                        {visitDayLimit} Visits ({actualVisitsUsed} used)
                       </Text>
                     </View>
                     <View style={{ marginTop: 2, marginBottom: 8 }}>
                       <Text style={{ fontSize: 11, color: colors.textMuted, lineHeight: 15 }}>
-                        Visits: {visitDayLimit} days allotted throughout your entire subscription period.
+                        Visits: {visitDayLimit} visits allotted throughout your entire subscription period.
                       </Text>
                       <Text style={{ fontSize: 11, color: colors.gold, fontWeight: '600', marginTop: 2, lineHeight: 15 }}>
                         {actualVisitsUsed}/{visitDayLimit} visits used.{' '}
                         {remainingVisits != null && remainingVisits > 1
-                          ? `You can visit for ${remainingVisits} more days during your plan.`
+                          ? `${remainingVisits} visits remaining during your plan.`
                           : remainingVisits === 1
-                          ? `You can visit for 1 more day during your plan.`
-                          : `All allotted visit days have been used.`}
+                          ? `1 visit remaining during your plan.`
+                          : `All allotted visits have been used.`}
                       </Text>
                     </View>
                   </>

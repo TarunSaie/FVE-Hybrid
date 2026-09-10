@@ -427,6 +427,48 @@ export function MembersScreen() {
           })}
         </ScrollView>
 
+        {/* Gender Filter Chips */}
+        <View style={styles.genderRow}>
+          <Text style={styles.genderLabel}>GENDER:</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.genderScrollContent}
+          >
+            {[
+              { id: 'ALL', label: 'All Gender' },
+              { id: 'Male', label: 'Male' },
+              { id: 'Female', label: 'Female' },
+              { id: 'Other', label: 'Other' },
+            ].map((g) => {
+              const isSelected = genderFilter === g.id;
+              return (
+                <TouchableOpacity
+                  key={g.id}
+                  onPress={() => {
+                    haptics.selection();
+                    setGenderFilter(g.id);
+                  }}
+                  style={[
+                    styles.genderChip,
+                    isSelected && styles.genderChipSelected,
+                  ]}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.genderChipText,
+                      isSelected && styles.genderChipTextSelected,
+                    ]}
+                  >
+                    {g.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+
         {/* Sort Controls */}
         <View style={styles.sortRow}>
           <View style={styles.sortLeft}>
@@ -763,6 +805,48 @@ const getMembersStyles = (colors: ThemeColors, isDark: boolean) =>
     },
     expiringCountBadgeText: {
       color: isDark ? '#FBBF24' : '#B45309',
+    },
+    genderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 6,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.borderDark,
+    },
+    genderLabel: {
+      color: colors.textMuted,
+      fontSize: 10,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 0.5,
+      marginRight: 8,
+    },
+    genderScrollContent: {
+      flexDirection: 'row',
+      gap: 6,
+      alignItems: 'center',
+    },
+    genderChip: {
+      paddingHorizontal: 12,
+      paddingVertical: 4,
+      borderRadius: 14,
+      backgroundColor: isDark ? '#11141A' : colors.surfaceLight,
+      borderWidth: 1,
+      borderColor: colors.borderDark,
+    },
+    genderChipSelected: {
+      backgroundColor: colors.goldMuted,
+      borderColor: colors.gold,
+    },
+    genderChipText: {
+      fontSize: 11,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '600',
+      color: colors.textSecondary,
+    },
+    genderChipTextSelected: {
+      color: colors.gold,
+      fontWeight: '700',
     },
     sortRow: {
       flexDirection: 'row',
