@@ -3,6 +3,7 @@ import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Payment, PersonalTraining } from '@/types';
 import { formatCurrency } from '@/utils/format';
+import { sharePdfToMemberWhatsApp } from '@/utils/whatsAppPdfShare';
 import { formatDate, calculateMembershipDurationDays } from '@/utils/date';
 import { APP_NAME, TAGLINE, CHIRVEX_WEBSITE } from '@/constants/branding';
 import { GYM_LOGO_BASE64 } from '@/constants/logoBase64';
@@ -547,11 +548,49 @@ export function generateReceiptHtml(data: ReceiptData): string {
   `.trim();
 }
 
+/** Generates the official receipt as a cleanly named PDF in the app cache. */
+export async function generateReceiptPdf(receiptData: ReceiptData): Promise<string> {
+  const html = generateReceiptHtml(receiptData);
+
+  const { uri: tempUri, base64 } = await Print.printToFileAsync({
+    html,
+    base64: true,
+  });
+
+  const safeReceiptNo = (receiptData.receiptNumber || 'Receipt').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const targetDir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+  let shareUri = tempUri;
+
+  if (targetDir) {
+    const targetUri = `${targetDir}FVE_Receipt_${safeReceiptNo}.pdf`;
+    try {
+      const existing = await FileSystem.getInfoAsync(targetUri);
+      if (existing.exists) {
+        await FileSystem.deleteAsync(targetUri, { idempotent: true });
+      }
+      await FileSystem.copyAsync({ from: tempUri, to: targetUri });
+      shareUri = targetUri;
+    } catch (copyErr) {
+      console.warn('[receiptPdf] copyAsync failed, trying base64 write fallback:', copyErr);
+      if (base64) {
+        try {
+          await FileSystem.writeAsStringAsync(targetUri, base64, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          shareUri = targetUri;
+        } catch (writeErr) {
+          console.error('[receiptPdf] base64 write fallback failed:', writeErr);
+        }
+      }
+    }
+  }
+
+  return shareUri;
+}
+
 let isSharingReceipt = false;
 
-/**
- * Generates the receipt PDF and shares it (allowing user to select WhatsApp to attach PDF).
- */
+/** Generates the receipt PDF and opens the platform's generic share sheet. */
 export async function sharePdfReceipt(receiptData: ReceiptData): Promise<void> {
   if (isSharingReceipt) {
     console.warn('[receiptPdf] A share request is already in progress, ignoring duplicate call');
@@ -560,45 +599,7 @@ export async function sharePdfReceipt(receiptData: ReceiptData): Promise<void> {
   isSharingReceipt = true;
 
   try {
-    const html = generateReceiptHtml(receiptData);
-
-    // 1. Generate official PDF file in print cache
-    const { uri: tempUri, base64 } = await Print.printToFileAsync({
-      html,
-      base64: true,
-    });
-
-    // 2. Prepare destination in app cacheDirectory with a clean file name
-    const safeReceiptNo = (receiptData.receiptNumber || 'Receipt').replace(/[^a-zA-Z0-9_-]/g, '_');
-    const targetDir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
-    let shareUri = tempUri;
-
-    if (targetDir) {
-      const targetUri = `${targetDir}FVE_Receipt_${safeReceiptNo}.pdf`;
-      try {
-        const existing = await FileSystem.getInfoAsync(targetUri);
-        if (existing.exists) {
-          await FileSystem.deleteAsync(targetUri, { idempotent: true });
-        }
-        await FileSystem.copyAsync({
-          from: tempUri,
-          to: targetUri,
-        });
-        shareUri = targetUri;
-      } catch (copyErr) {
-        console.warn('[receiptPdf] copyAsync failed, trying base64 write fallback:', copyErr);
-        if (base64) {
-          try {
-            await FileSystem.writeAsStringAsync(targetUri, base64, {
-              encoding: FileSystem.EncodingType.Base64,
-            });
-            shareUri = targetUri;
-          } catch (writeErr) {
-            console.error('[receiptPdf] base64 write fallback failed:', writeErr);
-          }
-        }
-      }
-    }
+    const shareUri = await generateReceiptPdf(receiptData);
 
     const isAvailable = await Sharing.isAvailableAsync();
     if (!isAvailable) {
@@ -622,6 +623,19 @@ export async function sharePdfReceipt(receiptData: ReceiptData): Promise<void> {
       isSharingReceipt = false;
     }, 1200);
   }
+}
+
+/**
+ * Opens the member's WhatsApp chat with this receipt PDF and the supplied
+ * receipt message attached. There is no document or application picker.
+ */
+export async function shareReceiptPdfToWhatsApp(
+  receiptData: ReceiptData,
+  memberMobile: string,
+  message: string,
+): Promise<void> {
+  const receiptUri = await generateReceiptPdf(receiptData);
+  await sharePdfToMemberWhatsApp(memberMobile, receiptUri, message);
 }
 
 /**

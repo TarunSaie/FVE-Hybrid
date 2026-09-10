@@ -33,10 +33,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Plus } from 'lucide-react-native';
 import { buildExpiredAlertMessage, buildExpiryReminderMessage, openWhatsAppLink } from '@/utils/format';
 import { getLocalDateStr } from '@/utils/date';
-import * as Clipboard from 'expo-clipboard';
 import {
   buildMemberPdfData,
-  shareMemberPassPdf,
+  shareMemberPassPdfToWhatsApp,
   buildMemberSubscriptionClipboardText,
 } from '@/utils/memberPdf';
 
@@ -282,21 +281,26 @@ export function MembersScreen() {
 
   const handleShareMember = async (member: MemberWithMembership) => {
     if (sharingMemberId) return;
+    if (!member.mobile) {
+      haptics.error();
+      Alert.alert(
+        'No Mobile Number',
+        'This member does not have a registered mobile number. Please update their profile with a valid WhatsApp phone number.'
+      );
+      return;
+    }
+
     setSharingMemberId(member.id);
     haptics.medium();
     try {
-      // 1. Copy membership subscription pass summary to clipboard
-      const clipboardText = buildMemberSubscriptionClipboardText(member);
-      await Clipboard.setStringAsync(clipboardText);
-
-      // 2. Generate and open native share sheet for PDF pass
+      const memberMessage = buildMemberSubscriptionClipboardText(member);
       const pdfData = buildMemberPdfData(member);
-      await shareMemberPassPdf(pdfData);
+      await shareMemberPassPdfToWhatsApp(pdfData, member.mobile, memberMessage);
     } catch (err: unknown) {
       const msg = (err as Error)?.message || '';
       if (!msg.includes('Another share request')) {
         haptics.error();
-        Alert.alert('Share Member Pass', msg || 'Failed to generate member pass PDF');
+        Alert.alert('Share on WhatsApp', msg || 'Failed to open the member WhatsApp chat.');
       }
     } finally {
       setSharingMemberId(null);
@@ -960,4 +964,3 @@ const getMembersStyles = (colors: ThemeColors, isDark: boolean) =>
       justifyContent: 'center',
     },
   });
-

@@ -5,6 +5,7 @@ import { Member, MemberWithMembership, Membership } from '@/types';
 import { formatDate } from '@/utils/date';
 import { APP_NAME, TAGLINE, CHIRVEX_WEBSITE } from '@/constants/branding';
 import { GYM_LOGO_BASE64 } from '@/constants/logoBase64';
+import { sharePdfToMemberWhatsApp } from '@/utils/whatsAppPdfShare';
 
 export interface MemberPdfData {
   memberId: string;
@@ -495,11 +496,49 @@ export function generateMemberPassHtml(data: MemberPdfData): string {
   `.trim();
 }
 
+/** Generates the official member pass as a cleanly named PDF in the app cache. */
+export async function generateMemberPassPdf(data: MemberPdfData): Promise<string> {
+  const html = generateMemberPassHtml(data);
+
+  const { uri: tempUri, base64 } = await Print.printToFileAsync({
+    html,
+    base64: true,
+  });
+
+  const safeId = (data.memberId || 'Member').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const targetDir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+  let shareUri = tempUri;
+
+  if (targetDir) {
+    const targetUri = `${targetDir}FVE_Member_Pass_${safeId}.pdf`;
+    try {
+      const existing = await FileSystem.getInfoAsync(targetUri);
+      if (existing.exists) {
+        await FileSystem.deleteAsync(targetUri, { idempotent: true });
+      }
+      await FileSystem.copyAsync({ from: tempUri, to: targetUri });
+      shareUri = targetUri;
+    } catch (copyErr) {
+      console.warn('[memberPdf] copyAsync failed, trying base64 write fallback:', copyErr);
+      if (base64) {
+        try {
+          await FileSystem.writeAsStringAsync(targetUri, base64, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          shareUri = targetUri;
+        } catch (writeErr) {
+          console.error('[memberPdf] base64 write fallback failed:', writeErr);
+        }
+      }
+    }
+  }
+
+  return shareUri;
+}
+
 let isSharingPass = false;
 
-/**
- * Generates the official Member Pass PDF and invokes the native sharing dialog.
- */
+/** Generates the official Member Pass PDF and opens the generic sharing dialog. */
 export async function shareMemberPassPdf(data: MemberPdfData): Promise<void> {
   if (isSharingPass) {
     console.warn('[memberPdf] A share request is already in progress, ignoring duplicate call');
@@ -508,45 +547,7 @@ export async function shareMemberPassPdf(data: MemberPdfData): Promise<void> {
   isSharingPass = true;
 
   try {
-    const html = generateMemberPassHtml(data);
-
-    // 1. Generate official PDF file in print cache
-    const { uri: tempUri, base64 } = await Print.printToFileAsync({
-      html,
-      base64: true,
-    });
-
-    // 2. Prepare destination in app cacheDirectory with a clean file name
-    const safeId = (data.memberId || 'Member').replace(/[^a-zA-Z0-9_-]/g, '_');
-    const targetDir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
-    let shareUri = tempUri;
-
-    if (targetDir) {
-      const targetUri = `${targetDir}FVE_Pass_${safeId}.pdf`;
-      try {
-        const existing = await FileSystem.getInfoAsync(targetUri);
-        if (existing.exists) {
-          await FileSystem.deleteAsync(targetUri, { idempotent: true });
-        }
-        await FileSystem.copyAsync({
-          from: tempUri,
-          to: targetUri,
-        });
-        shareUri = targetUri;
-      } catch (copyErr) {
-        console.warn('[memberPdf] copyAsync failed, trying base64 write fallback:', copyErr);
-        if (base64) {
-          try {
-            await FileSystem.writeAsStringAsync(targetUri, base64, {
-              encoding: FileSystem.EncodingType.Base64,
-            });
-            shareUri = targetUri;
-          } catch (writeErr) {
-            console.error('[memberPdf] base64 write fallback failed:', writeErr);
-          }
-        }
-      }
-    }
+    const shareUri = await generateMemberPassPdf(data);
 
     const isAvailable = await Sharing.isAvailableAsync();
     if (!isAvailable) {
@@ -570,4 +571,14 @@ export async function shareMemberPassPdf(data: MemberPdfData): Promise<void> {
       isSharingPass = false;
     }, 1200);
   }
+}
+
+/** Opens the registered member's WhatsApp chat with their pass PDF attached. */
+export async function shareMemberPassPdfToWhatsApp(
+  data: MemberPdfData,
+  memberMobile: string,
+  message: string,
+): Promise<void> {
+  const passUri = await generateMemberPassPdf(data);
+  await sharePdfToMemberWhatsApp(memberMobile, passUri, message);
 }

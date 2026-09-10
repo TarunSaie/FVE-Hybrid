@@ -13,7 +13,6 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, CreditCard, Filter, X } from 'lucide-react-native';
-import * as Clipboard from 'expo-clipboard';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEInput } from '@/components/common/FVEInput';
 import { PaymentItem } from '@/components/features/PaymentItem';
@@ -25,10 +24,10 @@ import { supabase } from '@/api/supabase';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
-import { formatCurrency, openWhatsAppLink } from '@/utils/format';
+import { formatCurrency } from '@/utils/format';
 import { formatDate } from '@/utils/date';
 import { RootStackParamList } from '@/navigation/types';
-import { buildReceiptDataFromPayment, sharePdfReceipt } from '@/utils/receiptPdf';
+import { buildReceiptDataFromPayment, shareReceiptPdfToWhatsApp } from '@/utils/receiptPdf';
 
 import { haptics } from '@/utils/haptics';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -115,34 +114,40 @@ export function PaymentsScreen() {
 
   const handleShareWhatsApp = async (p: Payment) => {
     haptics.medium();
+    const memberMobile = p.members?.mobile;
+    if (!memberMobile) {
+      haptics.error();
+      Alert.alert(
+        'No Mobile Number',
+        'This member does not have a registered mobile number. Please update their profile with a valid WhatsApp phone number.'
+      );
+      return;
+    }
+
     try {
       const receiptData = buildReceiptDataFromPayment(p);
       const memberName = p.members?.full_name || 'Member';
       const planName = p.memberships?.membership_plans?.name || 'Membership';
       const startDate = p.memberships?.start_date ? formatDate(p.memberships.start_date) : null;
       const endDate = p.memberships?.expiry_date ? formatDate(p.memberships.expiry_date) : null;
-      const validityLine = startDate && endDate ? `Validity: ${startDate} TO ${endDate}\n` : '';
+      const amount = `Rs. ${Number(p.amount || 0).toLocaleString('en-IN')}/-`;
       const text =
-        `*FitVerse Elite Official Receipt*\n` +
+        `FitVerse Elite Receipt\n` +
         `Receipt No: #${p.receipt_number || 'N/A'}\n` +
-        `Member: ${memberName}${p.members?.member_id ? ` (${p.members.member_id})` : ''}\n` +
+        `Member: ${memberName}\n` +
         `Plan: ${planName}\n` +
-        validityLine +
-        `Amount Paid: ${formatCurrency(p.amount)}\n` +
-        `Payment Method: ${p.payment_method}\n` +
-        `Date: ${formatDate(p.payment_date || p.created_at)}\n\n` +
-        `*DISCIPLINE • STRENGTH • TRANSFORMATION*\n` +
-        `FitVerse Elite Gym Management\n` +
-        `Powered by Chirvex (https://chirvex.in/)`;
+        (startDate && endDate ? `Validity: ${startDate} TO ${endDate}\n` : '') +
+        `Amount Paid: ${amount}\n\n` +
+        `THANKS FOR TRAINING WITH US\n` +
+        `DISCIPLINE • STRENGTH • TRANSFORMATION\n\n` +
+        `This is an automated receipt generated and sent by Chirvex.\n` +
+        `Chirvex builds high-converting websites, SEO strategies, and lead generation solutions that help businesses grow.\n` +
+        `www.chirvex.in`;
 
-      // Copy summary text to clipboard so it can be pasted into WhatsApp if desired
-      await Clipboard.setStringAsync(text);
-
-      // Generate and share the PDF invoice
-      await sharePdfReceipt(receiptData);
+      await shareReceiptPdfToWhatsApp(receiptData, memberMobile, text);
     } catch (err: unknown) {
       haptics.error();
-      Alert.alert('Share Receipt', (err as Error).message || 'Failed to generate receipt PDF');
+      Alert.alert('Share on WhatsApp', (err as Error).message || 'Failed to open the member WhatsApp chat.');
     }
   };
 

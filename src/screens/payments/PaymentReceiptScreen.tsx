@@ -6,26 +6,23 @@ import {
   ScrollView,
   Image,
   TouchableOpacity,
-  Share,
   Alert,
 } from 'react-native';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import QRCode from 'react-native-qrcode-svg';
-import { Share2, ArrowLeft, CheckCircle2, FileText, Printer, Sparkles, Dumbbell, UserCheck } from 'lucide-react-native';
-import * as Clipboard from 'expo-clipboard';
+import { Share2, ArrowLeft, CheckCircle2, Printer, Dumbbell, UserCheck } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEButton } from '@/components/common/FVEButton';
-import { FVEModal } from '@/components/common/FVEModal';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ThemeColors } from '@/constants/colors';
 import { haptics } from '@/utils/haptics';
 import { Payment, PersonalTraining } from '@/types';
 import { supabase } from '@/api/supabase';
 import { typography } from '@/constants/typography';
-import { formatCurrency, openWhatsAppLink } from '@/utils/format';
+import { formatCurrency } from '@/utils/format';
 import { formatDate, calculateMembershipDurationDays } from '@/utils/date';
-import { sharePdfReceipt, printPdfReceipt, buildReceiptDataFromPayment } from '@/utils/receiptPdf';
+import { printPdfReceipt, buildReceiptDataFromPayment, shareReceiptPdfToWhatsApp } from '@/utils/receiptPdf';
 import { RootStackParamList } from '@/navigation/types';
 
 type RouteProps = RouteProp<RootStackParamList, 'PaymentReceipt'>;
@@ -207,14 +204,14 @@ export function PaymentReceiptScreen() {
   const totalPTSessions = ptRecord?.total_sessions ?? null;
   const remainingPTSessions = totalPTSessions != null ? Math.max(0, totalPTSessions - actualPTSessionsCompleted) : null;
 
-  const receiptNo = payment.receipt_number || 'FVE-N/A';
-  const dateStr = formatDate(payment.payment_date || payment.created_at);
+  const receiptNo = activePayment.receipt_number || 'FVE-N/A';
+  const dateStr = formatDate(activePayment.payment_date || activePayment.created_at);
   const rawStart = isPT && ptRecord?.start_date
     ? ptRecord.start_date
-    : payment.memberships?.start_date;
+    : effectiveMembership?.start_date;
   const rawEnd = isPT && ptRecord?.expiry_date
     ? ptRecord.expiry_date
-    : payment.memberships?.expiry_date;
+    : effectiveMembership?.expiry_date;
   const startDate = rawStart ? formatDate(rawStart) : null;
   const endDate = rawEnd ? formatDate(rawEnd) : null;
   const durationDays =
@@ -222,81 +219,23 @@ export function PaymentReceiptScreen() {
     (rawStart && rawEnd ? calculateMembershipDurationDays(rawStart, rawEnd) : null);
 
   const [pdfGenerating, setPdfGenerating] = useState(false);
-  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+  const receiptAmount = `Rs. ${Number(activePayment.amount || 0).toLocaleString('en-IN')}/-`;
+  const whatsAppReceiptText =
+    `FitVerse Elite Receipt\n` +
+    `Receipt No: #${receiptNo}\n` +
+    `Member: ${memberName}\n` +
+    `Plan: ${displayPlanName}\n` +
+    (startDate && endDate ? `Validity: ${startDate} TO ${endDate}\n` : '') +
+    `Amount Paid: ${receiptAmount}\n\n` +
+    `THANKS FOR TRAINING WITH US\n` +
+    `DISCIPLINE • STRENGTH • TRANSFORMATION\n\n` +
+    `This is an automated receipt generated and sent by Chirvex.\n` +
+    `Chirvex builds high-converting websites, SEO strategies, and lead generation solutions that help businesses grow.\n` +
+    `www.chirvex.in`;
 
-  const whatsAppReceiptText = isPT
-    ? `*FitVerse Elite Official Receipt*\n` +
-      `Receipt No: #${receiptNo}\n` +
-      `Member: ${memberName}${memberId ? ` (${memberId})` : ''}\n` +
-      `Service: Personal Training Add-On\n` +
-      `Package: ${displayPlanName}\n` +
-      (ptRecord?.trainer?.full_name ? `Trainer: ${ptRecord.trainer.full_name}\n` : '') +
-      (totalPTSessions ? `Sessions: ${totalPTSessions} Sessions\n` : '') +
-      (startDate && endDate ? `Validity: ${startDate} TO ${endDate}\n` : '') +
-      (totalPTSessions != null
-        ? `Sessions: ${totalPTSessions} sessions allotted throughout your entire subscription period.\n` +
-          `${actualPTSessionsCompleted}/${totalPTSessions} sessions completed. ` +
-          (remainingPTSessions != null && remainingPTSessions > 1
-            ? `You can attend ${remainingPTSessions} more sessions during your plan.\n`
-            : remainingPTSessions === 1
-            ? `You can attend 1 more session during your plan.\n`
-            : `All allotted sessions have been completed.\n`)
-        : '') +
-      `Amount Paid: ${formatCurrency(payment.amount)}\n` +
-      `Payment Method: ${payment.payment_method?.toUpperCase() || 'CASH'}\n` +
-      `Date: ${dateStr}\n\n` +
-      `*THANKS FOR TRAINING WITH US*\n` +
-      `DISCIPLINE • STRENGTH • TRANSFORMATION\n\n` +
-      `This is an automated receipt generated and sent by Chirvex.\n` +
-      `Chirvex builds high-converting websites, SEO strategies, and lead generation solutions that help businesses grow.\n` +
-      `www.chirvex.in`
-    : `FitVerse Elite Receipt\n` +
-      `Receipt No: #${receiptNo}\n` +
-      `Member: ${memberName}${memberId ? ` (${memberId})` : ''}\n` +
-      `Plan: ${displayPlanName}\n` +
-      (startDate && endDate ? `Validity: ${startDate} TO ${endDate}\n` : '') +
-      (visitDayLimit != null
-        ? `Visits: ${visitDayLimit} visits allotted throughout your entire subscription period.\n` +
-          `${actualVisitsUsed}/${visitDayLimit} visits used. ` +
-          (remainingVisits != null && remainingVisits > 1
-            ? `${remainingVisits} visits remaining during your plan.\n`
-            : remainingVisits === 1
-            ? `1 visit remaining during your plan.\n`
-            : `All allotted visits have been used.\n`)
-        : '') +
-      `Amount Paid: ${formatCurrency(payment.amount)}\n\n` +
-      `THANKS FOR TRAINING WITH US\n` +
-      `DISCIPLINE • STRENGTH • TRANSFORMATION\n\n` +
-      `This is an automated receipt generated and sent by Chirvex.\n` +
-      `Chirvex builds high-converting websites, SEO strategies, and lead generation solutions that help businesses grow.\n` +
-      `www.chirvex.in`;
-
-  const handleSharePdf = async () => {
-    if (!payment) return;
-    haptics.medium();
-    setPdfGenerating(true);
-    try {
-      const receiptData = buildReceiptDataFromPayment(payment, ptRecord, {
-        actualVisitsUsed,
-        remainingVisits,
-        actualPTSessionsCompleted,
-        remainingPTSessions,
-      });
-      await sharePdfReceipt(receiptData);
-    } catch (err: unknown) {
-      haptics.error();
-      Alert.alert('Error', (err as Error).message || 'Failed to generate receipt PDF');
-    } finally {
-      setPdfGenerating(false);
-    }
-  };
-
-  const handleShareBoth = async () => {
-    if (!payment) return;
-    setShowWhatsAppModal(false);
-    haptics.medium();
-
+  const handleShareToWhatsApp = async () => {
     if (!memberMobile) {
+      haptics.error();
       Alert.alert(
         'No Mobile Number',
         'This member does not have a registered mobile number. Please update their profile with a valid WhatsApp phone number.'
@@ -304,45 +243,29 @@ export function PaymentReceiptScreen() {
       return;
     }
 
-    // 1. Open WhatsApp directly to the member's registered number with pre-filled receipt text
-    //    (mirrors Dashboard's working openWhatsAppLink pattern)
-    await openWhatsAppLink(memberMobile, whatsAppReceiptText);
-
-    // 2. After WhatsApp opens, offer to also share the branded PDF document
-    Alert.alert(
-      'Also Share PDF Invoice?',
-      'WhatsApp has opened with the receipt text pre-filled.\n\nWould you like to also share the official branded PDF invoice?',
-      [
-        { text: 'No, thanks', style: 'cancel' },
-        {
-          text: 'Share PDF',
-          onPress: async () => {
-            setPdfGenerating(true);
-            try {
-              const receiptData = buildReceiptDataFromPayment(payment, ptRecord, {
-                actualVisitsUsed,
-                remainingVisits,
-                actualPTSessionsCompleted,
-                remainingPTSessions,
-              });
-              await sharePdfReceipt(receiptData);
-            } catch (err: unknown) {
-              haptics.error();
-              Alert.alert('Error', (err as Error).message || 'Failed to generate PDF');
-            } finally {
-              setPdfGenerating(false);
-            }
-          },
-        },
-      ]
-    );
+    haptics.medium();
+    setPdfGenerating(true);
+    try {
+      const receiptData = buildReceiptDataFromPayment(activePayment, ptRecord, {
+        actualVisitsUsed,
+        remainingVisits,
+        actualPTSessionsCompleted,
+        remainingPTSessions,
+      });
+      await shareReceiptPdfToWhatsApp(receiptData, memberMobile, whatsAppReceiptText);
+    } catch (err: unknown) {
+      haptics.error();
+      Alert.alert('Share on WhatsApp', (err as Error).message || 'Failed to open the member WhatsApp chat.');
+    } finally {
+      setPdfGenerating(false);
+    }
   };
 
   const handlePrintPdf = async () => {
-    if (!payment) return;
+    if (!activePayment) return;
     haptics.light();
     try {
-      const receiptData = buildReceiptDataFromPayment(payment, ptRecord, {
+      const receiptData = buildReceiptDataFromPayment(activePayment, ptRecord, {
         actualVisitsUsed,
         remainingVisits,
         actualPTSessionsCompleted,
@@ -355,29 +278,11 @@ export function PaymentReceiptScreen() {
     }
   };
 
-  const handleWhatsApp = () => {
-    if (memberMobile) {
-      openWhatsAppLink(memberMobile, whatsAppReceiptText);
-    } else {
-      Alert.alert(
-        'No Mobile Number',
-        'This member does not have a registered mobile number. Please update their profile with a valid WhatsApp phone.'
-      );
-    }
-  };
-
-  const handleNativeShare = async () => {
-    if (!payment) return;
-    haptics.medium();
-    try {
-      await Clipboard.setStringAsync(whatsAppReceiptText);
-      await handleSharePdf();
-    } catch {
-      // Ignore
-    }
-  };
-
-  const memberQrCode = payment.members?.qr_code || payment.members?.id || payment.member_id || payment.receipt_number;
+  const memberQrCode =
+    activePayment.members?.qr_code ||
+    activePayment.members?.id ||
+    activePayment.member_id ||
+    activePayment.receipt_number;
 
   return (
     <View style={styles.container}>
@@ -389,7 +294,7 @@ export function PaymentReceiptScreen() {
           <TouchableOpacity
             onPress={() => {
               haptics.light();
-              handleNativeShare();
+              handleShareToWhatsApp();
             }}
             style={styles.shareHeaderBtn}
           >
@@ -630,10 +535,7 @@ export function PaymentReceiptScreen() {
         <View style={styles.actionButtonGroup}>
           <FVEButton
             title="SHARE TO WHATSAPP"
-            onPress={() => {
-              haptics.medium();
-              setShowWhatsAppModal(true);
-            }}
+            onPress={handleShareToWhatsApp}
             loading={pdfGenerating}
             variant="gold"
             size="lg"
@@ -652,77 +554,6 @@ export function PaymentReceiptScreen() {
         </View>
       </ScrollView>
 
-      {/* Unified WhatsApp Sharing Modal */}
-      <FVEModal
-        visible={showWhatsAppModal}
-        onClose={() => setShowWhatsAppModal(false)}
-        title="SHARE TO WHATSAPP"
-        subtitle={`Member: ${memberName}${memberMobile ? ` (${memberMobile})` : ''}`}
-      >
-        <View style={styles.modalOptionList}>
-          {/* Option 1: Send Both (Recommended) */}
-          <TouchableOpacity
-            style={[styles.modalOptionCard, styles.modalOptionCardHighlight]}
-            activeOpacity={0.7}
-            onPress={handleShareBoth}
-          >
-            <View style={[styles.modalOptionIconBox, { backgroundColor: 'rgba(239, 161, 0, 0.15)', borderColor: colors.gold }]}>
-              <Sparkles size={20} color={colors.gold} />
-            </View>
-            <View style={styles.modalOptionTextContainer}>
-              <View style={styles.modalOptionTitleRow}>
-                <Text style={[styles.modalOptionTitle, { color: colors.gold }]}>Send Both (PDF & Text)</Text>
-                <View style={styles.recommendedBadge}>
-                  <Text style={styles.recommendedBadgeText}>BEST</Text>
-                </View>
-              </View>
-              <Text style={styles.modalOptionDesc}>
-                Opens WhatsApp directly with {memberMobile || 'member\'s number'} and pre-fills the receipt text. Then offers to attach the official PDF invoice.
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-          {/* Option 2: Send PDF Document Only */}
-          <TouchableOpacity
-            style={styles.modalOptionCard}
-            activeOpacity={0.7}
-            onPress={() => {
-              setShowWhatsAppModal(false);
-              handleSharePdf();
-            }}
-          >
-            <View style={[styles.modalOptionIconBox, { backgroundColor: 'rgba(239, 161, 0, 0.08)', borderColor: 'rgba(239, 161, 0, 0.3)' }]}>
-              <FileText size={20} color={colors.gold} />
-            </View>
-            <View style={styles.modalOptionTextContainer}>
-              <Text style={styles.modalOptionTitle}>Send PDF Document</Text>
-              <Text style={styles.modalOptionDesc}>
-                Official invoice PDF with gym logo, QR code, and full validity breakdown.
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-          {/* Option 3: Send WhatsApp Text Message Only */}
-          <TouchableOpacity
-            style={styles.modalOptionCard}
-            activeOpacity={0.7}
-            onPress={() => {
-              setShowWhatsAppModal(false);
-              handleWhatsApp();
-            }}
-          >
-            <View style={[styles.modalOptionIconBox, { backgroundColor: 'rgba(37, 211, 102, 0.12)', borderColor: 'rgba(37, 211, 102, 0.3)' }]}>
-              <Share2 size={20} color="#25D366" />
-            </View>
-            <View style={styles.modalOptionTextContainer}>
-              <Text style={styles.modalOptionTitle}>Send WhatsApp Text to Member</Text>
-              <Text style={styles.modalOptionDesc}>
-                Opens chat directly with registered WhatsApp mobile ({memberMobile || 'N/A'}) and pre-fills payment receipt & validity text.
-              </Text>
-            </View>
-          </TouchableOpacity>
-        </View>
-      </FVEModal>
     </View>
   );
 }

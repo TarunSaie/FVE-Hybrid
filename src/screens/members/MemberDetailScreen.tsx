@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   Alert,
   Linking,
-  Share,
   RefreshControl,
 } from 'react-native';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
@@ -57,13 +56,11 @@ import { formatCurrency, openWhatsAppLink, buildExpiredAlertMessage } from '@/ut
 import { haptics } from '@/utils/haptics';
 import { cleanupPTNotifications } from '@/utils/personalTraining';
 import { RootStackParamList } from '@/navigation/types';
-import * as Clipboard from 'expo-clipboard';
 import {
   buildMemberPdfData,
-  shareMemberPassPdf,
+  shareMemberPassPdfToWhatsApp,
   buildMemberSubscriptionClipboardText,
 } from '@/utils/memberPdf';
-import { buildReceiptDataFromPayment, sharePdfReceipt } from '@/utils/receiptPdf';
 
 type DetailRouteProp = RouteProp<RootStackParamList, 'MemberDetail'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -373,83 +370,25 @@ export function MemberDetailScreen() {
 
   const handleNativeShare = async () => {
     if (!member) return;
+    if (!member.mobile) {
+      haptics.error();
+      Alert.alert(
+        'No Mobile Number',
+        'This member does not have a registered mobile number. Please update their profile with a valid WhatsApp phone number.'
+      );
+      return;
+    }
+
     haptics.medium();
 
-    const hasPayment = payments && payments.length > 0;
-    if (hasPayment) {
-      Alert.alert(
-        'Share Member Document',
-        `Choose which document to share for ${member.full_name}:`,
-        [
-          {
-            text: '📄 Member Pass (PDF)',
-            onPress: async () => {
-              try {
-                // Copy subscription details to clipboard
-                const clipboardText = buildMemberSubscriptionClipboardText(member, activeMembership);
-                await Clipboard.setStringAsync(clipboardText);
-
-                const pdfData = buildMemberPdfData(member, activeMembership);
-                await shareMemberPassPdf(pdfData);
-              } catch (err: unknown) {
-                const msg = (err as Error)?.message || '';
-                if (!msg.includes('Another share request')) {
-                  haptics.error();
-                  Alert.alert('Error', msg || 'Failed to share Member Pass PDF');
-                }
-              }
-            },
-          },
-          {
-            text: '🧾 Latest Receipt (PDF)',
-            onPress: async () => {
-              try {
-                const latestPayment = payments[0];
-                const receiptData = buildReceiptDataFromPayment(latestPayment);
-                const startDate = latestPayment.memberships?.start_date ? formatDate(latestPayment.memberships.start_date) : null;
-                const endDate = latestPayment.memberships?.expiry_date ? formatDate(latestPayment.memberships.expiry_date) : null;
-                const validityLine = startDate && endDate ? `Validity: ${startDate} TO ${endDate}\n` : '';
-                const receiptText =
-                  `*FitVerse Elite Official Receipt*\n` +
-                  `Receipt No: #${receiptData.receiptNumber}\n` +
-                  `Member: ${receiptData.memberName}${receiptData.memberId ? ` (${receiptData.memberId})` : ''}\n` +
-                  `Plan: ${receiptData.planName}\n` +
-                  validityLine +
-                  `Amount Paid: ${formatCurrency(receiptData.amount)}\n` +
-                  `Payment Method: ${receiptData.paymentMethod}\n` +
-                  `Date: ${receiptData.paymentDate}\n\n` +
-                  `*DISCIPLINE • STRENGTH • TRANSFORMATION*\n` +
-                  `FitVerse Elite Gym Management\n` +
-                  `Powered by Chirvex (https://chirvex.in/)`;
-                await Clipboard.setStringAsync(receiptText);
-
-                await sharePdfReceipt(receiptData);
-              } catch (err: unknown) {
-                const msg = (err as Error)?.message || '';
-                if (!msg.includes('Another share request')) {
-                  haptics.error();
-                  Alert.alert('Error', msg || 'Failed to share Receipt PDF');
-                }
-              }
-            },
-          },
-          { text: 'Cancel', style: 'cancel' },
-        ]
-      );
-    } else {
-      try {
-        const clipboardText = buildMemberSubscriptionClipboardText(member, activeMembership);
-        await Clipboard.setStringAsync(clipboardText);
-
-        const pdfData = buildMemberPdfData(member, activeMembership);
-        await shareMemberPassPdf(pdfData);
-      } catch (err: unknown) {
-        const msg = (err as Error)?.message || '';
-        if (!msg.includes('Another share request')) {
-          haptics.error();
-          Alert.alert('Error', msg || 'Failed to share Member Pass PDF');
-        }
-      }
+    try {
+      const memberMessage = buildMemberSubscriptionClipboardText(member, activeMembership);
+      const pdfData = buildMemberPdfData(member, activeMembership);
+      await shareMemberPassPdfToWhatsApp(pdfData, member.mobile, memberMessage);
+    } catch (err: unknown) {
+      const msg = (err as Error)?.message || '';
+      haptics.error();
+      Alert.alert('Share on WhatsApp', msg || 'Failed to open the member WhatsApp chat.');
     }
   };
 
@@ -472,6 +411,8 @@ export function MemberDetailScreen() {
           <View style={styles.headerActions}>
             <TouchableOpacity
               onPress={handleNativeShare}
+              accessibilityLabel="Share on WhatsApp"
+              accessibilityHint="Opens this member's registered WhatsApp chat with their PDF pass attached"
               style={styles.headerIconBtn}
               hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
               activeOpacity={0.7}

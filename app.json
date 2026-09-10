@@ -51,6 +51,7 @@
       "predictiveBackGestureEnabled": false
     },
     "plugins": [
+      "./plugins/withWhatsAppPdfShare",
       "expo-font",
       [
         "expo-camera",

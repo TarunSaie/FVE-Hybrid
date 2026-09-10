@@ -10,7 +10,7 @@ import {
   ActivityIndicator,
   Linking,
 } from 'react-native';
-import { ChevronRight, Phone, Calendar, MessageCircle, Share2 } from 'lucide-react-native';
+import { ChevronRight, Phone, Calendar, MessageCircle } from 'lucide-react-native';
 import { MemberWithMembership } from '@/types';
 import { FVEBadge } from '@/components/common/FVEBadge';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -174,6 +174,8 @@ export function MemberCard({ member, onPress, onShare, isSharing, onWhatsAppAler
                   onShare(member);
                 }}
                 disabled={isSharing}
+                accessibilityLabel={`Share ${member.full_name}'s member pass on WhatsApp`}
+                accessibilityHint="Opens the registered member's WhatsApp chat with their PDF pass attached"
                 activeOpacity={0.7}
                 hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
                 style={[styles.shareCardBtn, { backgroundColor: colors.goldMuted, borderColor: colors.goldBorder }]}
@@ -181,7 +183,7 @@ export function MemberCard({ member, onPress, onShare, isSharing, onWhatsAppAler
                 {isSharing ? (
                   <ActivityIndicator size={12} color={colors.gold} />
                 ) : (
-                  <Share2 size={15} color={colors.gold} />
+                  <MessageCircle size={15} color="#25D366" />
                 )}
               </TouchableOpacity>
             ) : null}
