@@ -18,6 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Mail, Lock, Eye, EyeOff, ShieldCheck, ArrowRight } from 'lucide-react-native';
 import { FVEButton } from '@/components/common/FVEButton';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useBranding } from '@/contexts/BrandingContext';
 import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { supabase } from '@/api/supabase';
@@ -156,7 +157,9 @@ export function LoginScreen() {
   const insets = useSafeAreaInsets();
   const { login } = useAuth();
   const { colors, isDark } = useTheme();
+  const { brandConfig } = useBranding();
   const styles = React.useMemo(() => getLoginStyles(colors, isDark), [colors, isDark]);
+  const logoSource = brandConfig.logo_url ? { uri: brandConfig.logo_url } : require('@/../assets/logo.png');
 
   // Values in refs — typing never triggers a parent re-render
   const emailVal = useRef('');
@@ -259,14 +262,14 @@ export function LoginScreen() {
           <View style={styles.hero}>
             <View style={styles.logoWrap}>
               <Image
-                source={require('@/../assets/logo.png')}
+                source={logoSource}
                 style={styles.logo}
                 resizeMode="contain"
               />
               <View style={styles.logoRing} />
             </View>
-            <Text style={styles.brandTitle}>FITVERSE ELITE</Text>
-            <Text style={styles.brandTagline}>DISCIPLINE · STRENGTH · TRANSFORMATION</Text>
+            <Text style={styles.brandTitle}>{brandConfig.gym_name.toUpperCase()}</Text>
+            <Text style={styles.brandTagline}>{brandConfig.slogan.toUpperCase()}</Text>
             <View style={styles.welcomeWrap}>
               <Text style={styles.welcomeHeading}>Sign In</Text>
               <Text style={styles.welcomeSub}>
@@ -328,7 +331,7 @@ export function LoginScreen() {
             </View>
 
             <FVEButton
-              title="ENTER FITVERSE"
+              title={`ENTER ${brandConfig.gym_name.toUpperCase()}`}
               onPress={handleLogin}
               loading={loading}
               variant="gold"
@@ -341,7 +344,7 @@ export function LoginScreen() {
 
           {/* ── Footer ── */}
           <View style={styles.footer}>
-            <Text style={styles.footerBrand}>FitVerse Elite Mobile OS</Text>
+            <Text style={styles.footerBrand}>{brandConfig.gym_name} Mobile OS</Text>
             <Text style={styles.footerCredit}>
               Engineered for Gym Owners & Staff · Powered by Chirvex
             </Text>

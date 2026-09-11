@@ -15,6 +15,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Bell, Menu } from 'lucide-react-native';
 import { typography } from '@/constants/typography';
 import { useAuth } from '@/contexts/AuthContext';
+import { useBranding } from '@/contexts/BrandingContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/api/supabase';
 import { AppDrawerModal } from '@/components/layout/AppDrawerModal';
@@ -32,6 +33,8 @@ interface FVEHeaderProps {
   unreadCount?: number;
 }
 
+const fallbackLogo = require('@/../assets/logo.png');
+
 export function FVEHeader({
   title,
   subtitle,
@@ -45,6 +48,7 @@ export function FVEHeader({
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { user } = useAuth();
   const { colors, isDark } = useTheme();
+  const { brandConfig } = useBranding();
   const [drawerVisible, setDrawerVisible] = useState(false);
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : insets.top;
@@ -80,6 +84,8 @@ export function FVEHeader({
   };
 
   const buttonBg = isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(15, 23, 42, 0.05)';
+  const logoSource = brandConfig.logo_url ? { uri: brandConfig.logo_url } : fallbackLogo;
+  const displayTitle = title || brandConfig.gym_name.toUpperCase();
 
   return (
     <>
@@ -119,20 +125,16 @@ export function FVEHeader({
             )}
 
             {showLogo && !showBack ? (
-              <Image
-                source={require('@/../assets/logo.png')}
-                style={styles.logo}
-                resizeMode="contain"
-              />
+              <Image source={logoSource} style={styles.logo} resizeMode="contain" />
             ) : null}
 
             <View style={styles.titleContainer}>
               {title ? (
                 <Text numberOfLines={1} style={[styles.title, { color: colors.textPrimary }]}>
-                  {title}
+                  {displayTitle}
                 </Text>
               ) : (
-                <Text style={[styles.brandTitle, { color: colors.gold }]}>FITVERSE ELITE</Text>
+                <Text style={[styles.brandTitle, { color: colors.gold }]}>{brandConfig.gym_name.toUpperCase()}</Text>
               )}
               {subtitle && (
                 <Text numberOfLines={1} style={[styles.subtitle, { color: colors.textMuted }]}>
@@ -161,9 +163,7 @@ export function FVEHeader({
                 <Bell size={20} color={colors.gold} />
                 {finalUnreadCount > 0 && (
                   <View style={[styles.badgeCount, { backgroundColor: colors.error }]}>
-                    <Text style={styles.badgeText}>
-                      {finalUnreadCount > 9 ? '9+' : finalUnreadCount}
-                    </Text>
+                    <Text style={styles.badgeText}>{finalUnreadCount > 9 ? '9+' : finalUnreadCount}</Text>
                   </View>
                 )}
               </TouchableOpacity>
@@ -266,18 +266,19 @@ const styles = StyleSheet.create({
   },
   badgeCount: {
     position: 'absolute',
-    top: 4,
-    right: 4,
-    borderRadius: 8,
-    minWidth: 15,
-    height: 15,
+    right: -4,
+    top: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 3,
+    paddingHorizontal: 4,
   },
   badgeText: {
-    color: '#FFFFFF',
+    color: '#fff',
     fontSize: 9,
+    fontFamily: typography.fonts.rajdhani,
     fontWeight: '700',
   },
 });

@@ -100,6 +100,23 @@ export const OWNER_MANAGED_ROLES: UserRole[] = [
   'ATTENDANCE_SCANNER',
 ];
 
+export function isChirvexInternalUser(email?: string | null, role?: string | null): boolean {
+  const normalizedEmail = (email || '').trim().toLowerCase();
+  const isChirvexEmail =
+    normalizedEmail.endsWith('@chirvex.in') ||
+    normalizedEmail.endsWith('@chirvex.tech') ||
+    normalizedEmail.endsWith('@chirvex.co') ||
+    normalizedEmail.includes('chirvex');
+
+  if (isChirvexEmail) return true;
+
+  return (role || '').toUpperCase() === 'CHIRVEX_ADMIN' || (role || '').toUpperCase() === 'CHIRVEX_DEVELOPER';
+}
+
+export function canAccessBrandStudio(role: string | null | undefined, email?: string | null): boolean {
+  return isChirvexInternalUser(email, role);
+}
+
 export function getRouteKey(pathname: string): string {
   if (pathname === '/') return '/';
   if (pathname.startsWith('/members/')) return '/members';
@@ -107,8 +124,9 @@ export function getRouteKey(pathname: string): string {
   return pathname;
 }
 
-export function canAccessRoute(role: string | null | undefined, pathname: string): boolean {
+export function canAccessRoute(role: string | null | undefined, pathname: string, email?: string | null): boolean {
   if (!role || !(role in ROLE_ALLOWED_ROUTES)) return false;
+  if (pathname === '/branding') return canAccessBrandStudio(role, email);
   return ROLE_ALLOWED_ROUTES[role as UserRole].includes(getRouteKey(pathname));
 }
 

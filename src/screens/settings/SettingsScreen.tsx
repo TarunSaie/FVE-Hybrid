@@ -47,6 +47,7 @@ import { ThemeColors } from '@/constants/colors';
 import { haptics } from '@/utils/haptics';
 import { sounds } from '@/utils/sounds';
 import { RootStackParamList } from '@/navigation/types';
+import { canAccessBrandStudio } from '@/constants/permissions';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -141,6 +142,7 @@ export function SettingsScreen() {
 
   const isStaff = user?.isStaffProfile;
   const isOwnerOrAdmin = user?.role === 'OWNER' || user?.role === 'ADMIN';
+  const isBrandStudioAllowed = canAccessBrandStudio(user?.role, user?.email);
 
   const themeOptions = [
     {
@@ -162,6 +164,11 @@ export function SettingsScreen() {
       icon: Laptop,
     },
   ];
+
+  const openBrandStudio = () => {
+    if (!isBrandStudioAllowed) return;
+    navigation.navigate('BrandStudio');
+  };
 
   return (
     <View style={styles.container}>
@@ -347,6 +354,23 @@ export function SettingsScreen() {
                 </View>
                 <ChevronRight size={18} color={colors.textMuted} />
               </TouchableOpacity>
+
+              {isBrandStudioAllowed && (
+                <TouchableOpacity
+                  onPress={openBrandStudio}
+                  style={styles.menuItem}
+                >
+                  <View style={styles.menuLeft}>
+                    <Image
+                      source={require('@/assets/icons/brand_studio_icon.png')}
+                      style={{ width: 18, height: 18 }}
+                      resizeMode="contain"
+                    />
+                    <Text style={styles.menuTitle}>Brand Studio</Text>
+                  </View>
+                  <ChevronRight size={18} color={colors.textMuted} />
+                </TouchableOpacity>
+              )}
             </>
           )}
 

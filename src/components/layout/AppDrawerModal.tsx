@@ -36,12 +36,14 @@ import {
   Sun,
   Moon,
   Laptop,
+  Palette,
 } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
+import { useBranding } from '@/contexts/BrandingContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { typography } from '@/constants/typography';
 import { FVEBadge } from '@/components/common/FVEBadge';
-import { canAccessRoute } from '@/constants/permissions';
+import { canAccessRoute, canAccessBrandStudio } from '@/constants/permissions';
 import { haptics } from '@/utils/haptics';
 import { RootStackParamList } from '@/navigation/types';
 
@@ -63,6 +65,8 @@ interface NavSection {
   title: string;
   items: NavItemDef[];
 }
+
+const fallbackLogo = require('@/../assets/logo.png');
 
 const NAV_SECTIONS: NavSection[] = [
   {
@@ -94,6 +98,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { screen: 'Notifications', icon: Bell, label: 'Notifications', route: '/notifications' },
       { screen: 'Settings', icon: Settings, label: 'Settings & Profile', route: '/settings' },
+      { screen: 'BrandStudio', icon: Palette, label: 'Brand Studio', route: '/branding' },
     ],
   },
 ];
@@ -101,6 +106,7 @@ const NAV_SECTIONS: NavSection[] = [
 export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
   const navigation = useNavigation<NavigationProp>();
   const { user, logout } = useAuth();
+  const { brandConfig } = useBranding();
   const { colors, isDark, theme, setTheme } = useTheme();
   const insets = useSafeAreaInsets();
 
@@ -190,7 +196,7 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
         navigation.navigate('MainTabs', { screen: 'Settings' });
       } else if (screenName === 'MembershipPlans') {
         navigation.navigate('MembershipPlans');
-      } else if (screenName === 'Expenses') {
+      } else if (screenName === 'Expenses' ) {
         navigation.navigate('Expenses');
       } else if (screenName === 'Reports') {
         navigation.navigate('Reports');
@@ -200,6 +206,8 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
         navigation.navigate('Notifications');
       } else if (screenName === 'QRScanner') {
         navigation.navigate('QRScanner');
+      } else if (screenName === 'BrandStudio') {
+        navigation.navigate('BrandStudio');
       }
     });
   };
@@ -208,7 +216,7 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
     haptics.warning();
     Alert.alert(
       'Sign Out',
-      'Are you sure you want to sign out of FitVerse Elite?',
+      `Are you sure you want to sign out of ${brandConfig.gym_name}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -226,10 +234,30 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
 
   if (!rendered) return null;
 
+  const canAccessBrandSection = canAccessBrandStudio(user?.role, user?.email);
+
+  const drawerItems = NAV_SECTIONS.map((section) => ({
+    ...section,
+    items: section.items.filter((item) => canAccessRoute(user?.role, item.route, user?.email)),
+  })).filter((section) => section.items.length > 0);
+
+  const filteredNavSections = canAccessBrandSection ? NAV_SECTIONS : NAV_SECTIONS.map((section) => ({
+    ...section,
+    items: section.items.filter((item) => item.route !== '/branding'),
+  })).filter((section) => section.items.length > 0);
+
+  const visibleSections = filteredNavSections.map((section) => ({
+    ...section,
+    items: section.items.filter((item) => canAccessRoute(user?.role, item.route, user?.email)),
+  })).filter((section) => section.items.length > 0);
+
+  const navSections = visibleSections;
+
   const drawerBg = isDark ? '#0D0F12' : colors.cardBackground;
   const drawerBorder = isDark ? 'rgba(239, 161, 0, 0.3)' : colors.borderDark;
   const headerBg = isDark ? '#080A0D' : colors.surfaceLight;
   const userSectionBg = isDark ? '#111419' : colors.surface;
+  const logoSource = brandConfig.logo_url ? { uri: brandConfig.logo_url } : fallbackLogo;
 
   return (
     <Modal
@@ -269,14 +297,10 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
             {/* Header: Logo + Brand + Close */}
             <View style={[styles.header, { backgroundColor: headerBg, borderBottomColor: colors.borderDark }]}>
               <View style={styles.logoRow}>
-                <Image
-                  source={require('@/../assets/logo.png')}
-                  style={styles.logo}
-                  resizeMode="contain"
-                />
+                <Image source={logoSource} style={styles.logo} resizeMode="contain" />
                 <View>
-                  <Text style={[styles.brandTitle, { color: colors.gold }]}>FITVERSE</Text>
-                  <Text style={[styles.brandSubtitle, { color: colors.textSecondary }]}>ELITE MOBILE</Text>
+                  <Text style={[styles.brandTitle, { color: colors.gold }]}>{brandConfig.gym_name.toUpperCase()}</Text>
+                  <Text style={[styles.brandSubtitle, { color: colors.textSecondary }]}>{brandConfig.slogan.toUpperCase()}</Text>
                 </View>
               </View>
               <TouchableOpacity
@@ -329,10 +353,8 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
               contentContainerStyle={styles.scrollListContent}
               showsVerticalScrollIndicator={false}
             >
-              {NAV_SECTIONS.map((section, idx) => {
-                const accessibleItems = section.items.filter((item) =>
-                  canAccessRoute(user?.role, item.route)
-                );
+              {navSections.map((section, idx) => {
+                const accessibleItems = section.items;
 
                 if (accessibleItems.length === 0) return null;
 
@@ -365,10 +387,7 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
                               isActive && { backgroundColor: colors.goldMuted },
                             ]}
                           >
-                            <IconComponent
-                              size={18}
-                              color={isActive ? colors.gold : colors.textSecondary}
-                            />
+                            <IconComponent size={18} color={isActive ? colors.gold : colors.textSecondary} />
                           </View>
 
                           <Text
@@ -421,9 +440,7 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
                   ]}
                 >
                   <Sun size={14} color={theme === 'light' ? colors.gold : colors.textMuted} />
-                  <Text style={[styles.themeBtnText, { color: theme === 'light' ? colors.gold : colors.textMuted }]}>
-                    Light
-                  </Text>
+                  <Text style={[styles.themeBtnText, { color: theme === 'light' ? colors.gold : colors.textMuted }]}>Light</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -437,9 +454,7 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
                   ]}
                 >
                   <Moon size={14} color={theme === 'dark' ? colors.gold : colors.textMuted} />
-                  <Text style={[styles.themeBtnText, { color: theme === 'dark' ? colors.gold : colors.textMuted }]}>
-                    Dark
-                  </Text>
+                  <Text style={[styles.themeBtnText, { color: theme === 'dark' ? colors.gold : colors.textMuted }]}>Dark</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -453,9 +468,7 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
                   ]}
                 >
                   <Laptop size={14} color={theme === 'system' ? colors.gold : colors.textMuted} />
-                  <Text style={[styles.themeBtnText, { color: theme === 'system' ? colors.gold : colors.textMuted }]}>
-                    Auto
-                  </Text>
+                  <Text style={[styles.themeBtnText, { color: theme === 'system' ? colors.gold : colors.textMuted }]}>Auto</Text>
                 </TouchableOpacity>
               </View>
 
@@ -470,7 +483,7 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
                 <Text style={[styles.logoutText, { color: colors.error }]}>Sign Out</Text>
               </TouchableOpacity>
               <Text style={[styles.footerTagline, { color: colors.gold, opacity: 0.5 }]}>
-                DISCIPLINE · STRENGTH · TRANSFORMATION
+                {brandConfig.slogan.toUpperCase()}
               </Text>
             </View>
           </View>

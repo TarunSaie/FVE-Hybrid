@@ -21,4 +21,5 @@ export type RootStackParamList = {
   Staff: undefined;
   Notifications: undefined;
   PersonalTraining: undefined;
+  BrandStudio: undefined;
 };

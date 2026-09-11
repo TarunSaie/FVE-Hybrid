@@ -22,6 +22,7 @@ import {
 } from '@expo-google-fonts/inter';
 import * as SplashScreen from 'expo-splash-screen';
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
+import { BrandingProvider } from '@/contexts/BrandingContext';
 import { DialogProvider } from '@/contexts/DialogContext';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { RootNavigator } from '@/navigation/RootNavigator';
@@ -130,11 +131,13 @@ export default function App() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
-          <DialogProvider>
-            <AuthProvider>
-              <AppContent fontsLoaded={fontsLoaded} />
-            </AuthProvider>
-          </DialogProvider>
+          <BrandingProvider>
+            <DialogProvider>
+              <AuthProvider>
+                <AppContent fontsLoaded={fontsLoaded} />
+              </AuthProvider>
+            </DialogProvider>
+          </BrandingProvider>
         </ThemeProvider>
       </QueryClientProvider>
     </ErrorBoundary>

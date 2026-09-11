@@ -1,8 +1,9 @@
 import { NativeModules, Platform } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { formatWhatsAppPhone } from '@/utils/format';
 
 type WhatsAppPdfShareModule = {
-  sharePdfToContact(phone: string, fileUri: string, message: string): Promise<void>;
+  sharePdfToContact(phone: string, fileUri: string): Promise<void>;
 };
 
 const nativeWhatsAppPdfShare = NativeModules.WhatsAppPdfShare as
@@ -10,9 +11,9 @@ const nativeWhatsAppPdfShare = NativeModules.WhatsAppPdfShare as
   | undefined;
 
 /**
- * Opens the installed Android WhatsApp client at a member's chat with a PDF and
- * message already attached. Unlike expo-sharing, this does not show Android's
- * app picker or make the owner choose a document destination.
+ * Copies the prepared receipt/pass message, then opens the installed Android
+ * WhatsApp client at the member's chat with the PDF attached. This keeps the
+ * one-tap handoff while avoiding WhatsApp's unsupported PDF-caption behavior.
  */
 export async function sharePdfToMemberWhatsApp(
   phone: string,
@@ -34,5 +35,6 @@ export async function sharePdfToMemberWhatsApp(
     throw new Error('WhatsApp sharing is unavailable. Install the latest FitVerse Elite Android build and try again.');
   }
 
-  await nativeWhatsAppPdfShare.sharePdfToContact(recipient, fileUri, message);
+  await Clipboard.setStringAsync(message);
+  await nativeWhatsAppPdfShare.sharePdfToContact(recipient, fileUri);
 }

@@ -13,11 +13,13 @@ import { ReportsScreen } from '@/screens/reports/ReportsScreen';
 import { StaffScreen } from '@/screens/staff/StaffScreen';
 import { NotificationsScreen } from '@/screens/notifications/NotificationsScreen';
 import { PersonalTrainingScreen } from '@/screens/pt/PersonalTrainingScreen';
+import { BrandStudioScreen } from '@/screens/brand/BrandStudioScreen';
 import { RootStackParamList } from './types';
 import { useNotificationSoundListener } from '@/hooks/useNotificationSoundListener';
 import { useRenewalAlerts } from '@/hooks/useRenewalAlerts';
 import { useBirthdayAlerts } from '@/hooks/useBirthdayAlerts';
 import { useMembershipSync } from '@/hooks/useMembershipSync';
+import { canAccessBrandStudio } from '@/constants/permissions';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -54,6 +56,9 @@ export function RootNavigator() {
           <Stack.Screen name="Staff" component={StaffScreen} />
           <Stack.Screen name="Notifications" component={NotificationsScreen} />
           <Stack.Screen name="PersonalTraining" component={PersonalTrainingScreen} />
+          {canAccessBrandStudio(user?.role, user?.email) && (
+            <Stack.Screen name="BrandStudio" component={BrandStudioScreen} />
+          )}
         </>
       )}
     </Stack.Navigator>

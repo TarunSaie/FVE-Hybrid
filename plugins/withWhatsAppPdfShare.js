@@ -10,7 +10,6 @@ const MODULE_NAME = 'WhatsAppPdfShare';
 
 const moduleSource = `package com.fitverse.elite
 
-import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import androidx.core.content.FileProvider
@@ -26,7 +25,7 @@ class WhatsAppPdfShareModule(
   override fun getName() = "WhatsAppPdfShare"
 
   @ReactMethod
-  fun sharePdfToContact(phone: String, fileUri: String, message: String, promise: Promise) {
+  fun sharePdfToContact(phone: String, fileUri: String, promise: Promise) {
     try {
       val cleanPhone = phone.filter { it.isDigit() }.let {
         if (it.length == 10) "91$it" else it
@@ -42,11 +41,15 @@ class WhatsAppPdfShareModule(
         type = "application/pdf"
         setPackage(whatsappPackage)
         putExtra(Intent.EXTRA_STREAM, contentUri)
-        putExtra(Intent.EXTRA_TEXT, message)
         putExtra("jid", "$cleanPhone@s.whatsapp.net")
-        clipData = ClipData.newRawUri("FitVerse Elite PDF", contentUri)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
       }
+
+      reactContext.grantUriPermission(
+        whatsappPackage,
+        contentUri,
+        Intent.FLAG_GRANT_READ_URI_PERMISSION,
+      )
 
       if (intent.resolveActivity(reactContext.packageManager) == null) {
         throw IllegalStateException("The installed WhatsApp app cannot receive PDF documents.")

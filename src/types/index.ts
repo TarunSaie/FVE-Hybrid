@@ -205,3 +205,52 @@ export interface PTSession {
   trainer?: UserProfile;
   personal_training?: PersonalTraining;
 }
+
+export interface AuditLog {
+  id: string;
+  user_id: string | null;
+  user_email: string | null;
+  action: 'INSERT' | 'UPDATE' | 'DELETE' | 'RESTORE' | 'SOFT_DELETE' | string;
+  entity_name: string;
+  entity_id: string;
+  old_values: Record<string, unknown> | null;
+  new_values: Record<string, unknown> | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface RecordArchive {
+  id: string;
+  entity_name: string;
+  entity_id: string;
+  archived_by: string | null;
+  archived_at: string;
+  retention_until: string;
+  restored_at: string | null;
+  snapshot: Record<string, unknown>;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface DataRetentionPolicy {
+  table_name: string;
+  retention_days: number;
+  is_active: boolean;
+  updated_at: string;
+}
+
+export interface BrandConfig {
+  id: string;
+  gym_name: string;
+  slogan: string;
+  logo_url: string;
+  favicon_url: string;
+  primary_color: string;
+  secondary_color: string;
+  page_title_prefix: string;
+  logo_alt: string;
+  accent_text_color: string;
+  theme_mode: 'dark' | 'light' | 'system';
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
