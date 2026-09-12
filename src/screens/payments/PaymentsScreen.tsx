@@ -185,7 +185,7 @@ export function PaymentsScreen() {
             <TouchableOpacity
               onPress={() => {
                 haptics.light();
-                setShowUPIModal(true);
+                navigation.navigate('PaymentQR');
               }}
               style={styles.qrHeaderBtn}
               activeOpacity={0.75}

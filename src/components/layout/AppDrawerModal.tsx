@@ -78,6 +78,7 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'FINANCE & PLANS',
     items: [
       { screen: 'Payments', icon: CreditCard, label: 'Payments', route: '/payments' },
+      { screen: 'PaymentQR', icon: QrCode, label: 'Payment QR Code', route: '/payment-qr' },
       { screen: 'MembershipPlans', icon: Award, label: 'Membership Plans', route: '/plans' },
       { screen: 'Expenses', icon: DollarSign, label: 'Gym Expenses', route: '/expenses' },
     ],
@@ -200,6 +201,8 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
         navigation.navigate('Notifications');
       } else if (screenName === 'QRScanner') {
         navigation.navigate('QRScanner');
+      } else if (screenName === 'PaymentQR') {
+        navigation.navigate('PaymentQR');
       }
     });
   };

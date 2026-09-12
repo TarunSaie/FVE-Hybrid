@@ -60,6 +60,7 @@ export const ROLE_ALLOWED_ROUTES: Record<UserRole, string[]> = {
     '/members',
     '/plans',
     '/payments',
+    '/payment-qr',
     '/attendance',
     '/scanner',
     '/reports',
@@ -73,6 +74,7 @@ export const ROLE_ALLOWED_ROUTES: Record<UserRole, string[]> = {
     '/members',
     '/plans',
     '/payments',
+    '/payment-qr',
     '/attendance',
     '/scanner',
     '/reports',
@@ -80,8 +82,8 @@ export const ROLE_ALLOWED_ROUTES: Record<UserRole, string[]> = {
     '/notifications',
     '/settings',
   ],
-  RECEPTIONIST: ['/members', '/plans', '/payments', '/attendance', '/scanner', '/notifications', '/settings'],
-  TRAINER: ['/attendance', '/scanner', '/notifications', '/settings'],
+  RECEPTIONIST: ['/members', '/plans', '/payments', '/payment-qr', '/attendance', '/scanner', '/notifications', '/settings'],
+  TRAINER: ['/attendance', '/scanner', '/payment-qr', '/notifications', '/settings'],
   ATTENDANCE_SCANNER: ['/attendance', '/scanner'],
 };
 
