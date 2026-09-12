@@ -1,6 +1,8 @@
 import { Linking, Alert } from 'react-native';
 import { colors } from '@/constants/colors';
 import { formatDate } from './date';
+import type { DietPlan, DietMeal, DayOfWeek } from '@/types';
+import { DAYS_OF_WEEK } from '@/types';
 
 /**
  * Format number into Indian Rupee format without decimals.
@@ -169,4 +171,180 @@ export function getFriendlyErrorMessage(
 
   return msg;
 }
+
+/**
+ * Builds professional WhatsApp congratulatory and receipt message for membership plan upgrade.
+ */
+export function buildPlanUpgradeWhatsAppMessage(
+  memberName: string,
+  oldPlanName: string,
+  newPlanName: string,
+  balanceAmount: number | string,
+  newExpiryDate: string,
+  receiptNumber?: string | null
+): string {
+  const receiptLine = receiptNumber ? `• Receipt No: *${receiptNumber}*\n` : '';
+  return (
+    `Hi *${memberName}*,\n\n` +
+    `Your membership at *FitVerse Elite* has been successfully upgraded!\n\n` +
+    `• Previous Plan: *${oldPlanName}*\n` +
+    `• Upgraded Plan: *${newPlanName}*\n` +
+    `• Balance Paid: *${formatCurrency(Number(balanceAmount))}*\n` +
+    `• New Validity Until: *${formatDate(newExpiryDate)}*\n` +
+    receiptLine +
+    `\nThank you for committing to your fitness journey with us. Enjoy your training!\n\n` +
+    `— Team FitVerse Elite`
+  );
+}
+
+/**
+ * Resolves current day of the week in Indian Standard Time (IST / Asia/Kolkata).
+ */
+export function getTodayDayOfWeek(): DayOfWeek {
+  const dayNames: DayOfWeek[] = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const now = new Date();
+  const istDayStr = new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone: 'Asia/Kolkata' }).format(now);
+  return (dayNames.find(d => d.toLowerCase() === istDayStr.toLowerCase()) || 'Monday') as DayOfWeek;
+}
+
+/**
+ * Builds professional WhatsApp message with daily meal schedule and target nutrition for Personal Training members.
+ */
+export function buildDailyDietPlanWhatsAppMessage(
+  memberName: string,
+  dietPlan: DietPlan,
+  trainerName?: string | null,
+  targetDay?: DayOfWeek | string | null
+): string {
+  const todayDay = getTodayDayOfWeek();
+  const effectiveDay: DayOfWeek = (targetDay && DAYS_OF_WEEK.includes(targetDay as DayOfWeek))
+    ? (targetDay as DayOfWeek)
+    : todayDay;
+
+  // Resolve meals for target day
+  let mealsToRender: DietMeal[] = [];
+  const schedule = dietPlan.weekly_schedule;
+  const isWeeklySchedule = Boolean(schedule && Object.keys(schedule).length > 0 && DAYS_OF_WEEK.some(d => schedule[d]?.length));
+
+  if (isWeeklySchedule && schedule && schedule[effectiveDay] && schedule[effectiveDay]!.length > 0) {
+    mealsToRender = schedule[effectiveDay]!;
+  } else if (Array.isArray(dietPlan.meals) && dietPlan.meals.length > 0) {
+    mealsToRender = dietPlan.meals;
+  }
+
+  const goalLine = dietPlan.goal ? `🎯 *Goal:* ${dietPlan.goal}\n` : '';
+  const trainerLine = trainerName ? `🏋️ *Coach / Trainer:* ${trainerName}\n` : '';
+  const dayLine = isWeeklySchedule
+    ? `📅 *Day:* *${effectiveDay}* ${effectiveDay === todayDay ? '(Today)' : ''}\n`
+    : '';
+
+  let nutritionSection = '';
+  const macros: string[] = [];
+  if (dietPlan.protein_grams) macros.push(`Protein: ${dietPlan.protein_grams}g`);
+  if (dietPlan.carbs_grams) macros.push(`Carbs: ${dietPlan.carbs_grams}g`);
+  if (dietPlan.fats_grams) macros.push(`Fats: ${dietPlan.fats_grams}g`);
+
+  if (dietPlan.daily_calories || macros.length > 0 || dietPlan.water_liters) {
+    nutritionSection = `📊 *Target Daily Nutrition:*\n`;
+    if (dietPlan.daily_calories) nutritionSection += `• *Calories:* ~${dietPlan.daily_calories} kcal\n`;
+    if (macros.length > 0) nutritionSection += `• *Macros:* ${macros.join(' | ')}\n`;
+    if (dietPlan.water_liters) nutritionSection += `• *Hydration:* ${dietPlan.water_liters} Litres / day 💧\n`;
+    nutritionSection += '\n';
+  }
+
+  let mealsSection = '';
+  if (mealsToRender.length > 0) {
+    mealsSection = isWeeklySchedule
+      ? `🍽️ *${effectiveDay}'s Meal Schedule:*\n`
+      : `🍽️ *Daily Meal Schedule:*\n`;
+    mealsToRender.forEach((meal, idx) => {
+      const timeStr = meal.time ? ` (${meal.time})` : '';
+      mealsSection += `*${idx + 1}. ${meal.name}${timeStr}*\n${meal.items}\n\n`;
+    });
+  }
+
+  let supplementsSection = '';
+  if (dietPlan.supplements && dietPlan.supplements.trim()) {
+    supplementsSection = `💊 *Supplements:*\n${dietPlan.supplements.trim()}\n\n`;
+  }
+
+  let instructionsSection = '';
+  if (dietPlan.instructions && dietPlan.instructions.trim()) {
+    instructionsSection = `💡 *Coach's Instructions:*\n${dietPlan.instructions.trim()}\n\n`;
+  }
+
+  return (
+    `🔥 *FITVERSE ELITE — DAILY DIET PLAN* 🔥\n\n` +
+    `Hi *${memberName}*,\n` +
+    `Here is your customized nutrition plan designed exclusively for your Personal Training.\n\n` +
+    `📋 *Plan:* *${dietPlan.title}*\n` +
+    dayLine +
+    goalLine +
+    trainerLine +
+    `\n` +
+    nutritionSection +
+    mealsSection +
+    supplementsSection +
+    instructionsSection +
+    `💪 _"Consistency beats talent when talent doesn't work hard. Fuel your body right today!"_\n\n` +
+    `— Team FitVerse Elite`
+  );
+}
+
+/**
+ * Builds full 7-day weekly schedule summary for WhatsApp sharing.
+ */
+export function buildWeeklyDietPlanOverviewWhatsAppMessage(
+  memberName: string,
+  dietPlan: DietPlan,
+  trainerName?: string | null
+): string {
+  const goalLine = dietPlan.goal ? `🎯 *Goal:* ${dietPlan.goal}\n` : '';
+  const trainerLine = trainerName ? `🏋️ *Coach / Trainer:* ${trainerName}\n` : '';
+  const schedule = dietPlan.weekly_schedule;
+
+  let scheduleSection = '';
+  if (schedule) {
+    DAYS_OF_WEEK.forEach(day => {
+      const dayMeals = schedule[day];
+      if (dayMeals && dayMeals.length > 0) {
+        scheduleSection += `*═══════ ${day.toUpperCase()} ═══════*\n`;
+        dayMeals.forEach((meal, idx) => {
+          const timeStr = meal.time ? ` (${meal.time})` : '';
+          scheduleSection += `• *${meal.name}${timeStr}:* ${meal.items}\n`;
+        });
+        scheduleSection += '\n';
+      }
+    });
+  }
+
+  if (!scheduleSection && Array.isArray(dietPlan.meals)) {
+    scheduleSection += `*═══════ DAILY SCHEDULE ═══════*\n`;
+    dietPlan.meals.forEach((meal) => {
+      const timeStr = meal.time ? ` (${meal.time})` : '';
+      scheduleSection += `• *${meal.name}${timeStr}:* ${meal.items}\n`;
+    });
+    scheduleSection += '\n';
+  }
+
+  let nutritionSummary = '';
+  if (dietPlan.daily_calories || dietPlan.protein_grams) {
+    nutritionSummary = `📊 *Daily Targets:* ~${dietPlan.daily_calories || 0} kcal | Protein: ${dietPlan.protein_grams || 0}g | Water: ${dietPlan.water_liters || 3.5}L\n\n`;
+  }
+
+  return (
+    `🔥 *FITVERSE ELITE — WEEKLY DIET OVERVIEW* 🔥\n\n` +
+    `Hi *${memberName}*,\n` +
+    `Here is your full weekly nutrition schedule for your Personal Training program.\n\n` +
+    `📋 *Plan:* *${dietPlan.title}*\n` +
+    goalLine +
+    trainerLine +
+    `\n` +
+    nutritionSummary +
+    scheduleSection +
+    `💪 _"Plan your work and work your plan. Stay disciplined!"_\n\n` +
+    `— Team FitVerse Elite`
+  );
+}
+
 

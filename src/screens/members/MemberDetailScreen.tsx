@@ -33,10 +33,18 @@ import {
   Cake,
   MessageCircle,
   CheckCircle2,
+  Sparkles,
+  ArrowRight,
+  Apple,
+  Flame,
+  Droplets,
+  Lock,
+  ChevronDown,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEBadge } from '@/components/common/FVEBadge';
 import { FVEButton } from '@/components/common/FVEButton';
+import { FVEModal } from '@/components/common/FVEModal';
 import { MemberFormModal } from '@/components/features/MemberFormModal';
 import { PaymentFormModal } from '@/components/features/PaymentFormModal';
 import { AttendanceCalendarModal } from '@/components/features/AttendanceCalendarModal';
@@ -45,14 +53,35 @@ import { PTRequestModal } from '@/components/features/PTRequestModal';
 import { PTAssignmentModal } from '@/components/features/PTAssignmentModal';
 import { PTPaymentModal } from '@/components/features/PTPaymentModal';
 import { PTSessionModal } from '@/components/features/PTSessionModal';
-import { Member, Membership, Payment, Attendance, WorkoutPlan, PersonalTraining, PTSession } from '@/types';
+import { PlanChangeModal } from '@/components/features/PlanChangeModal';
+import { DietPlanModal } from '@/components/features/DietPlanModal';
+import {
+  Member,
+  Membership,
+  Payment,
+  Attendance,
+  WorkoutPlan,
+  PersonalTraining,
+  PTSession,
+  PlanChangeRequest,
+  DietPlan,
+  DayOfWeek,
+  DAYS_OF_WEEK,
+} from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { supabase } from '@/api/supabase';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { formatDate, calculateAge, getLocalDateStr } from '@/utils/date';
-import { formatCurrency, openWhatsAppLink, buildExpiredAlertMessage } from '@/utils/format';
+import {
+  formatCurrency,
+  openWhatsAppLink,
+  buildExpiredAlertMessage,
+  buildDailyDietPlanWhatsAppMessage,
+  buildWeeklyDietPlanOverviewWhatsAppMessage,
+  getTodayDayOfWeek,
+} from '@/utils/format';
 import { haptics } from '@/utils/haptics';
 import { cleanupPTNotifications } from '@/utils/personalTraining';
 import { RootStackParamList } from '@/navigation/types';
@@ -83,6 +112,11 @@ export function MemberDetailScreen() {
   const [showPTAssignModal, setShowPTAssignModal] = useState(false);
   const [showPTPayModal, setShowPTPayModal] = useState(false);
   const [showPTSessionModal, setShowPTSessionModal] = useState(false);
+  const [showDietModal, setShowDietModal] = useState(false);
+  const [selectedDietDayPreview, setSelectedDietDayPreview] = useState<DayOfWeek>(getTodayDayOfWeek());
+  const [showDietShareModal, setShowDietShareModal] = useState(false);
+  const [showPlanChangeModal, setShowPlanChangeModal] = useState(false);
+  const [selectedPlanChangeRequest, setSelectedPlanChangeRequest] = useState<PlanChangeRequest | null>(null);
   const [ptSessionModalMode, setPtSessionModalMode] = useState<'schedule' | 'complete'>('schedule');
   const [activePTSession, setActivePTSession] = useState<PTSession | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -204,6 +238,87 @@ export function MemberDetailScreen() {
     enabled: !!personalTraining?.id,
   });
 
+  // Fetch Member Diet Plan
+  const { data: memberDietPlan, refetch: refetchDietPlan } = useQuery<DietPlan | null>({
+    queryKey: ['member-diet-plan', memberId],
+    queryFn: async () => {
+      if (!memberId) return null;
+      try {
+        const { data, error } = await supabase
+          .from('diet_plans')
+          .select('*, trainer:user_profiles!diet_plans_trainer_id_fkey(*), personal_training(*)')
+          .eq('member_id', memberId)
+          .eq('status', 'ACTIVE')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (error && error.code !== 'PGRST116') {
+          console.warn('Member diet plan query note:', error.message);
+          return null;
+        }
+        return data as DietPlan | null;
+      } catch (err) {
+        console.warn('Member diet plan query error:', err);
+        return null;
+      }
+    },
+    enabled: !!memberId,
+  });
+
+  const handleSendWhatsAppDiet = async (targetDay?: DayOfWeek) => {
+    if (!memberDietPlan) return;
+    const memberName = member?.full_name || 'Member';
+    const mobile = member?.mobile;
+    if (!mobile) {
+      Alert.alert('No Mobile Number', `${memberName} does not have a registered mobile number for WhatsApp.`);
+      return;
+    }
+    const coachName = memberDietPlan.trainer?.full_name || user?.full_name || 'Team FitVerse Elite';
+    const msg = buildDailyDietPlanWhatsAppMessage(memberName, memberDietPlan, coachName, targetDay);
+    await openWhatsAppLink(mobile, msg);
+  };
+
+  const handleSendWhatsAppFullWeekDiet = async () => {
+    if (!memberDietPlan) return;
+    const memberName = member?.full_name || 'Member';
+    const mobile = member?.mobile;
+    if (!mobile) {
+      Alert.alert('No Mobile Number', `${memberName} does not have a registered mobile number for WhatsApp.`);
+      return;
+    }
+    const coachName = memberDietPlan.trainer?.full_name || user?.full_name || 'Team FitVerse Elite';
+    const msg = buildWeeklyDietPlanOverviewWhatsAppMessage(memberName, memberDietPlan, coachName);
+    await openWhatsAppLink(mobile, msg);
+  };
+
+  // Fetch Member Plan Change Requests
+  const { data: memberPlanChangeRequests = [] } = useQuery<PlanChangeRequest[]>({
+    queryKey: ['member-plan-change-requests', memberId],
+    queryFn: async () => {
+      try {
+        const { data, error } = await supabase
+          .from('plan_change_requests')
+          .select(
+            '*, members(*), memberships(*, membership_plans(*)), current_plan:membership_plans!current_plan_id(*), requested_plan:membership_plans!requested_plan_id(*), approver:user_profiles!approved_by(*)'
+          )
+          .eq('member_id', memberId)
+          .order('created_at', { ascending: false });
+        if (error) {
+          console.warn('Member plan change query note:', error.message);
+          return [];
+        }
+        return (data as unknown as PlanChangeRequest[]) || [];
+      } catch (err) {
+        console.warn('Member plan change query error:', err);
+        return [];
+      }
+    },
+  });
+
+  const pendingPlanChangeRequest = memberPlanChangeRequests.find(
+    (r) => r.status === 'PENDING'
+  );
+
   const activeMembership =
     memberships?.find(m => m.status === 'ACTIVE' || m.status === 'EXPIRING_SOON') ||
     memberships?.[0];
@@ -222,6 +337,7 @@ export function MemberDetailScreen() {
       qc.invalidateQueries({ queryKey: ['member-workouts', memberId] }),
       qc.invalidateQueries({ queryKey: ['member-pt', memberId] }),
       qc.invalidateQueries({ queryKey: ['member-pt-sessions', personalTraining?.id] }),
+      qc.invalidateQueries({ queryKey: ['member-plan-change-requests', memberId] }),
     ]);
     setRefreshing(false);
   };
@@ -731,30 +847,85 @@ export function MemberDetailScreen() {
           </View>
 
           {activeMembership ? (
-            <View style={styles.membershipDetails}>
-              <Text style={styles.planNameTitle}>
-                {activeMembership.membership_plans?.name || 'Standard Membership'}
-              </Text>
-
-              <View style={styles.detailRow}>
-                <Calendar size={14} color={colors.gold} />
-                <Text style={styles.detailLabel}>Validity:</Text>
-                <Text style={styles.detailValue}>
-                  {formatDate(activeMembership.start_date)} to{' '}
-                  {formatDate(activeMembership.expiry_date)}
-                </Text>
-              </View>
-
-              {activeMembership.visit_day_limit != null && (
-                <View style={styles.detailRow}>
-                  <UserCheck size={14} color={colors.gold} />
-                  <Text style={styles.detailLabel}>Usable Visits:</Text>
-                  <Text style={styles.detailValue}>
-                    {activeMembership.visit_days_used || 0} /{' '}
-                    {activeMembership.visit_day_limit} days used
+            <View>
+              {pendingPlanChangeRequest && (
+                <View style={styles.pendingUpgradeBanner}>
+                  <View style={styles.pendingUpgradeHeader}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Clock size={13} color={colors.warning} />
+                      <Text style={styles.pendingUpgradeTitle}>PENDING PLAN UPGRADE</Text>
+                    </View>
+                    <Text style={styles.pendingUpgradeBalance}>
+                      Balance: {formatCurrency(Number(pendingPlanChangeRequest.balance_amount) || 0)}
+                    </Text>
+                  </View>
+                  <Text style={styles.pendingUpgradeDesc}>
+                    Requested upgrade to{' '}
+                    <Text style={{ color: colors.gold, fontWeight: '700' }}>
+                      {pendingPlanChangeRequest.requested_plan?.name || 'New Plan'}
+                    </Text>
+                    {pendingPlanChangeRequest.notes ? ` · "${pendingPlanChangeRequest.notes}"` : ''}
                   </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      haptics.selection();
+                      setSelectedPlanChangeRequest(pendingPlanChangeRequest);
+                      setShowPlanChangeModal(true);
+                    }}
+                    style={styles.reviewUpgradeBtn}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.reviewUpgradeBtnText}>
+                      {['OWNER', 'ADMIN'].includes(user?.role || '')
+                        ? 'Review & Collect Payment'
+                        : 'View Request Details'}
+                    </Text>
+                    <ArrowRight size={13} color={colors.background} />
+                  </TouchableOpacity>
                 </View>
               )}
+
+              <View style={styles.membershipDetails}>
+                <View style={styles.membershipTitleRow}>
+                  <Text style={styles.planNameTitle}>
+                    {activeMembership.membership_plans?.name || 'Standard Membership'}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      haptics.selection();
+                      setSelectedPlanChangeRequest(pendingPlanChangeRequest || null);
+                      setShowPlanChangeModal(true);
+                    }}
+                    style={styles.upgradePlanLink}
+                    activeOpacity={0.7}
+                  >
+                    <Sparkles size={12} color={colors.gold} />
+                    <Text style={styles.upgradePlanLinkText}>
+                      {pendingPlanChangeRequest ? 'Upgrade Details' : 'Upgrade Plan'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Calendar size={14} color={colors.gold} />
+                  <Text style={styles.detailLabel}>Validity:</Text>
+                  <Text style={styles.detailValue}>
+                    {formatDate(activeMembership.start_date)} to{' '}
+                    {formatDate(activeMembership.expiry_date)}
+                  </Text>
+                </View>
+
+                {activeMembership.visit_day_limit != null && (
+                  <View style={styles.detailRow}>
+                    <UserCheck size={14} color={colors.gold} />
+                    <Text style={styles.detailLabel}>Usable Visits:</Text>
+                    <Text style={styles.detailValue}>
+                      {activeMembership.visit_days_used || 0} /{' '}
+                      {activeMembership.visit_day_limit} days used
+                    </Text>
+                  </View>
+                )}
+              </View>
             </View>
           ) : (
             <View style={styles.emptyNotice}>
@@ -960,6 +1131,185 @@ export function MemberDetailScreen() {
                 </View>
               )}
 
+              {/* Custom Diet Plan Card (PT Exclusive) */}
+              <View style={styles.ptDietCard}>
+                <View style={styles.ptDietCardHeader}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                    <Apple size={16} color={colors.gold} />
+                    <View>
+                      <Text style={styles.ptDietCardTitle}>CUSTOM DIET PLAN</Text>
+                      <Text style={styles.ptDietCardSub}>WhatsApp Daily Nutrition</Text>
+                    </View>
+                  </View>
+                  {memberDietPlan ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        haptics.light();
+                        setShowDietModal(true);
+                      }}
+                      style={styles.ptDietEditBtn}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.ptDietEditBtnText}>Edit</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      onPress={() => {
+                        haptics.light();
+                        setShowDietModal(true);
+                      }}
+                      style={styles.ptDietCreateBtn}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.ptDietCreateBtnText}>+ Create Plan</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {memberDietPlan ? (() => {
+                  const isWeekly = memberDietPlan.plan_type === 'WEEKLY' || Boolean(memberDietPlan.weekly_schedule && Object.keys(memberDietPlan.weekly_schedule).length > 0);
+                  const today = getTodayDayOfWeek();
+                  const activeDay = selectedDietDayPreview || today;
+                  const currentMeals = isWeekly && memberDietPlan.weekly_schedule?.[activeDay]
+                    ? memberDietPlan.weekly_schedule[activeDay]!
+                    : (memberDietPlan.meals || []);
+
+                  return (
+                    <View style={styles.ptDietBody}>
+                      <Text style={styles.ptDietPlanTitle}>{memberDietPlan.title}</Text>
+                      {memberDietPlan.goal && (
+                        <Text style={styles.ptDietPlanGoal}>🎯 {memberDietPlan.goal}</Text>
+                      )}
+
+                      {/* Validity & Plan Type */}
+                      <View style={styles.dietValidityRow}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <Calendar size={11} color={colors.blue} />
+                          <Text style={styles.dietValidityText}>
+                            {memberDietPlan.start_date && memberDietPlan.end_date
+                              ? `${formatDate(memberDietPlan.start_date)} – ${formatDate(memberDietPlan.end_date)}`
+                              : '1-Month Ongoing'}
+                          </Text>
+                        </View>
+                        <FVEBadge
+                          label={isWeekly ? '7-DAY ROTATION' : 'DAILY PLAN'}
+                          color={isWeekly ? colors.gold : colors.textMuted}
+                          bgColor={isWeekly ? 'rgba(239, 161, 0, 0.12)' : 'rgba(255, 255, 255, 0.05)'}
+                          size="sm"
+                        />
+                      </View>
+
+                      <View style={styles.ptDietMacrosRow}>
+                        <View style={styles.ptDietMacroCol}>
+                          <Text style={styles.ptDietMacroLabel}>Calories</Text>
+                          <Text style={[styles.ptDietMacroVal, { color: colors.gold }]}>
+                            {memberDietPlan.daily_calories ? `${memberDietPlan.daily_calories}` : '—'}
+                          </Text>
+                        </View>
+                        <View style={styles.ptDietMacroCol}>
+                          <Text style={styles.ptDietMacroLabel}>Protein</Text>
+                          <Text style={styles.ptDietMacroVal}>
+                            {memberDietPlan.protein_grams ? `${memberDietPlan.protein_grams}g` : '—'}
+                          </Text>
+                        </View>
+                        <View style={styles.ptDietMacroCol}>
+                          <Text style={styles.ptDietMacroLabel}>Carbs/Fats</Text>
+                          <Text style={[styles.ptDietMacroVal, { fontSize: 11 }]}>
+                            {memberDietPlan.carbs_grams || 0}g / {memberDietPlan.fats_grams || 0}g
+                          </Text>
+                        </View>
+                        <View style={styles.ptDietMacroCol}>
+                          <Text style={styles.ptDietMacroLabel}>Water</Text>
+                          <Text style={[styles.ptDietMacroVal, { color: colors.blue }]}>
+                            {memberDietPlan.water_liters ? `${memberDietPlan.water_liters}L` : '—'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* If weekly: 7-day selector tabs */}
+                      {isWeekly && (
+                        <View style={{ marginTop: 2, marginBottom: 4 }}>
+                          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
+                            {DAYS_OF_WEEK.map(day => {
+                              const isAct = activeDay === day;
+                              const isTod = day === today;
+                              const count = (memberDietPlan.weekly_schedule?.[day] || []).length;
+                              return (
+                                <TouchableOpacity
+                                  key={day}
+                                  onPress={() => {
+                                    haptics.selection();
+                                    setSelectedDietDayPreview(day);
+                                  }}
+                                  style={[styles.dietDayChip, isAct && styles.dietDayChipActive]}
+                                  activeOpacity={0.7}
+                                >
+                                  <Text style={[styles.dietDayChipText, isAct && styles.dietDayChipTextActive]}>
+                                    {day.slice(0, 3)} {count > 0 ? `(${count})` : ''} {isTod ? '•' : ''}
+                                  </Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </ScrollView>
+                        </View>
+                      )}
+
+                      {/* Meals box */}
+                      <View style={styles.ptDietMealsBox}>
+                        <Text style={styles.ptDietMealsTitle}>
+                          {isWeekly ? `${activeDay.toUpperCase()} MEALS (${currentMeals.length}):` : `SCHEDULED MEALS (${currentMeals.length}):`}
+                        </Text>
+                        {currentMeals.length === 0 ? (
+                          <Text style={{ fontSize: 11, color: colors.textMuted, fontStyle: 'italic', paddingVertical: 2 }}>
+                            No meals listed for {activeDay}.
+                          </Text>
+                        ) : (
+                          currentMeals.slice(0, 3).map((m, idx) => (
+                            <Text key={idx} style={styles.ptDietMealItem} numberOfLines={1}>
+                              • <Text style={{ fontWeight: '700', color: colors.textPrimary }}>{m.name}{m.time ? ` (${m.time})` : ''}</Text>: {m.items}
+                            </Text>
+                          ))
+                        )}
+                        {currentMeals.length > 3 && (
+                          <Text style={styles.ptDietMealsMore}>+{currentMeals.length - 3} more meals</Text>
+                        )}
+                      </View>
+
+                      {/* WhatsApp Action Buttons */}
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <TouchableOpacity
+                          onPress={() => handleSendWhatsAppDiet(isWeekly ? activeDay : undefined)}
+                          style={[styles.ptDietWhatsAppBtn, { flex: 1 }]}
+                          activeOpacity={0.8}
+                        >
+                          <MessageCircle size={15} color="#000" />
+                          <Text style={styles.ptDietWhatsAppBtnText}>
+                            Send {isWeekly ? `${activeDay.slice(0, 3)}'s Diet` : 'Diet'} via WhatsApp
+                          </Text>
+                        </TouchableOpacity>
+
+                        {isWeekly && (
+                          <TouchableOpacity
+                            onPress={() => {
+                              haptics.light();
+                              setShowDietShareModal(true);
+                            }}
+                            style={styles.dietMoreDaysBtn}
+                            activeOpacity={0.7}
+                          >
+                            <ChevronDown size={14} color={colors.textSecondary} />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+                  );
+                })() : (
+                  <Text style={styles.ptDietEmptyText}>
+                    No custom diet plan created yet for this PT member. Tap "+ Create Plan" to set calories, macros, and daily meals for WhatsApp sharing.
+                  </Text>
+                )}
+              </View>
+
               {/* Cancel PT Option */}
               {['OWNER', 'ADMIN'].includes(user?.role || '') && (
                 <TouchableOpacity
@@ -994,6 +1344,14 @@ export function MemberDetailScreen() {
               <Text style={[styles.emptyNoticeText, { fontSize: 11, color: colors.textMuted, marginTop: 2, marginBottom: 8 }]}>
                 Add 1-on-1 coaching at any time linked to active membership.
               </Text>
+
+              {/* Locked Diet Notice */}
+              <View style={styles.lockedDietBanner}>
+                <Lock size={14} color={colors.gold} />
+                <Text style={styles.lockedDietText}>
+                  Custom Diet Plans & Daily WhatsApp Delivery are exclusive to Personal Training members.
+                </Text>
+              </View>
               <FVEButton
                 title="+ Request Personal Training"
                 onPress={() => {
@@ -1151,6 +1509,30 @@ export function MemberDetailScreen() {
         preselectedMemberId={memberId}
       />
 
+      {/* Plan Upgrade / Change Modal */}
+      {activeMembership && member && (
+        <PlanChangeModal
+          visible={showPlanChangeModal}
+          onClose={() => {
+            setShowPlanChangeModal(false);
+            setSelectedPlanChangeRequest(null);
+          }}
+          member={member}
+          activeMembership={activeMembership}
+          existingRequest={selectedPlanChangeRequest}
+          onSuccess={() => {
+            refetch();
+            qc.invalidateQueries({ queryKey: ['member-detail', memberId] });
+            qc.invalidateQueries({ queryKey: ['member-memberships', memberId] });
+            qc.invalidateQueries({ queryKey: ['member-payments', memberId] });
+            qc.invalidateQueries({ queryKey: ['member-plan-change-requests', memberId] });
+            qc.invalidateQueries({ queryKey: ['plan-change-requests'] });
+            qc.invalidateQueries({ queryKey: ['mobile-membership-plans'] });
+            qc.invalidateQueries({ queryKey: ['mobile-dashboard-stats'] });
+          }}
+        />
+      )}
+
       {/* Attendance Calendar Modal */}
       {member && (
         <AttendanceCalendarModal
@@ -1233,6 +1615,76 @@ export function MemberDetailScreen() {
           session={activePTSession}
           mode={ptSessionModalMode}
         />
+      )}
+
+      {/* Diet Plan Modal */}
+      {showDietModal && member && (
+        <DietPlanModal
+          visible={showDietModal}
+          onClose={() => setShowDietModal(false)}
+          onSuccess={() => {
+            refetchDietPlan();
+            qc.invalidateQueries({ queryKey: ['mobile-diet-plans'] });
+          }}
+          initialMemberId={member.id}
+          initialPTId={personalTraining?.id}
+          existingDiet={memberDietPlan}
+        />
+      )}
+
+      {/* Diet Plan Share Day Picker Modal */}
+      {showDietShareModal && memberDietPlan && (
+        <FVEModal
+          visible={showDietShareModal}
+          onClose={() => setShowDietShareModal(false)}
+          title="SHARE DIET VIA WHATSAPP"
+          subtitle={`Member: ${member?.full_name || 'Member'}`}
+        >
+          <View style={{ gap: 8, paddingBottom: 16 }}>
+            <Text style={{ fontSize: 11, color: colors.textMuted, fontFamily: typography.fonts.inter, marginBottom: 4 }}>
+              Choose which day of the weekly rotation to send:
+            </Text>
+            {DAYS_OF_WEEK.map(day => {
+              const isToday = day === getTodayDayOfWeek();
+              const mealsCount = (memberDietPlan.weekly_schedule?.[day] || []).length;
+              return (
+                <TouchableOpacity
+                  key={day}
+                  onPress={() => {
+                    handleSendWhatsAppDiet(day);
+                    setShowDietShareModal(false);
+                  }}
+                  style={[
+                    styles.shareDayItem,
+                    isToday && { borderColor: colors.gold, backgroundColor: 'rgba(239, 161, 0, 0.08)' },
+                  ]}
+                  activeOpacity={0.7}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={[styles.shareDayName, isToday && { color: colors.gold }]}>
+                      {day} {isToday ? '(Today)' : ''}
+                    </Text>
+                    <Text style={styles.shareDayCount}>· {mealsCount} meals</Text>
+                  </View>
+                  <MessageCircle size={15} color="#25D366" />
+                </TouchableOpacity>
+              );
+            })}
+
+            <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 6 }} />
+
+            <TouchableOpacity
+              onPress={() => {
+                handleSendWhatsAppFullWeekDiet();
+                setShowDietShareModal(false);
+              }}
+              style={styles.shareFullWeekBtn}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.shareFullWeekText}>📋 Send Full 7-Day Meal Schedule</Text>
+            </TouchableOpacity>
+          </View>
+        </FVEModal>
       )}
     </View>
   );
@@ -1809,4 +2261,319 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontFamily: typography.fonts.rajdhani,
   },
+  pendingUpgradeBanner: {
+    backgroundColor: 'rgba(239, 161, 0, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 161, 0, 0.35)',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+    gap: 6,
+  },
+  pendingUpgradeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  pendingUpgradeTitle: {
+    fontFamily: typography.fonts.rajdhani,
+    fontSize: 11,
+    color: colors.warning,
+    letterSpacing: 0.6,
+  },
+  pendingUpgradeBalance: {
+    fontFamily: typography.fonts.rajdhani,
+    fontSize: 12,
+    color: colors.gold,
+  },
+  pendingUpgradeDesc: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    lineHeight: 16,
+  },
+  reviewUpgradeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: colors.gold,
+    borderRadius: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    marginTop: 4,
+  },
+  reviewUpgradeBtnText: {
+    fontSize: 11,
+    fontFamily: typography.fonts.rajdhani,
+    color: colors.background,
+  },
+  membershipTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  upgradePlanLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(239, 161, 0, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 161, 0, 0.3)',
+    borderRadius: 6,
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+  },
+  upgradePlanLinkText: {
+    fontSize: 10,
+    fontFamily: typography.fonts.rajdhani,
+    color: colors.gold,
+    letterSpacing: 0.3,
+  },
+  ptDietCard: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 161, 0, 0.25)',
+    gap: 8,
+  },
+  ptDietCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  ptDietCardTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    fontFamily: typography.fonts.rajdhani,
+    letterSpacing: 0.5,
+  },
+  ptDietCardSub: {
+    fontSize: 9,
+    color: colors.textMuted,
+    fontFamily: typography.fonts.inter,
+  },
+  ptDietEditBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  ptDietEditBtnText: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    fontFamily: typography.fonts.inter,
+  },
+  ptDietCreateBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: 'rgba(239, 161, 0, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 161, 0, 0.3)',
+  },
+  ptDietCreateBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.gold,
+    fontFamily: typography.fonts.rajdhani,
+  },
+  ptDietBody: {
+    gap: 8,
+  },
+  ptDietPlanTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    fontFamily: typography.fonts.rajdhani,
+  },
+  ptDietPlanGoal: {
+    fontSize: 11,
+    color: colors.gold,
+    fontFamily: typography.fonts.inter,
+  },
+  ptDietMacrosRow: {
+    flexDirection: 'row',
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
+  ptDietMacroCol: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  ptDietMacroLabel: {
+    fontSize: 8,
+    color: colors.textMuted,
+    fontFamily: typography.fonts.inter,
+    marginBottom: 2,
+  },
+  ptDietMacroVal: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    fontFamily: typography.fonts.rajdhani,
+  },
+  ptDietMealsBox: {
+    padding: 6,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  ptDietMealsTitle: {
+    fontSize: 10,
+    color: colors.textSecondary,
+    fontFamily: typography.fonts.inter,
+  },
+  ptDietWhatsAppBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#25D366',
+    paddingVertical: 8,
+    borderRadius: 8,
+    shadowColor: '#25D366',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  ptDietWhatsAppBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#000',
+    fontFamily: typography.fonts.rajdhani,
+    letterSpacing: 0.5,
+  },
+  ptDietEmptyText: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontFamily: typography.fonts.inter,
+    lineHeight: 16,
+    fontStyle: 'italic',
+  },
+  lockedDietBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 10,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    marginTop: 6,
+    marginBottom: 8,
+  },
+  lockedDietText: {
+    flex: 1,
+    fontSize: 11,
+    color: colors.textMuted,
+    fontFamily: typography.fonts.inter,
+    lineHeight: 15,
+  },
+  dietValidityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 2,
+    marginBottom: 4,
+  },
+  dietValidityText: {
+    fontSize: 10,
+    color: colors.textSecondary,
+    fontFamily: typography.fonts.rajdhani,
+  },
+  dietDayChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginRight: 6,
+  },
+  dietDayChipActive: {
+    backgroundColor: colors.gold,
+    borderColor: colors.gold,
+  },
+  dietDayChipText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.textMuted,
+    fontFamily: typography.fonts.rajdhani,
+  },
+  dietDayChipTextActive: {
+    color: '#000',
+  },
+  ptDietMealItem: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    fontFamily: typography.fonts.inter,
+    marginVertical: 1,
+  },
+  ptDietMealsMore: {
+    fontSize: 10,
+    color: colors.textMuted,
+    fontFamily: typography.fonts.inter,
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  dietMoreDaysBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shareDayItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  shareDayName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    fontFamily: typography.fonts.rajdhani,
+  },
+  shareDayCount: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontFamily: typography.fonts.inter,
+  },
+  shareFullWeekBtn: {
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0, 102, 255, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 102, 255, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shareFullWeekText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.blue,
+    fontFamily: typography.fonts.rajdhani,
+  },
 });
+

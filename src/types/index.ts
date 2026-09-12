@@ -205,3 +205,84 @@ export interface PTSession {
   trainer?: UserProfile;
   personal_training?: PersonalTraining;
 }
+
+export type PlanChangeStatus = 'PENDING' | 'APPROVED' | 'COMPLETED' | 'REJECTED' | 'CANCELLED';
+export type PlanChangeValidityMode = 'FROM_START_DATE' | 'FROM_EXPIRY' | 'FROM_TODAY' | 'CUSTOM';
+
+export interface PlanChangeRequest {
+  id: string;
+  member_id: string;
+  membership_id: string | null;
+  current_plan_id: string | null;
+  requested_plan_id: string;
+  amount_already_paid: string | number;
+  new_plan_price: string | number;
+  balance_amount: string | number;
+  validity_mode: PlanChangeValidityMode;
+  calculated_expiry_date: string | null;
+  status: PlanChangeStatus;
+  notes: string | null;
+  rejection_reason?: string | null;
+  requested_by_role?: string | null;
+  requested_by?: string | null;
+  approved_by?: string | null;
+  payment_id?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+  members?: Member;
+  current_plan?: MembershipPlan;
+  requested_plan?: MembershipPlan;
+  memberships?: Membership & { membership_plans?: MembershipPlan };
+  payments?: Payment;
+  approver?: UserProfile;
+}
+
+export type DayOfWeek = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
+
+export const DAYS_OF_WEEK: DayOfWeek[] = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+];
+
+export interface DietMeal {
+  name: string;
+  time?: string;
+  items: string;
+}
+
+export type DietPlanStatus = 'ACTIVE' | 'INACTIVE';
+export type DietPlanType = 'DAILY' | 'WEEKLY';
+
+export interface DietPlan {
+  id: string;
+  member_id: string;
+  personal_training_id: string;
+  trainer_id?: string | null;
+  title: string;
+  goal?: string | null;
+  daily_calories?: number | null;
+  protein_grams?: number | null;
+  carbs_grams?: number | null;
+  fats_grams?: number | null;
+  water_liters?: number | null;
+  plan_type?: DietPlanType;
+  meals: DietMeal[];
+  weekly_schedule?: Partial<Record<DayOfWeek, DietMeal[]>> | null;
+  instructions?: string | null;
+  supplements?: string | null;
+  status: DietPlanStatus;
+  start_date?: string | null;
+  end_date?: string | null;
+  created_by?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+  members?: Member;
+  personal_training?: PersonalTraining;
+  trainer?: UserProfile;
+}
+
