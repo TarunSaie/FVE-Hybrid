@@ -97,7 +97,6 @@ export const FVEInput = forwardRef<TextInput, FVEInputProps>(function FVEInput(
   );
 
   const isInputFocused = controlledFocused !== undefined ? controlledFocused : internalFocused;
-  const isMultiline = Boolean(rest.multiline);
 
   const handleContainerPress = () => {
     if (editable) {
@@ -113,17 +112,13 @@ export const FVEInput = forwardRef<TextInput, FVEInputProps>(function FVEInput(
         onPress={handleContainerPress}
         style={[
           styles.inputContainer,
-          isMultiline && styles.inputContainerMultiline,
           isInputFocused && styles.focusedContainer,
           !!error && styles.errorContainer,
           !editable && styles.disabledContainer,
         ]}
       >
         {leftIcon && (
-          <View
-            pointerEvents="none"
-            style={[styles.leftIconContainer, isMultiline && styles.leftIconContainerMultiline]}
-          >
+          <View pointerEvents="none" style={styles.leftIconContainer}>
             {leftIcon}
           </View>
         )}
@@ -141,7 +136,6 @@ export const FVEInput = forwardRef<TextInput, FVEInputProps>(function FVEInput(
           autoCorrect={false}
           spellCheck={false}
           selectTextOnFocus={false}
-          textAlignVertical={isMultiline ? 'top' : 'center'}
           onFocus={(e) => {
             broadcastFocus(inputId);
             onFocus?.(e);
@@ -152,11 +146,7 @@ export const FVEInput = forwardRef<TextInput, FVEInputProps>(function FVEInput(
             }
             onBlur?.(e);
           }}
-          style={[
-            styles.input,
-            isMultiline ? styles.inputMultiline : styles.inputSingleLine,
-            style,
-          ]}
+          style={[styles.input, style]}
           {...rest}
         />
 
@@ -164,7 +154,7 @@ export const FVEInput = forwardRef<TextInput, FVEInputProps>(function FVEInput(
           <TouchableOpacity
             onPress={onRightIconPress}
             disabled={!onRightIconPress}
-            style={[styles.rightIconContainer, isMultiline && styles.rightIconContainerMultiline]}
+            style={styles.rightIconContainer}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
             {rightIcon}
@@ -200,11 +190,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     minHeight: 52,
   },
-  inputContainerMultiline: {
-    alignItems: 'flex-start',
-    minHeight: 88,
-    paddingVertical: Platform.OS === 'ios' ? 12 : 8,
-  },
   focusedContainer: {
     borderColor: colors.gold,
     backgroundColor: '#161A22',
@@ -225,36 +210,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  leftIconContainerMultiline: {
-    paddingTop: Platform.OS === 'ios' ? 2 : 4,
-  },
   rightIconContainer: {
     marginLeft: 10,
     padding: 4,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  rightIconContainerMultiline: {
-    paddingTop: Platform.OS === 'ios' ? 2 : 4,
-  },
   input: {
     flex: 1,
     color: colors.textPrimary,
-    fontSize: 15,
+    fontSize: typography.sizes.base,
     fontFamily: typography.fonts.inter,
-    paddingHorizontal: 0,
-    includeFontPadding: false,
-  },
-  inputSingleLine: {
-    height: 48,
-    paddingVertical: Platform.OS === 'ios' ? 12 : 0,
-    textAlignVertical: 'center',
-  },
-  inputMultiline: {
-    minHeight: 68,
-    textAlignVertical: 'top',
-    paddingTop: Platform.OS === 'ios' ? 0 : 2,
-    paddingBottom: Platform.OS === 'ios' ? 0 : 2,
+    paddingVertical: 12,
+    minHeight: 48,
   },
   errorText: {
     color: colors.error,

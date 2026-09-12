@@ -911,8 +911,6 @@ export function PlanChangeModal({
                   onChangeText={setRejectionReason}
                   placeholder="Enter reason for rejecting request..."
                   placeholderTextColor={colors.textMuted}
-                  multiline
-                  numberOfLines={2}
                   style={styles.rejectInput}
                 />
                 <View style={styles.rejectActionsRow}>
@@ -1169,21 +1167,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 6,
-    paddingHorizontal: 8,
-    height: 32,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
   },
   discountInput: {
     color: colors.textPrimary,
     fontSize: 12,
     fontFamily: typography.fonts.inter,
     fontWeight: '700',
-    width: 54,
-    height: 28,
+    width: 50,
     textAlign: 'right',
-    textAlignVertical: 'center',
-    includeFontPadding: false,
-    paddingVertical: 0,
-    paddingHorizontal: 0,
+    padding: 0,
   },
   balanceLine: {
     flexDirection: 'row',
@@ -1350,14 +1344,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     color: colors.textPrimary,
     fontSize: 12,
-    lineHeight: 18,
-    fontFamily: typography.fonts.inter,
     paddingHorizontal: 10,
-    paddingTop: 8,
-    paddingBottom: 8,
-    minHeight: 56,
-    textAlignVertical: 'top',
-    includeFontPadding: false,
+    paddingVertical: 8,
   },
   rejectActionsRow: {
     flexDirection: 'row',
