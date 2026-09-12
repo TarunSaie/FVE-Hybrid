@@ -17,30 +17,114 @@ export function formatCurrency(amount: number | string | null | undefined): stri
 }
 
 /**
- * Strips non-digits and ensures country code 91 is present.
+ * Strips formatting and returns a fully qualified E.164 phone number without '+' for WhatsApp.
+ * Accurately handles:
+ *  - 10-digit Indian numbers (including numbers starting with '91' like 9121xxxxxx, 9182xxxxxx)
+ *  - 11-digit Indian numbers with trunk zero (e.g. 09876543210 -> 919876543210)
+ *  - 12-digit Indian numbers with 91 (e.g. 919876543210, +91 9876543210)
+ *  - 13-digit Indian numbers with 91 and trunk 0 (e.g. +91 09876543210 -> 919876543210)
+ *  - 14-digit numbers with 0091 (e.g. 00919876543210 -> 919876543210)
+ *  - International numbers with leading '+' (e.g. +1 415 555 2671 -> 14155552671)
  */
-export function formatWhatsAppPhone(phone: string): string {
-  const digits = phone.replace(/\D/g, '');
-  if (digits.length === 10) return `91${digits}`;
-  return digits;
+export function formatWhatsAppPhone(rawPhone?: string | null): string {
+  if (!rawPhone) return '';
+  const str = String(rawPhone).trim();
+  if (!str || str.toLowerCase() === 'null' || str.toLowerCase() === 'undefined') {
+    return '';
+  }
+
+  const hasLeadingPlus = str.startsWith('+');
+  let digits = str.replace(/\D/g, '');
+  if (!digits) return '';
+
+  // Handle international dialing prefix '00' (e.g. 0091... -> 91...)
+  if (digits.startsWith('00')) {
+    digits = digits.slice(2);
+  }
+
+  // Handle Indian number with country code + trunk 0 (e.g. 9109876543210 -> 919876543210)
+  if (digits.length === 13 && digits.startsWith('910')) {
+    digits = '91' + digits.slice(3);
+  }
+
+  // Handle 11-digit numbers starting with trunk 0 (e.g. 09876543210 -> 9876543210)
+  if (digits.length === 11 && digits.startsWith('0')) {
+    digits = digits.slice(1);
+  }
+
+  // Standard Indian 10-digit mobile number:
+  // In India, mobile numbers are 10 digits (series 6, 7, 8, 9, including 91xxxxxx).
+  // They MUST always be prepended with 91 for WhatsApp international format.
+  if (digits.length === 10) {
+    return `91${digits}`;
+  }
+
+  // Already 12-digit Indian number with country code 91:
+  if (digits.length === 12 && digits.startsWith('91')) {
+    return digits;
+  }
+
+  // International number explicitly entered with '+' (e.g. +14155552671)
+  if (hasLeadingPlus && digits.length >= 10 && digits.length <= 15) {
+    return digits;
+  }
+
+  // If number is longer than 10 digits and ends with a valid 10-digit Indian mobile (starts with 6-9):
+  if (digits.length > 10) {
+    const last10 = digits.slice(-10);
+    if (/^[6-9]\d{9}$/.test(last10)) {
+      return `91${last10}`;
+    }
+  }
+
+  // If digits are valid 10-15 length, return them
+  if (digits.length >= 10 && digits.length <= 15) {
+    return digits;
+  }
+
+  return '';
 }
 
 /**
  * Opens WhatsApp on device with pre-filled text message.
+ * Prioritizes the native WhatsApp URI scheme (whatsapp://send?phone=...&text=...)
+ * to directly jump to the specific conversation, and falls back to wa.me if needed.
  */
-export async function openWhatsAppLink(phone: string, message: string): Promise<void> {
+export async function openWhatsAppLink(phone?: string | null, message = ''): Promise<void> {
   const cleanPhone = formatWhatsAppPhone(phone);
+  if (!cleanPhone) {
+    Alert.alert(
+      'Invalid Mobile Number',
+      'This member does not have a valid 10-digit mobile number for WhatsApp. Please check or update their profile.'
+    );
+    return;
+  }
+
   const encoded = encodeURIComponent(message);
-  const url = `https://wa.me/${cleanPhone}?text=${encoded}`;
+  const nativeUrl = `whatsapp://send?phone=${cleanPhone}&text=${encoded}`;
+  const webUrl = `https://wa.me/${cleanPhone}?text=${encoded}`;
+
   try {
-    const supported = await Linking.canOpenURL(url);
-    if (supported) {
-      await Linking.openURL(url);
-    } else {
-      Alert.alert('Unable to open WhatsApp', 'WhatsApp is not installed or the link cannot be handled on this device.');
+    const canOpenNative = await Linking.canOpenURL(nativeUrl);
+    if (canOpenNative) {
+      await Linking.openURL(nativeUrl);
+      return;
     }
-  } catch (error) {
-    Alert.alert('WhatsApp Error', (error as Error).message || 'Failed to open WhatsApp');
+
+    const canOpenWeb = await Linking.canOpenURL(webUrl);
+    if (canOpenWeb) {
+      await Linking.openURL(webUrl);
+      return;
+    }
+
+    Alert.alert('Unable to open WhatsApp', 'WhatsApp is not installed or cannot be opened on this device.');
+  } catch {
+    // If native deep link attempt threw an error, attempt web fallback
+    try {
+      await Linking.openURL(webUrl);
+    } catch (fallbackError) {
+      Alert.alert('WhatsApp Error', (fallbackError as Error).message || 'Failed to open WhatsApp');
+    }
   }
 }
 
