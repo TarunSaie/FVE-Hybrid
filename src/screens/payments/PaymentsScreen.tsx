@@ -27,7 +27,7 @@ import { typography } from '@/constants/typography';
 import { formatCurrency, openWhatsAppLink } from '@/utils/format';
 import { formatDate } from '@/utils/date';
 import { RootStackParamList } from '@/navigation/types';
-import { buildReceiptDataFromPayment, sharePdfReceipt } from '@/utils/receiptPdf';
+import { buildReceiptDataFromPayment, sharePdfReceipt, directShareReceiptToWhatsApp } from '@/utils/receiptPdf';
 
 import { haptics } from '@/utils/haptics';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -112,35 +112,62 @@ export function PaymentsScreen() {
 
   const handleShareWhatsApp = async (p: Payment) => {
     haptics.medium();
-    try {
-      const receiptData = buildReceiptDataFromPayment(p);
-      const memberName = p.members?.full_name || 'Member';
-      const planName = p.memberships?.membership_plans?.name || 'Membership';
-      const startDate = p.memberships?.start_date ? formatDate(p.memberships.start_date) : null;
-      const endDate = p.memberships?.expiry_date ? formatDate(p.memberships.expiry_date) : null;
-      const validityLine = startDate && endDate ? `Validity: ${startDate} TO ${endDate}\n` : '';
-      const text =
-        `*FitVerse Elite Official Receipt*\n` +
-        `Receipt No: #${p.receipt_number || 'N/A'}\n` +
-        `Member: ${memberName}${p.members?.member_id ? ` (${p.members.member_id})` : ''}\n` +
-        `Plan: ${planName}\n` +
-        validityLine +
-        `Amount Paid: ${formatCurrency(p.amount)}\n` +
-        `Payment Method: ${p.payment_method}\n` +
-        `Date: ${formatDate(p.payment_date || p.created_at)}\n\n` +
-        `*DISCIPLINE • STRENGTH • TRANSFORMATION*\n` +
-        `FitVerse Elite Gym Management\n` +
-        `Powered by Chirvex (https://chirvex.in/)`;
+    const memberName = p.members?.full_name || 'Member';
+    const memberMobile = p.members?.mobile;
 
-      // Copy summary text to clipboard so it can be pasted into WhatsApp if desired
-      await Clipboard.setStringAsync(text);
-
-      // Generate and share the PDF invoice
-      await sharePdfReceipt(receiptData);
-    } catch (err: unknown) {
-      haptics.error();
-      Alert.alert('Share Receipt', (err as Error).message || 'Failed to generate receipt PDF');
+    if (!memberMobile) {
+      Alert.alert(
+        'No Mobile Number',
+        `${memberName} does not have a registered mobile number for direct WhatsApp redirection. Would you like to share the PDF invoice via the system share sheet?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Share PDF File',
+            onPress: async () => {
+              try {
+                const receiptData = buildReceiptDataFromPayment(p);
+                await sharePdfReceipt(receiptData);
+              } catch (err) {
+                Alert.alert('Error', (err as Error).message || 'Failed to share receipt');
+              }
+            },
+          },
+        ]
+      );
+      return;
     }
+
+    Alert.alert(
+      'Share Receipt',
+      `Choose how to share Receipt #${p.receipt_number || 'N/A'} for ${memberName}:`,
+      [
+        {
+          text: '⚡ Direct WhatsApp (with PDF Link)',
+          onPress: async () => {
+            try {
+              haptics.medium();
+              const receiptData = buildReceiptDataFromPayment(p);
+              await directShareReceiptToWhatsApp(receiptData, memberMobile);
+            } catch (err) {
+              Alert.alert('Error', (err as Error).message || 'Failed to dispatch WhatsApp receipt');
+            }
+          },
+        },
+        {
+          text: '📎 Attach PDF (Share Sheet)',
+          onPress: async () => {
+            try {
+              haptics.light();
+              const receiptData = buildReceiptDataFromPayment(p);
+              await sharePdfReceipt(receiptData);
+            } catch (err) {
+              Alert.alert('Error', (err as Error).message || 'Failed to share receipt PDF');
+            }
+          },
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
   };
 
   return (

@@ -609,7 +609,7 @@ export function DietPlanModal({
           <FVEInput
             value={title}
             onChangeText={setTitle}
-            placeholder="e.g. Daily High-Protein Shred Plan"
+            placeholder="e.g. High-Protein Shred Plan"
           />
         </View>
 
@@ -618,7 +618,7 @@ export function DietPlanModal({
           <FVEInput
             value={goal}
             onChangeText={setGoal}
-            placeholder="e.g. Fat Loss & Hypertrophy"
+            placeholder="e.g. Fat Loss & Lean Muscle"
           />
         </View>
 
@@ -861,7 +861,7 @@ export function DietPlanModal({
                   <TextInput
                     value={meal.name}
                     onChangeText={val => handleUpdateMeal(idx, 'name', val)}
-                    placeholder="Meal Name (e.g. Breakfast)"
+                    placeholder="e.g. Breakfast"
                     placeholderTextColor={colors.textMuted}
                     style={styles.mealNameInput}
                   />
@@ -889,7 +889,7 @@ export function DietPlanModal({
                 <TextInput
                   value={meal.items}
                   onChangeText={val => handleUpdateMeal(idx, 'items', val)}
-                  placeholder="Food items & quantities (e.g. 4 boiled eggs + 2 brown bread slices)"
+                  placeholder="e.g. 4 boiled eggs, 2 brown bread slices"
                   placeholderTextColor={colors.textMuted}
                   multiline
                   numberOfLines={2}
@@ -906,7 +906,7 @@ export function DietPlanModal({
           <TextInput
             value={supplements}
             onChangeText={setSupplements}
-            placeholder="e.g. Whey Protein Isolate (1 scoop post-workout), Creatine 5g, Fish Oil"
+            placeholder="e.g. Whey Protein, Creatine 5g, Fish Oil"
             placeholderTextColor={colors.textMuted}
             multiline
             numberOfLines={2}
@@ -920,7 +920,7 @@ export function DietPlanModal({
           <TextInput
             value={instructions}
             onChangeText={setInstructions}
-            placeholder="e.g. Drink 1L water before noon. Avoid refined sugar. Take creatine with carbs."
+            placeholder="e.g. Drink 3.5L water daily. Avoid refined sugars."
             placeholderTextColor={colors.textMuted}
             multiline
             numberOfLines={2}
@@ -1230,6 +1230,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: typography.fonts.inter,
     minHeight: 44,
+    textAlignVertical: 'top',
   },
   textAreaInput: {
     backgroundColor: 'rgba(0, 0, 0, 0.4)',
@@ -1241,6 +1242,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: typography.fonts.inter,
     minHeight: 52,
+    textAlignVertical: 'top',
   },
   phoneNotice: {
     paddingVertical: 8,

@@ -322,7 +322,7 @@ export function PTRequestModal({
           label="PRIMARY FITNESS GOALS"
           value={goals}
           onChangeText={setGoals}
-          placeholder="e.g. Strength building, fat loss, muscle tone"
+          placeholder="e.g. Strength, fat loss, muscle tone"
           multiline
           numberOfLines={2}
           containerStyle={{ marginTop: 12 }}
@@ -333,7 +333,7 @@ export function PTRequestModal({
           label="SCHEDULE / MEDICAL PREFERENCES"
           value={notes}
           onChangeText={setNotes}
-          placeholder="e.g. Morning 7 AM preference, lower back precaution"
+          placeholder="e.g. 7 AM timing, back precaution"
           multiline
           numberOfLines={2}
           containerStyle={{ marginTop: 12 }}

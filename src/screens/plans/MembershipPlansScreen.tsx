@@ -564,7 +564,7 @@ export function MembershipPlansScreen() {
               <TextInput
                 value={searchQuery}
                 onChangeText={setSearchQuery}
-                placeholder="Search member name, ID, or phone..."
+                placeholder="Search by name, ID, or phone..."
                 placeholderTextColor={colors.textMuted}
                 style={styles.searchInput}
               />

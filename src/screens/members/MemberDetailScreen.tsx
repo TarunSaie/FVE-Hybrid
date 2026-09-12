@@ -40,6 +40,7 @@ import {
   Droplets,
   Lock,
   ChevronDown,
+  ChevronRight,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEBadge } from '@/components/common/FVEBadge';
@@ -73,7 +74,7 @@ import { useDialog } from '@/contexts/DialogContext';
 import { supabase } from '@/api/supabase';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
-import { formatDate, calculateAge, getLocalDateStr } from '@/utils/date';
+import { formatDate, calculateAge, getLocalDateStr, formatTime } from '@/utils/date';
 import {
   formatCurrency,
   openWhatsAppLink,
@@ -91,7 +92,7 @@ import {
   shareMemberPassPdf,
   buildMemberSubscriptionClipboardText,
 } from '@/utils/memberPdf';
-import { buildReceiptDataFromPayment, sharePdfReceipt } from '@/utils/receiptPdf';
+import { buildReceiptDataFromPayment, sharePdfReceipt, directShareReceiptToWhatsApp } from '@/utils/receiptPdf';
 
 type DetailRouteProp = RouteProp<RootStackParamList, 'MemberDetail'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -513,7 +514,35 @@ export function MemberDetailScreen() {
             },
           },
           {
-            text: '🧾 Latest Receipt (PDF)',
+            text: '⚡ Direct WhatsApp Receipt (with PDF Link)',
+            onPress: async () => {
+              try {
+                const latestPayment = payments[0];
+                const receiptData = buildReceiptDataFromPayment(latestPayment);
+                haptics.medium();
+                const res = await directShareReceiptToWhatsApp(receiptData, member.mobile);
+                if (!res.success && !res.hasPhone) {
+                  Alert.alert(
+                    'No Mobile Number',
+                    'This member does not have a registered mobile number. Please update their profile or use the Share Sheet option.',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Share via App Sheet',
+                        onPress: () => sharePdfReceipt(receiptData),
+                      },
+                    ]
+                  );
+                }
+              } catch (err: unknown) {
+                const msg = (err as Error)?.message || '';
+                haptics.error();
+                Alert.alert('Error', msg || 'Failed to dispatch WhatsApp receipt');
+              }
+            },
+          },
+          {
+            text: '📎 Attach Receipt PDF (Share Sheet)',
             onPress: async () => {
               try {
                 const latestPayment = payments[0];
@@ -691,34 +720,22 @@ export function MemberDetailScreen() {
               </>
             )}
 
-            {/* Collect Payment / Payment Completed Button */}
-            <TouchableOpacity
-              onPress={() => {
-                if (canCollectPayment) {
+            {/* Collect Payment — only shown if payment is pending or due */}
+            {canCollectPayment ? (
+              <TouchableOpacity
+                onPress={() => {
                   haptics.medium();
                   setShowPaymentModal(true);
-                }
-              }}
-              disabled={!canCollectPayment}
-              style={[
-                styles.contactBtn,
-                canCollectPayment ? styles.collectPayBtn : styles.payCompletedBtn,
-              ]}
-              activeOpacity={canCollectPayment ? 0.7 : 1}
-            >
-              <CreditCard
-                size={14}
-                color={canCollectPayment ? '#00E5FF' : colors.textMuted}
-              />
-              <Text
-                style={[
-                  styles.contactBtnText,
-                  { color: canCollectPayment ? '#00E5FF' : colors.textMuted },
-                ]}
+                }}
+                style={[styles.contactBtn, styles.collectPayBtn]}
+                activeOpacity={0.7}
               >
-                {canCollectPayment ? 'Collect Payment' : 'Payment Completed'}
-              </Text>
-            </TouchableOpacity>
+                <CreditCard size={14} color="#00E5FF" />
+                <Text style={[styles.contactBtnText, { color: '#00E5FF' }]}>
+                  Collect Payment
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
 
           {/* Quick Info Grid */}
@@ -816,33 +833,24 @@ export function MemberDetailScreen() {
                   )}
                 </TouchableOpacity>
               )}
-              <TouchableOpacity
-                onPress={() => {
-                  if (canCollectPayment) {
+              {canCollectPayment ? (
+                <TouchableOpacity
+                  onPress={() => {
                     haptics.medium();
                     setShowPaymentModal(true);
-                  }
-                }}
-                disabled={!canCollectPayment}
-                style={[
-                  styles.newPayLink,
-                  !canCollectPayment && styles.disabledPayLink,
-                ]}
-                activeOpacity={canCollectPayment ? 0.7 : 1}
-              >
-                <CreditCard
-                  size={14}
-                  color={canCollectPayment ? colors.gold : colors.textMuted}
-                />
-                <Text
-                  style={[
-                    styles.newPayLinkText,
-                    !canCollectPayment && styles.disabledPayLinkText,
-                  ]}
+                  }}
+                  style={styles.newPayLink}
+                  activeOpacity={0.7}
                 >
-                  {canCollectPayment ? '+ Collect Payment' : 'Payment Completed'}
-                </Text>
-              </TouchableOpacity>
+                  <CreditCard size={14} color={colors.gold} />
+                  <Text style={styles.newPayLinkText}>+ Collect Payment</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.paidStatusBadge}>
+                  <CheckCircle2 size={12} color={colors.success} />
+                  <Text style={styles.paidStatusText}>Paid</Text>
+                </View>
+              )}
             </View>
           </View>
 
@@ -1377,7 +1385,14 @@ export function MemberDetailScreen() {
 
         {/* Payment History */}
         <View style={styles.sectionCard}>
-          <Text style={styles.cardHeaderTitle}>PAYMENT HISTORY</Text>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.cardHeaderTitle}>PAYMENT HISTORY</Text>
+            {payments && payments.length > 0 && (
+              <Text style={styles.recordCountBadge}>
+                {payments.length} {payments.length === 1 ? 'Record' : 'Records'}
+              </Text>
+            )}
+          </View>
           {(!payments || payments.length === 0) ? (
             <Text style={styles.emptyText}>No payments recorded yet.</Text>
           ) : (
@@ -1386,16 +1401,20 @@ export function MemberDetailScreen() {
                 key={p.id}
                 onPress={() => navigation.navigate('PaymentReceipt', { payment: p })}
                 style={styles.paymentRow}
+                activeOpacity={0.7}
               >
-                <View>
+                <View style={{ flex: 1 }}>
                   <Text style={styles.payReceiptNo}>
-                    #{p.receipt_number || 'N/A'} · {p.payment_method}
+                    #{p.receipt_number || 'N/A'} · {(p.payment_method || 'CASH').toUpperCase()}
                   </Text>
                   <Text style={styles.payDate}>
                     {formatDate(p.payment_date || p.created_at)}
                   </Text>
                 </View>
-                <Text style={styles.payAmount}>{formatCurrency(p.amount)}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={styles.payAmount}>{formatCurrency(p.amount)}</Text>
+                  <ChevronRight size={14} color={colors.textMuted} />
+                </View>
               </TouchableOpacity>
             ))
           )}
@@ -1427,7 +1446,7 @@ export function MemberDetailScreen() {
                 </View>
                 <View style={styles.attRight}>
                   <Clock size={12} color={colors.textMuted} />
-                  <Text style={styles.attTime}>{a.check_in_time || 'Recorded'}</Text>
+                  <Text style={styles.attTime}>{formatTime(a.check_in_time)}</Text>
                   <View style={styles.attMethodBadge}>
                     <Text style={styles.attMethodText}>{a.check_in_method || 'QR'}</Text>
                   </View>
@@ -2037,45 +2056,76 @@ const styles = StyleSheet.create({
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '700',
   },
+  recordCountBadge: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '600',
+  },
+  paidStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.25)',
+  },
+  paidStatusText: {
+    color: colors.success,
+    fontSize: 11,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
   attendanceRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255, 255, 255, 0.05)',
   },
   attLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
+    flexShrink: 0,
   },
   attDate: {
     color: colors.textPrimary,
-    fontSize: typography.sizes.sm,
+    fontSize: 13,
     fontFamily: typography.fonts.inter,
+    fontWeight: '500',
   },
   attRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
+    flexShrink: 0,
   },
   attTime: {
     color: colors.textSecondary,
-    fontSize: 11,
-    fontFamily: typography.fonts.inter,
+    fontSize: 12,
+    fontFamily: typography.fonts.rajdhaniMedium,
+    fontWeight: '600',
   },
   attMethodBadge: {
-    backgroundColor: colors.goldMuted,
+    backgroundColor: 'rgba(239, 161, 0, 0.12)',
     borderRadius: 4,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 161, 0, 0.25)',
   },
   attMethodText: {
     color: colors.gold,
-    fontSize: 9,
+    fontSize: 10,
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '700',
+    letterSpacing: 0.5,
   },
   deleteButton: {
     marginTop: 10,

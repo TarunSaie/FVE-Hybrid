@@ -24,7 +24,12 @@ import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { formatCurrency, openWhatsAppLink } from '@/utils/format';
 import { formatDate } from '@/utils/date';
-import { sharePdfReceipt, printPdfReceipt, buildReceiptDataFromPayment } from '@/utils/receiptPdf';
+import {
+  sharePdfReceipt,
+  printPdfReceipt,
+  buildReceiptDataFromPayment,
+  directShareReceiptToWhatsApp,
+} from '@/utils/receiptPdf';
 import { RootStackParamList } from '@/navigation/types';
 
 type RouteProps = RouteProp<RootStackParamList, 'PaymentReceipt'>;
@@ -233,33 +238,33 @@ export function PaymentReceiptScreen() {
     }
   };
 
-  const handleShareBoth = async () => {
+  const handleDirectWhatsApp = async () => {
     if (!payment) return;
+    if (!memberMobile) {
+      Alert.alert(
+        'No Mobile Number',
+        'This member does not have a registered mobile number for direct WhatsApp. Would you like to share the PDF via the system share sheet instead?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Share via App Sheet', onPress: handleSharePdf },
+        ]
+      );
+      return;
+    }
     setShowWhatsAppModal(false);
     haptics.medium();
     setPdfGenerating(true);
     try {
-      // 1. Copy formatted text to clipboard
-      await Clipboard.setStringAsync(whatsAppReceiptText);
-
-      // 2. Generate and open PDF sharing
       const receiptData = buildReceiptDataFromPayment(payment, ptRecord, {
         actualVisitsUsed,
         remainingVisits,
         actualPTSessionsCompleted,
         remainingPTSessions,
       });
-      await sharePdfReceipt(receiptData);
-
-      // 3. User feedback
-      Alert.alert(
-        'Receipt Ready to Share',
-        '✓ Receipt summary text copied to your clipboard!\n\nYou can paste it alongside the attached PDF invoice in WhatsApp.',
-        [{ text: 'OK' }]
-      );
+      await directShareReceiptToWhatsApp(receiptData, memberMobile);
     } catch (err: unknown) {
       haptics.error();
-      Alert.alert('Error', (err as Error).message || 'Failed to share receipt');
+      Alert.alert('Error', (err as Error).message || 'Failed to dispatch WhatsApp receipt');
     } finally {
       setPdfGenerating(false);
     }
@@ -569,29 +574,29 @@ export function PaymentReceiptScreen() {
         subtitle={`Member: ${memberName}${memberMobile ? ` (${memberMobile})` : ''}`}
       >
         <View style={styles.modalOptionList}>
-          {/* Option 1: Send Both (Recommended) */}
+          {/* Option 1: Direct WhatsApp (with PDF Link) (Recommended) */}
           <TouchableOpacity
             style={[styles.modalOptionCard, styles.modalOptionCardHighlight]}
             activeOpacity={0.7}
-            onPress={handleShareBoth}
+            onPress={handleDirectWhatsApp}
           >
-            <View style={[styles.modalOptionIconBox, { backgroundColor: 'rgba(239, 161, 0, 0.15)', borderColor: colors.gold }]}>
-              <Sparkles size={20} color={colors.gold} />
+            <View style={[styles.modalOptionIconBox, { backgroundColor: 'rgba(37, 211, 102, 0.15)', borderColor: '#25D366' }]}>
+              <Share2 size={20} color="#25D366" />
             </View>
             <View style={styles.modalOptionTextContainer}>
               <View style={styles.modalOptionTitleRow}>
-                <Text style={[styles.modalOptionTitle, { color: colors.gold }]}>Send Both (PDF & Text)</Text>
-                <View style={styles.recommendedBadge}>
-                  <Text style={styles.recommendedBadgeText}>BEST</Text>
+                <Text style={[styles.modalOptionTitle, { color: '#25D366' }]}>Direct WhatsApp (with PDF Link)</Text>
+                <View style={[styles.recommendedBadge, { backgroundColor: 'rgba(37, 211, 102, 0.15)', borderColor: '#25D366' }]}>
+                  <Text style={[styles.recommendedBadgeText, { color: '#25D366' }]}>DIRECT</Text>
                 </View>
               </View>
               <Text style={styles.modalOptionDesc}>
-                Copies receipt message to clipboard & attaches official branded PDF invoice in WhatsApp.
+                Opens chat directly with registered number ({memberMobile || 'N/A'}) and sends receipt breakdown with clickable PDF invoice link.
               </Text>
             </View>
           </TouchableOpacity>
 
-          {/* Option 2: Send PDF Document Only */}
+          {/* Option 2: Attach PDF File via Share Sheet */}
           <TouchableOpacity
             style={styles.modalOptionCard}
             activeOpacity={0.7}
@@ -604,29 +609,29 @@ export function PaymentReceiptScreen() {
               <FileText size={20} color={colors.gold} />
             </View>
             <View style={styles.modalOptionTextContainer}>
-              <Text style={styles.modalOptionTitle}>Send PDF Document</Text>
+              <Text style={styles.modalOptionTitle}>Attach PDF File (Share Sheet)</Text>
               <Text style={styles.modalOptionDesc}>
-                Official invoice PDF with gym logo, QR code, and full validity breakdown.
+                Generates branded PDF file and opens system share dialog to manually attach in WhatsApp, Drive, or Email.
               </Text>
             </View>
           </TouchableOpacity>
 
-          {/* Option 3: Send WhatsApp Text Message Only */}
+          {/* Option 3: Print / Save PDF Document */}
           <TouchableOpacity
             style={styles.modalOptionCard}
             activeOpacity={0.7}
             onPress={() => {
               setShowWhatsAppModal(false);
-              handleWhatsApp();
+              handlePrintPdf();
             }}
           >
-            <View style={[styles.modalOptionIconBox, { backgroundColor: 'rgba(37, 211, 102, 0.12)', borderColor: 'rgba(37, 211, 102, 0.3)' }]}>
-              <Share2 size={20} color="#25D366" />
+            <View style={[styles.modalOptionIconBox, { backgroundColor: 'rgba(0, 102, 255, 0.1)', borderColor: 'rgba(0, 102, 255, 0.3)' }]}>
+              <Printer size={20} color={colors.blue} />
             </View>
             <View style={styles.modalOptionTextContainer}>
-              <Text style={styles.modalOptionTitle}>Send WhatsApp Text to Member</Text>
+              <Text style={styles.modalOptionTitle}>Print / Save PDF Document</Text>
               <Text style={styles.modalOptionDesc}>
-                Opens chat directly with registered WhatsApp mobile ({memberMobile || 'N/A'}) and pre-fills payment receipt & validity text.
+                Opens system print preview to save PDF locally to files or print wirelessly.
               </Text>
             </View>
           </TouchableOpacity>

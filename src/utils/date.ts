@@ -131,3 +131,39 @@ export function normalizeMembershipStatus(
   return 'ACTIVE';
 }
 
+/**
+ * Formats time string or ISO timestamp into clean 12-hour IST format (e.g. 07:13 PM).
+ */
+export function formatTime(timeStr?: string | null): string {
+  if (!timeStr) return 'Recorded';
+  try {
+    // 1. If ISO timestamp with date (e.g. 2026-09-10T13:43:30.395+00:00)
+    if (timeStr.includes('T') || timeStr.includes('-')) {
+      const d = new Date(timeStr);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleTimeString('en-IN', {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true,
+          timeZone: 'Asia/Kolkata',
+        });
+      }
+    }
+    // 2. If already time-only string (e.g. 13:43:30 or 13:43)
+    if (timeStr.includes(':')) {
+      const parts = timeStr.split(':');
+      const hour = parseInt(parts[0], 10);
+      const minute = parts[1] ? parts[1].slice(0, 2) : '00';
+      if (!isNaN(hour)) {
+        const ampm = hour >= 12 ? 'PM' : 'AM';
+        const formattedHour = hour % 12 || 12;
+        return `${String(formattedHour).padStart(2, '0')}:${minute} ${ampm}`;
+      }
+    }
+    return timeStr;
+  } catch {
+    return timeStr;
+  }
+}
+
+

@@ -5,6 +5,8 @@ import { Attendance } from '@/types';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 
+import { formatTime } from '@/utils/date';
+
 interface AttendanceItemProps {
   item: Attendance & { members?: { full_name?: string; profile_photo?: string | null; member_id?: string | null } };
   onPress?: () => void;
@@ -21,23 +23,6 @@ export function AttendanceItem({ item, onPress }: AttendanceItemProps) {
 
   const handlePressIn = () => Animated.spring(scale, { toValue: 0.975, useNativeDriver: true, speed: 35, bounciness: 4 }).start();
   const handlePressOut = () => Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 35, bounciness: 4 }).start();
-
-  // Format check_in_time
-  const formatTime = (timeStr?: string | null) => {
-    if (!timeStr) return '';
-    try {
-      if (timeStr.includes(':')) {
-        const [h, m] = timeStr.split(':');
-        const hour = parseInt(h, 10);
-        const ampm = hour >= 12 ? 'PM' : 'AM';
-        const formattedHour = hour % 12 || 12;
-        return `${formattedHour}:${m} ${ampm}`;
-      }
-      return timeStr;
-    } catch {
-      return timeStr;
-    }
-  };
 
   return (
     <Animated.View style={{ transform: [{ scale }] }}>

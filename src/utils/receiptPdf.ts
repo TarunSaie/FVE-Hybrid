@@ -1,8 +1,10 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Clipboard from 'expo-clipboard';
+import { supabase } from '@/api/supabase';
 import { Payment, PersonalTraining } from '@/types';
-import { formatCurrency } from '@/utils/format';
+import { formatCurrency, openWhatsAppLink } from '@/utils/format';
 import { formatDate } from '@/utils/date';
 import { APP_NAME, TAGLINE, CHIRVEX_WEBSITE } from '@/constants/branding';
 import { GYM_LOGO_BASE64 } from '@/constants/logoBase64';
@@ -644,3 +646,128 @@ export async function printPdfReceipt(receiptData: ReceiptData): Promise<void> {
   const html = generateReceiptHtml(receiptData);
   await Print.printAsync({ html });
 }
+
+/**
+ * Generates and uploads the receipt PDF to Supabase Storage, returning a public URL.
+ * Automatically falls back between 'receipts' and 'member-images' storage buckets.
+ */
+export async function uploadReceiptPdf(receiptData: ReceiptData): Promise<string | null> {
+  try {
+    const html = generateReceiptHtml(receiptData);
+    const { uri } = await Print.printToFileAsync({ html });
+
+    const safeReceiptNo = (receiptData.receiptNumber || 'Receipt').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const fileName = `FVE_Receipt_${safeReceiptNo}_${Date.now()}.pdf`;
+
+    const response = await fetch(uri);
+    const blob = await response.blob();
+
+    // 1. Try uploading to 'receipts' bucket
+    let bucket = 'receipts';
+    const uploadRes = await supabase.storage
+      .from(bucket)
+      .upload(fileName, blob, { contentType: 'application/pdf', upsert: true });
+
+    // 2. If 'receipts' bucket is missing or errors, fallback to 'member-images'
+    if (uploadRes.error) {
+      bucket = 'member-images';
+      const fallbackPath = `receipts/${fileName}`;
+      const fallbackRes = await supabase.storage
+        .from(bucket)
+        .upload(fallbackPath, blob, { contentType: 'application/pdf', upsert: true });
+
+      if (!fallbackRes.error) {
+        const { data: pubData } = supabase.storage.from(bucket).getPublicUrl(fallbackPath);
+        return pubData?.publicUrl || null;
+      }
+    } else {
+      const { data: pubData } = supabase.storage.from(bucket).getPublicUrl(fileName);
+      return pubData?.publicUrl || null;
+    }
+
+    return null;
+  } catch (err) {
+    console.warn('[uploadReceiptPdf] Failed to upload PDF to cloud storage:', err);
+    return null;
+  }
+}
+
+/**
+ * Builds the official WhatsApp text receipt message, including optional cloud PDF invoice link.
+ */
+export function buildWhatsAppReceiptMessage(receiptData: ReceiptData, pdfUrl?: string | null): string {
+  const isPT = receiptData.isPersonalTraining;
+  const validityLine =
+    receiptData.startDate && receiptData.endDate
+      ? `• Validity: *${receiptData.startDate} TO ${receiptData.endDate}*\n`
+      : '';
+
+  let details = '';
+  if (isPT) {
+    details =
+      `• Service: *Personal Training Add-On*\n` +
+      `• Package: *${receiptData.planName}*\n` +
+      (receiptData.trainerName ? `• Trainer: *${receiptData.trainerName}*\n` : '') +
+      (receiptData.totalSessions ? `• Total Sessions: *${receiptData.totalSessions} Sessions*\n` : '') +
+      validityLine;
+  } else {
+    details =
+      `• Plan: *${receiptData.planName}*\n` +
+      validityLine +
+      (receiptData.visitDayLimit != null ? `• Visits Allotted: *${receiptData.visitDayLimit} Days*\n` : '');
+  }
+
+  const pdfLine = pdfUrl
+    ? `\n📄 *Official PDF Invoice:*\n${pdfUrl}\n`
+    : '';
+
+  return (
+    `*FitVerse Elite Official Receipt*\n` +
+    `• Receipt No: *#${receiptData.receiptNumber}*\n` +
+    `• Member: *${receiptData.memberName}*${receiptData.memberId ? ` (${receiptData.memberId})` : ''}\n` +
+    details +
+    `• Amount Paid: *${formatCurrency(receiptData.amount)}*\n` +
+    `• Payment Method: *${(receiptData.paymentMethod || 'CASH').toUpperCase()}*\n` +
+    `• Date: *${receiptData.paymentDate}*\n` +
+    pdfLine +
+    `\n*DISCIPLINE • STRENGTH • TRANSFORMATION*\n` +
+    `FitVerse Elite Gym Management\n` +
+    `Powered by Chirvex (https://chirvex.in/)`
+  );
+}
+
+/**
+ * Direct 1-tap WhatsApp sharing to the member's registered mobile number:
+ * 1. Uploads branded PDF to Supabase Storage to obtain public URL.
+ * 2. Pre-fills official receipt message with the PDF link.
+ * 3. Copies message to clipboard as backup.
+ * 4. Opens WhatsApp directly in chat with member's number via wa.me.
+ */
+export async function directShareReceiptToWhatsApp(
+  receiptData: ReceiptData,
+  phoneOverride?: string | null
+): Promise<{ success: boolean; hasPhone: boolean; pdfUrl: string | null }> {
+  const targetPhone = phoneOverride || receiptData.memberMobile;
+  if (!targetPhone) {
+    return { success: false, hasPhone: false, pdfUrl: null };
+  }
+
+  // 1. Upload PDF to cloud storage to get link
+  const pdfUrl = await uploadReceiptPdf(receiptData);
+
+  // 2. Build full formatted message
+  const msg = buildWhatsAppReceiptMessage(receiptData, pdfUrl);
+
+  // 3. Copy to clipboard
+  try {
+    await Clipboard.setStringAsync(msg);
+  } catch {
+    // Ignore clipboard error
+  }
+
+  // 4. Open WhatsApp directly into the chat with the member's number
+  await openWhatsAppLink(targetPhone, msg);
+
+  return { success: true, hasPhone: true, pdfUrl };
+}
+

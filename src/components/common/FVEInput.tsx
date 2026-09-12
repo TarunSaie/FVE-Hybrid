@@ -112,6 +112,7 @@ export const FVEInput = forwardRef<TextInput, FVEInputProps>(function FVEInput(
         onPress={handleContainerPress}
         style={[
           styles.inputContainer,
+          rest.multiline && { alignItems: 'flex-start' },
           isInputFocused && styles.focusedContainer,
           !!error && styles.errorContainer,
           !editable && styles.disabledContainer,
@@ -146,7 +147,11 @@ export const FVEInput = forwardRef<TextInput, FVEInputProps>(function FVEInput(
             }
             onBlur?.(e);
           }}
-          style={[styles.input, style]}
+          style={[
+            styles.input,
+            rest.multiline && { textAlignVertical: 'top' as const },
+            style,
+          ]}
           {...rest}
         />
 
