@@ -34,6 +34,7 @@ import { haptics } from '@/utils/haptics';
 import { sounds } from '@/utils/sounds';
 import { checkAndNotifyBirthdays } from '@/hooks/useBirthdayAlerts';
 import { useQueryClient } from '@tanstack/react-query';
+import { UPIPaymentQRCard } from '@/components/features/UPIPaymentQRCard';
 
 interface MemberFormModalProps {
   visible: boolean;
@@ -84,6 +85,7 @@ export function MemberFormModal({
   const [showPlanStartDatePicker, setShowPlanStartDatePicker] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<string>('UPI');
   const amountPaidRef = useRef('');
+  const [initialFeeVal, setInitialFeeVal] = useState<string>('');
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -769,7 +771,9 @@ export function MemberFormModal({
                           onPress={() => {
                             haptics.selection();
                             setSelectedPlanId(p.id);
-                            amountPaidRef.current = String(p.price);
+                            const priceStr = String(p.price);
+                            amountPaidRef.current = priceStr;
+                            setInitialFeeVal(priceStr);
                           }}
                           style={[styles.planCardChip, isSel && styles.planCardChipActive]}
                           activeOpacity={0.7}
@@ -842,11 +846,23 @@ export function MemberFormModal({
                   {/* Initial Fee Collected */}
                   <FVEInput
                     label="INITIAL FEE COLLECTED (₹)"
-                    defaultValue={amountPaidRef.current || (selectedPlan ? String(selectedPlan.price) : '')}
-                    onChangeText={(t) => { amountPaidRef.current = t; }}
+                    value={initialFeeVal}
+                    onChangeText={(t) => {
+                      amountPaidRef.current = t;
+                      setInitialFeeVal(t);
+                    }}
                     placeholder="Enter amount in Rupees"
                     keyboardType="numeric"
                   />
+
+                  {/* UPI QR Payment Card */}
+                  {paymentMethod === 'UPI' && (
+                    <UPIPaymentQRCard
+                      amount={initialFeeVal || (selectedPlan ? selectedPlan.price : 0)}
+                      title="FITVERSE ELITE UPI QR"
+                      compact
+                    />
+                  )}
                 </View>
               )}
             </View>

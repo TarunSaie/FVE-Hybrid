@@ -12,12 +12,13 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, CreditCard, Filter, X } from 'lucide-react-native';
+import { Plus, Search, CreditCard, Filter, X, QrCode } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEInput } from '@/components/common/FVEInput';
 import { PaymentItem } from '@/components/features/PaymentItem';
 import { PaymentFormModal } from '@/components/features/PaymentFormModal';
+import { UPIQRCodeModal } from '@/components/features/UPIQRCodeModal';
 import { FVEEmptyState } from '@/components/common/FVEEmptyState';
 import { FVELogoLoader } from '@/components/common/FVELogoLoader';
 import { Payment, PAYMENT_METHODS } from '@/types';
@@ -48,6 +49,7 @@ export function PaymentsScreen() {
     return () => clearTimeout(t);
   }, [search]);
   const [showPayModal, setShowPayModal] = useState(false);
+  const [showUPIModal, setShowUPIModal] = useState(false);
 
   // Query Payments with Joined Members
   const { data: payments, isLoading, refetch } = useQuery({
@@ -176,16 +178,31 @@ export function PaymentsScreen() {
         title="PAYMENTS"
         subtitle={`${payments?.length || 0} transactions`}
         rightAction={
-          <TouchableOpacity
-            onPress={() => {
-              haptics.light();
-              setShowPayModal(true);
-            }}
-            style={styles.addHeaderBtn}
-          >
-            <Plus size={16} color={colors.gold} />
-            <Text style={styles.addHeaderBtnText}>New</Text>
-          </TouchableOpacity>
+          <View style={styles.headerRightActions}>
+            <TouchableOpacity
+              onPress={() => {
+                haptics.light();
+                setShowUPIModal(true);
+              }}
+              style={styles.qrHeaderBtn}
+              activeOpacity={0.75}
+            >
+              <QrCode size={14} color={colors.gold} />
+              <Text style={styles.qrHeaderBtnText}>UPI QR</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => {
+                haptics.light();
+                setShowPayModal(true);
+              }}
+              style={styles.addHeaderBtn}
+              activeOpacity={0.75}
+            >
+              <Plus size={16} color={colors.gold} />
+              <Text style={styles.addHeaderBtnText}>Collect</Text>
+            </TouchableOpacity>
+          </View>
         }
       />
 
@@ -309,6 +326,12 @@ export function PaymentsScreen() {
         onClose={() => setShowPayModal(false)}
         onSaved={onRefresh}
       />
+
+      {/* UPI QR Code Quick Modal */}
+      <UPIQRCodeModal
+        visible={showUPIModal}
+        onClose={() => setShowUPIModal(false)}
+      />
     </View>
   );
 }
@@ -317,6 +340,29 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#050505',
+  },
+  headerRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  qrHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(239, 161, 0, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 161, 0, 0.4)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  qrHeaderBtnText: {
+    color: colors.gold,
+    fontSize: typography.sizes.xs,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   addHeaderBtn: {
     flexDirection: 'row',

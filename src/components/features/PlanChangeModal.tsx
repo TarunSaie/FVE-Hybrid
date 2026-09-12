@@ -56,6 +56,7 @@ import {
   normalizeMembershipStatus,
 } from '@/utils/date';
 import { RootStackParamList } from '@/navigation/types';
+import { UPIPaymentQRCard } from '@/components/features/UPIPaymentQRCard';
 
 interface PlanChangeModalProps {
   visible: boolean;
@@ -872,6 +873,17 @@ export function PlanChangeModal({
                 );
               })}
             </View>
+
+            {/* UPI QR Payment Card */}
+            {paymentMethod === 'UPI' && (
+              <View style={{ marginBottom: 12 }}>
+                <UPIPaymentQRCard
+                  amount={finalBalanceDue}
+                  title="FITVERSE ELITE UPI QR"
+                  compact
+                />
+              </View>
+            )}
 
             {paymentMethod !== 'Cash' && (
               <FVEInput

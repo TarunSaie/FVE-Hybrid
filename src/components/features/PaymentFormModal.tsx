@@ -13,6 +13,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { sounds } from '@/utils/sounds';
+import { UPIPaymentQRCard } from '@/components/features/UPIPaymentQRCard';
 
 interface PaymentFormModalProps {
   visible: boolean;
@@ -36,6 +37,7 @@ export function PaymentFormModal({
   const [memberSearch, setMemberSearch] = useState('');
   const [selectedPlanId, setSelectedPlanId] = useState<string>('');
   const amountRef = useRef('');
+  const [amountValue, setAmountValue] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<string>('UPI');
   const transactionRefInput = useRef('');
   const notesRef = useRef('');
@@ -102,6 +104,8 @@ export function PaymentFormModal({
         setSelectedMemberId(preselectedMemberId);
       }
       setMemberSearch('');
+      setAmountValue('');
+      amountRef.current = '';
     }
   }, [visible, preselectedMemberId]);
 
@@ -122,7 +126,9 @@ export function PaymentFormModal({
 
   const handlePlanSelect = (plan: MembershipPlan) => {
     setSelectedPlanId(plan.id);
-    amountRef.current = String(plan.price);
+    const priceStr = String(plan.price);
+    amountRef.current = priceStr;
+    setAmountValue(priceStr);
   };
 
   const handleSubmit = async () => {
@@ -429,8 +435,11 @@ export function PaymentFormModal({
         {/* Amount */}
         <FVEInput
           label="AMOUNT (INR) *"
-          defaultValue={amountRef.current}
-          onChangeText={(t) => { amountRef.current = t; }}
+          value={amountValue}
+          onChangeText={(t) => {
+            amountRef.current = t;
+            setAmountValue(t);
+          }}
           placeholder="e.g. 1500"
           keyboardType="numeric"
         />
@@ -463,6 +472,14 @@ export function PaymentFormModal({
             })}
           </View>
         </View>
+
+        {/* UPI QR Payment Card */}
+        {paymentMethod === 'UPI' && (
+          <UPIPaymentQRCard
+            amount={amountValue}
+            title="FITVERSE ELITE UPI QR"
+          />
+        )}
 
         {/* Transaction Reference */}
         <FVEInput

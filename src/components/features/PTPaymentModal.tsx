@@ -14,6 +14,7 @@ import { formatCurrency, generateReceiptNumber } from '@/utils/format';
 import { getLocalDateStr, calculateExpiryDate } from '@/utils/date';
 import { CreditCard, ShieldCheck } from 'lucide-react-native';
 import { RootStackParamList } from '@/navigation/types';
+import { UPIPaymentQRCard } from '@/components/features/UPIPaymentQRCard';
 
 interface PTPaymentModalProps {
   visible: boolean;
@@ -219,6 +220,17 @@ export function PTPaymentModal({
             </TouchableOpacity>
           ))}
         </View>
+
+        {/* UPI QR Payment Card */}
+        {paymentMethod === 'UPI' && (
+          <View style={{ marginTop: 14 }}>
+            <UPIPaymentQRCard
+              amount={amount}
+              title="FITVERSE ELITE UPI QR"
+              compact
+            />
+          </View>
+        )}
 
         {/* Transaction reference */}
         {paymentMethod !== 'Cash' && (
