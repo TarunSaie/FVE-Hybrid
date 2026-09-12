@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Copy, Check, Maximize2, QrCode } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
+import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { haptics } from '@/utils/haptics';
 import { formatCurrency } from '@/utils/format';
@@ -19,6 +20,8 @@ export function UPIPaymentQRCard({
   title = 'FITVERSE ELITE UPI QR',
   compact = false,
 }: UPIPaymentQRCardProps) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
   const [copied, setCopied] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
 
@@ -132,165 +135,166 @@ export function UPIPaymentQRCard({
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    backgroundColor: '#0E1116',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.35)',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 14,
-  },
-  containerCompact: {
-    padding: 10,
-    marginBottom: 10,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  title: {
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhani,
-    color: colors.gold,
-    letterSpacing: 0.8,
-  },
-  amountBadge: {
-    backgroundColor: 'rgba(239, 161, 0, 0.15)',
-    borderWidth: 1,
-    borderColor: colors.gold,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  amountText: {
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhani,
-    color: colors.gold,
-  },
-  contentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  qrThumbFrame: {
-    width: 105,
-    height: 128,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    borderWidth: 1.5,
-    borderColor: colors.gold,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  qrThumbImage: {
-    width: '100%',
-    height: '100%',
-  },
-  expandOverlay: {
-    position: 'absolute',
-    bottom: 2,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: colors.gold,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  expandText: {
-    fontSize: 9,
-    fontFamily: typography.fonts.rajdhani,
-    color: '#050505',
-    letterSpacing: 0.5,
-  },
-  detailsCol: {
-    flex: 1,
-  },
-  instructionText: {
-    fontSize: typography.sizes.xs - 2,
-    fontFamily: typography.fonts.inter,
-    color: colors.textSecondary,
-    lineHeight: 14,
-    marginBottom: 8,
-  },
-  upiBox: {
-    backgroundColor: '#161920',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    marginBottom: 8,
-  },
-  upiBoxLabel: {
-    fontSize: 8,
-    fontFamily: typography.fonts.rajdhaniMedium,
-    color: colors.textMuted,
-    letterSpacing: 0.5,
-  },
-  upiBoxValue: {
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhani,
-    color: colors.textPrimary,
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  actionBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(239, 161, 0, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.4)',
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  actionBtnSuccess: {
-    backgroundColor: colors.success,
-    borderColor: colors.success,
-  },
-  actionBtnText: {
-    fontSize: 10,
-    fontFamily: typography.fonts.rajdhani,
-    color: colors.gold,
-    letterSpacing: 0.5,
-  },
-  actionBtnTextSuccess: {
-    fontSize: 10,
-    fontFamily: typography.fonts.rajdhani,
-    color: '#050505',
-    letterSpacing: 0.5,
-  },
-  expandBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    backgroundColor: '#1E232C',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  expandBtnText: {
-    fontSize: 10,
-    fontFamily: typography.fonts.rajdhani,
-    color: colors.textPrimary,
-    letterSpacing: 0.5,
-  },
-});
+const getStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    container: {
+      backgroundColor: isDark ? '#0E1116' : colors.cardBackground,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.35)' : 'rgba(217, 130, 0, 0.35)',
+      borderRadius: 12,
+      padding: 12,
+      marginBottom: 14,
+    },
+    containerCompact: {
+      padding: 10,
+      marginBottom: 10,
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 10,
+    },
+    titleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    title: {
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhani,
+      color: colors.gold,
+      letterSpacing: 0.8,
+    },
+    amountBadge: {
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.15)' : 'rgba(239, 161, 0, 0.12)',
+      borderWidth: 1,
+      borderColor: colors.gold,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: 6,
+    },
+    amountText: {
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhani,
+      color: colors.gold,
+    },
+    contentRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
+    qrThumbFrame: {
+      width: 105,
+      height: 128,
+      backgroundColor: '#FFFFFF',
+      borderRadius: 8,
+      borderWidth: 1.5,
+      borderColor: colors.gold,
+      overflow: 'hidden',
+      alignItems: 'center',
+      justifyContent: 'center',
+      position: 'relative',
+    },
+    qrThumbImage: {
+      width: '100%',
+      height: '100%',
+    },
+    expandOverlay: {
+      position: 'absolute',
+      bottom: 2,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+      backgroundColor: colors.gold,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+    },
+    expandText: {
+      fontSize: 9,
+      fontFamily: typography.fonts.rajdhani,
+      color: '#050505',
+      letterSpacing: 0.5,
+    },
+    detailsCol: {
+      flex: 1,
+    },
+    instructionText: {
+      fontSize: typography.sizes.xs - 2,
+      fontFamily: typography.fonts.inter,
+      color: colors.textSecondary,
+      lineHeight: 14,
+      marginBottom: 8,
+    },
+    upiBox: {
+      backgroundColor: isDark ? '#161920' : colors.surfaceMuted,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.borderDark,
+      borderRadius: 6,
+      paddingHorizontal: 8,
+      paddingVertical: 5,
+      marginBottom: 8,
+    },
+    upiBoxLabel: {
+      fontSize: 8,
+      fontFamily: typography.fonts.rajdhaniMedium,
+      color: colors.textMuted,
+      letterSpacing: 0.5,
+    },
+    upiBoxValue: {
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhani,
+      color: colors.textPrimary,
+    },
+    actionsRow: {
+      flexDirection: 'row',
+      gap: 6,
+    },
+    actionBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 4,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : 'rgba(239, 161, 0, 0.10)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.4)' : 'rgba(217, 130, 0, 0.35)',
+      paddingVertical: 6,
+      borderRadius: 6,
+    },
+    actionBtnSuccess: {
+      backgroundColor: colors.success,
+      borderColor: colors.success,
+    },
+    actionBtnText: {
+      fontSize: 10,
+      fontFamily: typography.fonts.rajdhani,
+      color: colors.gold,
+      letterSpacing: 0.5,
+    },
+    actionBtnTextSuccess: {
+      fontSize: 10,
+      fontFamily: typography.fonts.rajdhani,
+      color: '#050505',
+      letterSpacing: 0.5,
+    },
+    expandBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 4,
+      backgroundColor: isDark ? '#1E232C' : colors.surfaceLight,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : colors.borderDark,
+      paddingVertical: 6,
+      borderRadius: 6,
+    },
+    expandBtnText: {
+      fontSize: 10,
+      fontFamily: typography.fonts.rajdhani,
+      color: colors.textPrimary,
+      letterSpacing: 0.5,
+    },
+  });
