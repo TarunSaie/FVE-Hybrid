@@ -20,7 +20,8 @@ import { FVELogoLoader } from '@/components/common/FVELogoLoader';
 import { UserProfile, UserRole } from '@/types';
 import { supabase } from '@/api/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
+import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { ROLE_DISPLAY_NAMES } from '@/constants/permissions';
 
@@ -28,6 +29,8 @@ export function StaffScreen() {
   const navigation = useNavigation();
   const { user, ownerUser, activateStaffProfile, clearStaffProfile } = useAuth();
   const qc = useQueryClient();
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => getStaffStyles(colors, isDark), [colors, isDark]);
 
   const [showModal, setShowModal] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState<UserProfile | null>(null);
@@ -311,226 +314,233 @@ export function StaffScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#050505',
-  },
-  addBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: colors.goldMuted,
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  addBtnText: {
-    color: colors.gold,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  activeStaffBanner: {
-    backgroundColor: 'rgba(239, 161, 0, 0.15)',
-    borderBottomWidth: 1,
-    borderBottomColor: colors.goldBorder,
-    padding: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  activeBannerText: {
-    color: colors.gold,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  returnBtn: {
-    backgroundColor: colors.gold,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  returnBtnText: {
-    color: '#050505',
-    fontSize: 10,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  searchContainer: {
-    paddingHorizontal: 16,
-    paddingBottom: 10,
-    paddingTop: 4,
-  },
-  listContent: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  staffCard: {
-    backgroundColor: '#0F1216',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.22)',
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 10,
-  },
-  ownerCard: {
-    backgroundColor: '#131722',
-    borderWidth: 1.5,
-    borderColor: 'rgba(239, 161, 0, 0.45)',
-    shadowColor: colors.gold,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  activeCard: {
-    borderColor: colors.gold,
-    backgroundColor: '#161B26',
-  },
-  staffHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  headerLeftRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    marginRight: 8,
-  },
-  staffAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-    borderWidth: 1.2,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  ownerStaffAvatar: {
-    backgroundColor: 'rgba(239, 161, 0, 0.16)',
-    borderColor: colors.gold,
-    borderWidth: 1.8,
-    shadowColor: colors.gold,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.4,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  staffAvatarText: {
-    color: colors.textPrimary,
-    fontSize: 18,
-    fontFamily: typography.fonts.orbitron,
-    fontWeight: '800',
-    includeFontPadding: false,
-  },
-  ownerStaffAvatarText: {
-    color: colors.goldBright,
-    fontWeight: '900',
-  },
-  leftCol: {
-    flex: 1,
-  },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  staffName: {
-    color: colors.textPrimary,
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  ownerStaffName: {
-    color: '#FFFFFF',
-    fontFamily: typography.fonts.orbitron,
-    fontWeight: '800',
-    letterSpacing: 0.4,
-  },
-  ownerBadgePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: 'rgba(239, 161, 0, 0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.45)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  ownerBadgePillText: {
-    color: colors.goldBright,
-    fontSize: 8.5,
-    fontFamily: typography.fonts.orbitron,
-    fontWeight: '800',
-    letterSpacing: 0.6,
-  },
-  switchBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: colors.goldMuted,
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  switchBtnText: {
-    color: colors.gold,
-    fontSize: 10,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  activeBadge: {
-    backgroundColor: colors.successMuted,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  activeBadgeText: {
-    color: colors.success,
-    fontSize: 9,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  contactDetails: {
-    gap: 4,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  detailText: {
-    color: colors.textSecondary,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.inter,
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 8,
-    marginTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.05)',
-    paddingTop: 8,
-  },
-  actionIconBtn: {
-    padding: 6,
-    borderRadius: 6,
-    backgroundColor: colors.goldMuted,
-  },
-  deleteActionBtn: {
-    backgroundColor: colors.errorMuted,
-  },
-});
+const getStaffStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    addBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: colors.goldMuted,
+      borderWidth: 1,
+      borderColor: colors.goldBorder,
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    addBtnText: {
+      color: colors.gold,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    activeStaffBanner: {
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.15)' : 'rgba(217, 130, 0, 0.12)',
+      borderBottomWidth: 1,
+      borderBottomColor: colors.goldBorder,
+      padding: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    activeBannerText: {
+      color: colors.gold,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    returnBtn: {
+      backgroundColor: colors.gold,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+    },
+    returnBtnText: {
+      color: '#050505',
+      fontSize: 10,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    searchContainer: {
+      paddingHorizontal: 16,
+      paddingBottom: 10,
+      paddingTop: 4,
+    },
+    listContent: {
+      padding: 16,
+      paddingBottom: 40,
+    },
+    staffCard: {
+      backgroundColor: colors.cardBackground,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.22)' : 'rgba(217, 130, 0, 0.2)',
+      borderRadius: 14,
+      padding: 14,
+      marginBottom: 10,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: isDark ? 0.3 : 0.06,
+      shadowRadius: 6,
+      elevation: 2,
+    },
+    ownerCard: {
+      backgroundColor: isDark ? '#131722' : '#F8FAFC',
+      borderWidth: 1.5,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.45)' : 'rgba(217, 130, 0, 0.4)',
+      shadowColor: colors.gold,
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.2,
+      shadowRadius: 8,
+      elevation: 4,
+    },
+    activeCard: {
+      borderColor: colors.gold,
+      backgroundColor: isDark ? '#161B26' : '#FFFDF5',
+    },
+    staffHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 10,
+    },
+    headerLeftRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1,
+      marginRight: 8,
+    },
+    staffAvatar: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: colors.surface,
+      borderWidth: 1.2,
+      borderColor: colors.borderDark,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: 10,
+    },
+    ownerStaffAvatar: {
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.16)' : 'rgba(217, 130, 0, 0.12)',
+      borderColor: colors.gold,
+      borderWidth: 1.8,
+      shadowColor: colors.gold,
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.4,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+    staffAvatarText: {
+      color: colors.textPrimary,
+      fontSize: 18,
+      fontFamily: typography.fonts.orbitron,
+      fontWeight: '800',
+      includeFontPadding: false,
+    },
+    ownerStaffAvatarText: {
+      color: colors.gold,
+      fontWeight: '900',
+    },
+    leftCol: {
+      flex: 1,
+    },
+    nameRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: 6,
+    },
+    staffName: {
+      color: colors.textPrimary,
+      fontSize: typography.sizes.sm,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      flexShrink: 1,
+    },
+    ownerStaffName: {
+      color: colors.textPrimary,
+      fontFamily: typography.fonts.orbitron,
+      fontWeight: '800',
+      letterSpacing: 0.4,
+    },
+    ownerBadgePill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.18)' : 'rgba(217, 130, 0, 0.15)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.45)' : 'rgba(217, 130, 0, 0.4)',
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 6,
+    },
+    ownerBadgePillText: {
+      color: colors.gold,
+      fontSize: 8.5,
+      fontFamily: typography.fonts.orbitron,
+      fontWeight: '800',
+      letterSpacing: 0.6,
+    },
+    switchBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: colors.goldMuted,
+      borderWidth: 1,
+      borderColor: colors.goldBorder,
+      borderRadius: 6,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+    },
+    switchBtnText: {
+      color: colors.gold,
+      fontSize: 10,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    activeBadge: {
+      backgroundColor: colors.successMuted,
+      borderRadius: 6,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+    },
+    activeBadgeText: {
+      color: colors.success,
+      fontSize: 9,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    contactDetails: {
+      gap: 4,
+    },
+    detailRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    detailText: {
+      color: colors.textSecondary,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.inter,
+    },
+    actionsRow: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      gap: 8,
+      marginTop: 10,
+      borderTopWidth: 1,
+      borderTopColor: colors.borderDark,
+      paddingTop: 8,
+    },
+    actionIconBtn: {
+      padding: 6,
+      borderRadius: 6,
+      backgroundColor: colors.goldMuted,
+    },
+    deleteActionBtn: {
+      backgroundColor: colors.errorMuted,
+    },
+  });

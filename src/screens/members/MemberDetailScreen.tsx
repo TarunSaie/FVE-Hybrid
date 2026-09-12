@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   Alert,
   Linking,
-  Share,
   RefreshControl,
 } from 'react-native';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
@@ -71,8 +70,9 @@ import {
 } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDialog } from '@/contexts/DialogContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/api/supabase';
-import { colors } from '@/constants/colors';
+import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { formatDate, calculateAge, getLocalDateStr, formatTime } from '@/utils/date';
 import {
@@ -85,15 +85,15 @@ import {
 } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
 import { cleanupPTNotifications } from '@/utils/personalTraining';
-import { RootStackParamList } from '@/navigation/types';
 import * as Clipboard from 'expo-clipboard';
+import { RootStackParamList } from '@/navigation/types';
 import {
   buildMemberPdfData,
   shareMemberPassPdf,
+  shareMemberPassPdfToWhatsApp,
   buildMemberSubscriptionClipboardText,
 } from '@/utils/memberPdf';
 import { buildReceiptDataFromPayment, sharePdfReceipt, directShareReceiptToWhatsApp } from '@/utils/receiptPdf';
-
 type DetailRouteProp = RouteProp<RootStackParamList, 'MemberDetail'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -102,6 +102,9 @@ export function MemberDetailScreen() {
   const navigation = useNavigation<NavigationProp>();
   const qc = useQueryClient();
   const { memberId, initialMember } = route.params;
+
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => getMemberDetailStyles(colors, isDark), [colors, isDark]);
 
   const { user } = useAuth();
   const dialog = useDialog();
@@ -486,6 +489,15 @@ export function MemberDetailScreen() {
 
   const handleNativeShare = async () => {
     if (!member) return;
+    if (!member.mobile) {
+      haptics.error();
+      Alert.alert(
+        'No Mobile Number',
+        'This member does not have a registered mobile number. Please update their profile with a valid WhatsApp phone number.'
+      );
+      return;
+    }
+
     haptics.medium();
 
     const hasPayment = payments && payments.length > 0;
@@ -590,8 +602,7 @@ export function MemberDetailScreen() {
           haptics.error();
           Alert.alert('Error', msg || 'Failed to share Member Pass PDF');
         }
-      }
-    }
+      }    }
   };
 
   const isBirthdayToday = member?.date_of_birth ? (() => {
@@ -613,6 +624,8 @@ export function MemberDetailScreen() {
           <View style={styles.headerActions}>
             <TouchableOpacity
               onPress={handleNativeShare}
+              accessibilityLabel="Share on WhatsApp"
+              accessibilityHint="Opens this member's registered WhatsApp chat with their PDF pass attached"
               style={styles.headerIconBtn}
               hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
               activeOpacity={0.7}
@@ -705,7 +718,7 @@ export function MemberDetailScreen() {
               <>
                 <TouchableOpacity onPress={handleCall} style={styles.contactBtn}>
                   <Phone size={14} color={colors.gold} />
-                  <Text style={styles.contactBtnText}>Call</Text>
+                  <Text style={styles.contactBtnText} numberOfLines={1}>Call</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -713,8 +726,8 @@ export function MemberDetailScreen() {
                   style={[styles.contactBtn, styles.whatsappBtn]}
                 >
                   <MessageCircle size={14} color="#25D366" />
-                  <Text style={[styles.contactBtnText, { color: '#25D366' }]}>
-                    {isMemberExpired ? 'WhatsApp Alert' : 'WhatsApp'}
+                  <Text style={[styles.contactBtnText, { color: '#25D366' }]} numberOfLines={1}>
+                    {isMemberExpired ? 'Alert' : 'WhatsApp'}
                   </Text>
                 </TouchableOpacity>
               </>
@@ -730,8 +743,8 @@ export function MemberDetailScreen() {
                 style={[styles.contactBtn, styles.collectPayBtn]}
                 activeOpacity={0.7}
               >
-                <CreditCard size={14} color="#00E5FF" />
-                <Text style={[styles.contactBtnText, { color: '#00E5FF' }]}>
+                <CreditCard size={14} color={isDark ? '#00E5FF' : colors.blue} />
+                <Text style={[styles.contactBtnText, { color: isDark ? '#00E5FF' : colors.blue }]}>
                   Collect Payment
                 </Text>
               </TouchableOpacity>
@@ -872,8 +885,7 @@ export function MemberDetailScreen() {
                     <Text style={{ color: colors.gold, fontWeight: '700' }}>
                       {pendingPlanChangeRequest.requested_plan?.name || 'New Plan'}
                     </Text>
-                    {pendingPlanChangeRequest.notes ? ` · "${pendingPlanChangeRequest.notes}"` : ''}
-                  </Text>
+                    {pendingPlanChangeRequest.notes ? ` · "${pendingPlanChangeRequest.notes}"` : ''}                  </Text>
                   <TouchableOpacity
                     onPress={() => {
                       haptics.selection();
@@ -929,8 +941,7 @@ export function MemberDetailScreen() {
                     <Text style={styles.detailLabel}>Usable Visits:</Text>
                     <Text style={styles.detailValue}>
                       {activeMembership.visit_days_used || 0} /{' '}
-                      {activeMembership.visit_day_limit} days used
-                    </Text>
+                      {activeMembership.visit_day_limit} days used                    </Text>
                   </View>
                 )}
               </View>
@@ -1709,608 +1720,626 @@ export function MemberDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#050505',
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 50,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  headerIconBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 8,
-    backgroundColor: 'rgba(239, 161, 0, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerDeleteBtn: {
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    borderColor: 'rgba(239, 68, 68, 0.3)',
-  },
-  profileCard: {
-    backgroundColor: '#0F1216',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.3)',
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 16,
-  },
-  profileTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  avatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    borderWidth: 2,
-    borderColor: colors.gold,
-    marginRight: 14,
-  },
-  fallbackAvatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#191E24',
-    borderWidth: 2,
-    borderColor: colors.gold,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 14,
-  },
-  fallbackText: {
-    color: colors.gold,
-    fontSize: typography.sizes.xxl,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  profileInfo: {
-    flex: 1,
-  },
-  nameBadgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 4,
-  },
-  memberName: {
-    color: colors.textPrimary,
-    fontSize: typography.sizes.lg,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  idBadge: {
-    backgroundColor: colors.goldMuted,
-    borderRadius: 4,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
-  },
-  idBadgeText: {
-    color: colors.gold,
-    fontSize: 10,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  statusBadge: {
-    marginTop: 2,
-  },
-  birthdayBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(239, 161, 0, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.4)',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    alignSelf: 'flex-start',
-    marginVertical: 4,
-  },
-  birthdayBadgeText: {
-    color: colors.gold,
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  joinedText: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontFamily: typography.fonts.inter,
-    marginTop: 4,
-  },
-  contactButtonsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 14,
-  },
-  contactBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: '#161A20',
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
-    borderRadius: 8,
-    paddingVertical: 8,
-  },
-  whatsappBtn: {
-    borderColor: 'rgba(37, 211, 102, 0.4)',
-    backgroundColor: 'rgba(37, 211, 102, 0.08)',
-  },
-  contactBtnText: {
-    color: colors.gold,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  infoGrid: {
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.06)',
-    paddingTop: 12,
-  },
-  infoItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  infoLabel: {
-    color: colors.textMuted,
-    fontSize: 10,
-    fontFamily: typography.fonts.rajdhani,
-    letterSpacing: 0.8,
-  },
-  infoValue: {
-    color: colors.textPrimary,
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    marginTop: 2,
-  },
-  qrCard: {
-    backgroundColor: '#0F1216',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.3)',
-    borderRadius: 14,
-    padding: 16,
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  cardHeaderTitle: {
-    color: colors.textSecondary,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
-  qrWrapper: {
-    padding: 14,
-    backgroundColor: '#0A0A0A',
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
-    borderRadius: 12,
-    marginVertical: 14,
-  },
-  qrCodeText: {
-    color: colors.gold,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.orbitron,
-    letterSpacing: 1,
-  },
-  qrSubtitle: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontFamily: typography.fonts.inter,
-    marginTop: 4,
-  },
-  sectionCard: {
-    backgroundColor: '#0F1216',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.25)',
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 16,
-  },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  newPayLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    backgroundColor: colors.goldMuted,
-  },
-  disabledPayLink: {
-    backgroundColor: '#1E232B',
-    opacity: 0.6,
-  },
-  newPayLinkText: {
-    color: colors.gold,
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  disabledPayLinkText: {
-    color: colors.textMuted,
-  },
-  collectPayBtn: {
-    borderColor: 'rgba(0, 229, 255, 0.4)',
-    backgroundColor: 'rgba(0, 229, 255, 0.08)',
-  },
-  payCompletedBtn: {
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    backgroundColor: '#12151B',
-    opacity: 0.6,
-  },
-  holdToggleBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
-  },
-  pauseToggleBtn: {
-    backgroundColor: 'rgba(251, 191, 36, 0.1)',
-    borderColor: 'rgba(251, 191, 36, 0.3)',
-  },
-  reactivateToggleBtn: {
-    backgroundColor: colors.successMuted,
-    borderColor: colors.successBorder,
-  },
-  holdToggleText: {
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  membershipDetails: {
-    backgroundColor: '#14181E',
-    borderRadius: 10,
-    padding: 12,
-  },
-  planNameTitle: {
-    color: colors.gold,
-    fontSize: typography.sizes.base,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 4,
-  },
-  detailLabel: {
-    color: colors.textSecondary,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.inter,
-  },
-  detailValue: {
-    color: colors.textPrimary,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.inter,
-    fontWeight: '600',
-  },
-  emptyNotice: {
-    padding: 14,
-    alignItems: 'center',
-  },
-  emptyNoticeText: {
-    color: colors.textMuted,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.inter,
-  },
-  emptyText: {
-    color: colors.textMuted,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.inter,
-    marginTop: 8,
-  },
-  paymentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
-  },
-  payReceiptNo: {
-    color: colors.textPrimary,
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '600',
-  },
-  payDate: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontFamily: typography.fonts.inter,
-    marginTop: 2,
-  },
-  payAmount: {
-    color: colors.gold,
-    fontSize: typography.sizes.base,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  recordCountBadge: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '600',
-  },
-  paidStatusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.25)',
-  },
-  paidStatusText: {
-    color: colors.success,
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  attendanceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
-  },
-  attLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexShrink: 0,
-  },
-  attDate: {
-    color: colors.textPrimary,
-    fontSize: 13,
-    fontFamily: typography.fonts.inter,
-    fontWeight: '500',
-  },
-  attRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexShrink: 0,
-  },
-  attTime: {
-    color: colors.textSecondary,
-    fontSize: 12,
-    fontFamily: typography.fonts.rajdhaniMedium,
-    fontWeight: '600',
-  },
-  attMethodBadge: {
-    backgroundColor: 'rgba(239, 161, 0, 0.12)',
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.25)',
-  },
-  attMethodText: {
-    color: colors.gold,
-    fontSize: 10,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  deleteButton: {
-    marginTop: 10,
-    alignSelf: 'center',
-    width: '60%',
-  },
-  workoutRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
-  },
-  workoutLeft: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    flex: 1,
-    marginRight: 10,
-  },
-  workoutTitle: {
-    color: colors.textPrimary,
-    fontSize: typography.sizes.base,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  workoutDesc: {
-    color: colors.textSecondary,
-    fontSize: 11,
-    fontFamily: typography.fonts.inter,
-    marginTop: 2,
-  },
-  workoutDate: {
-    color: colors.textMuted,
-    fontSize: 10,
-    fontFamily: typography.fonts.inter,
-  },
-  ptCardContent: {
-    marginTop: 4,
-  },
-  ptHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
-  },
-  ptPlanTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    fontFamily: typography.fonts.rajdhani,
-  },
-  ptTrainerSubtitle: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    marginTop: 2,
-    fontFamily: typography.fonts.inter,
-  },
-  ptPriceTag: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.gold,
-    fontFamily: typography.fonts.rajdhani,
-  },
-  ptProgressContainer: {
-    marginVertical: 10,
-    padding: 10,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.02)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
-  },
-  ptProgressHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 6,
-  },
-  ptProgressLabel: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    fontFamily: typography.fonts.inter,
-  },
-  ptProgressVal: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    fontFamily: typography.fonts.rajdhani,
-  },
-  progressBarTrack: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: colors.gold,
-    borderRadius: 3,
-  },
-  ptStatusBox: {
-    padding: 12,
-    borderRadius: 8,
-    backgroundColor: 'rgba(168, 85, 247, 0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(168, 85, 247, 0.25)',
-    marginVertical: 8,
-  },
-  ptStatusPrompt: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    lineHeight: 16,
-    fontFamily: typography.fonts.inter,
-  },
-  ptSessionsTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.textSecondary,
-    letterSpacing: 0.5,
-    fontFamily: typography.fonts.rajdhani,
-  },
-  scheduleSessionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    backgroundColor: 'rgba(239, 161, 0, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.3)',
-  },
-  scheduleSessionBtnText: {
-    fontSize: 11,
-    color: colors.gold,
-    fontWeight: '700',
-    fontFamily: typography.fonts.rajdhani,
-  },
-  sessionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 10,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.02)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
-    marginBottom: 6,
-    gap: 10,
-  },
-  sessionDateText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    fontFamily: typography.fonts.rajdhani,
-  },
-  sessionNotesText: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    marginTop: 2,
-    fontFamily: typography.fonts.inter,
-  },
-  sessionFeedbackText: {
-    fontSize: 10,
-    color: '#86EFAC',
-    marginTop: 2,
-    fontFamily: typography.fonts.inter,
-  },
-  completeSessionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
-    backgroundColor: 'rgba(34, 197, 94, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(34, 197, 94, 0.3)',
-  },
-  completeSessionBtnText: {
-    fontSize: 11,
-    color: colors.success,
-    fontWeight: '700',
-    fontFamily: typography.fonts.rajdhani,
-  },
+const getMemberDetailStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    scrollContent: {
+      padding: 16,
+      paddingBottom: 50,
+    },
+    headerActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    headerIconBtn: {
+      width: 34,
+      height: 34,
+      borderRadius: 8,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.1)' : 'rgba(217, 130, 0, 0.1)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.25)' : 'rgba(217, 130, 0, 0.25)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    headerDeleteBtn: {
+      backgroundColor: 'rgba(239, 68, 68, 0.1)',
+      borderColor: 'rgba(239, 68, 68, 0.3)',
+    },
+    profileCard: {
+      backgroundColor: colors.cardBackground,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.3)' : 'rgba(217, 130, 0, 0.25)',
+      borderRadius: 14,
+      padding: 16,
+      marginBottom: 16,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: isDark ? 0.3 : 0.06,
+      shadowRadius: 6,
+      elevation: 3,
+    },
+    profileTopRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 14,
+    },
+    avatar: {
+      width: 60,
+      height: 60,
+      borderRadius: 30,
+      borderWidth: 2,
+      borderColor: colors.gold,
+      marginRight: 14,
+    },
+    fallbackAvatar: {
+      width: 60,
+      height: 60,
+      borderRadius: 30,
+      backgroundColor: colors.surface,
+      borderWidth: 2,
+      borderColor: colors.gold,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: 14,
+    },
+    fallbackText: {
+      color: colors.gold,
+      fontSize: typography.sizes.xxl,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    profileInfo: {
+      flex: 1,
+    },
+    nameBadgeRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 4,
+      flexWrap: 'wrap',
+    },
+    memberName: {
+      color: colors.textPrimary,
+      fontSize: typography.sizes.lg,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      flexShrink: 1,
+    },
+    idBadge: {
+      backgroundColor: colors.goldMuted,
+      borderRadius: 4,
+      paddingHorizontal: 5,
+      paddingVertical: 1,
+      borderWidth: 1,
+      borderColor: colors.goldBorder,
+    },
+    idBadgeText: {
+      color: colors.gold,
+      fontSize: 10,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    statusBadge: {
+      marginTop: 2,
+    },
+    birthdayBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.15)' : 'rgba(217, 130, 0, 0.12)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.4)' : 'rgba(217, 130, 0, 0.35)',
+      borderRadius: 12,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      alignSelf: 'flex-start',
+      marginVertical: 4,
+    },
+    birthdayBadgeText: {
+      color: colors.gold,
+      fontSize: 11,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    joinedText: {
+      color: colors.textMuted,
+      fontSize: 11,
+      fontFamily: typography.fonts.inter,
+      marginTop: 4,
+    },
+    contactButtonsRow: {
+      flexDirection: 'row',
+      gap: 8,
+      marginBottom: 14,
+    },
+    contactBtn: {
+      flex: 1,
+      minHeight: 38,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 5,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.goldBorder,
+      borderRadius: 8,
+      paddingVertical: 8,
+      paddingHorizontal: 6,
+    },
+    whatsappBtn: {
+      borderColor: 'rgba(37, 211, 102, 0.4)',
+      backgroundColor: 'rgba(37, 211, 102, 0.08)',
+    },
+    contactBtnText: {
+      color: colors.gold,
+      fontSize: 12,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    collectPayBtn: {
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.4)' : 'rgba(217, 119, 6, 0.4)',
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.10)' : 'rgba(217, 119, 6, 0.08)',
+    },
+    payCompletedBtn: {
+      borderColor: isDark ? 'rgba(34, 197, 94, 0.3)' : 'rgba(22, 163, 74, 0.3)',
+      backgroundColor: isDark ? 'rgba(34, 197, 94, 0.08)' : 'rgba(22, 163, 74, 0.06)',
+    },
+    infoGrid: {
+      flexDirection: 'row',
+      borderTopWidth: 1,
+      borderTopColor: colors.borderDark,
+      paddingTop: 12,
+    },
+    infoItem: {
+      flex: 1,
+      alignItems: 'center',
+    },
+    infoLabel: {
+      color: colors.textMuted,
+      fontSize: 10,
+      fontFamily: typography.fonts.rajdhani,
+      letterSpacing: 0.8,
+    },
+    infoValue: {
+      color: colors.textPrimary,
+      fontSize: typography.sizes.sm,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      marginTop: 2,
+    },
+    qrCard: {
+      backgroundColor: colors.cardBackground,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.3)' : 'rgba(217, 130, 0, 0.25)',
+      borderRadius: 14,
+      padding: 16,
+      alignItems: 'center',
+      marginBottom: 16,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: isDark ? 0.3 : 0.06,
+      shadowRadius: 6,
+      elevation: 3,
+    },
+    cardHeaderTitle: {
+      color: colors.textSecondary,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 0.8,
+      textTransform: 'uppercase',
+    },
+    qrWrapper: {
+      padding: 14,
+      backgroundColor: '#FFFFFF',
+      borderWidth: 1,
+      borderColor: colors.goldBorder,
+      borderRadius: 12,
+      marginVertical: 14,
+    },
+    qrCodeText: {
+      color: colors.gold,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.orbitron,
+      letterSpacing: 1,
+    },
+    qrSubtitle: {
+      color: colors.textMuted,
+      fontSize: 11,
+      fontFamily: typography.fonts.inter,
+      marginTop: 4,
+    },
+    sectionCard: {
+      backgroundColor: colors.cardBackground,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.25)' : 'rgba(217, 130, 0, 0.2)',
+      borderRadius: 14,
+      padding: 16,
+      marginBottom: 16,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: isDark ? 0.3 : 0.06,
+      shadowRadius: 6,
+      elevation: 3,
+    },
+    sectionHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 12,
+    },
+    newPayLink: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+      backgroundColor: colors.goldMuted,
+    },
+    newPayLinkText: {
+      color: colors.gold,
+      fontSize: 11,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    subscriptionActionRow: {
+      flexDirection: 'row',
+      gap: 10,
+      marginTop: 12,
+      paddingTop: 10,
+      borderTopWidth: 1,
+      borderTopColor: colors.borderDark,
+    },
+    subscriptionActionBtn: {
+      flex: 1,
+      minHeight: 36,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      paddingHorizontal: 8,
+      paddingVertical: 7,
+      borderRadius: 8,
+      borderWidth: 1,
+    },
+    subscriptionActionBtnText: {
+      fontSize: 11.5,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    pauseToggleBtn: {
+      backgroundColor: 'rgba(251, 191, 36, 0.1)',
+      borderColor: 'rgba(251, 191, 36, 0.35)',
+    },
+    reactivateToggleBtn: {
+      backgroundColor: colors.successMuted,
+      borderColor: colors.successBorder,
+    },
+    collectPayActionBtn: {
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : 'rgba(217, 119, 6, 0.10)',
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.45)' : 'rgba(217, 119, 6, 0.35)',
+    },
+    paidStatusPill: {
+      backgroundColor: isDark ? 'rgba(34, 197, 94, 0.08)' : 'rgba(22, 163, 74, 0.08)',
+      borderColor: isDark ? 'rgba(34, 197, 94, 0.25)' : 'rgba(22, 163, 74, 0.25)',
+    },
+    holdStatusIndicator: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: 'rgba(251, 191, 36, 0.12)',
+      paddingHorizontal: 7,
+      paddingVertical: 2.5,
+      borderRadius: 6,
+      borderWidth: 1,
+      borderColor: 'rgba(251, 191, 36, 0.3)',
+    },
+    holdStatusIndicatorText: {
+      color: '#FBBF24',
+      fontSize: 10,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    membershipDetails: {
+      backgroundColor: colors.surface,
+      borderRadius: 10,
+      padding: 12,
+    },
+    planNameTitle: {
+      color: colors.gold,
+      fontSize: typography.sizes.base,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      marginBottom: 8,
+    },
+    detailRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      marginBottom: 4,
+    },
+    detailLabel: {
+      color: colors.textSecondary,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.inter,
+    },
+    detailValue: {
+      color: colors.textPrimary,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.inter,
+      fontWeight: '600',
+    },
+    emptyNotice: {
+      padding: 14,
+      alignItems: 'center',
+    },
+    emptyNoticeText: {
+      color: colors.textMuted,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.inter,
+    },
+    emptyText: {
+      color: colors.textMuted,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.inter,
+      marginTop: 8,
+    },
+    paymentRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: 8,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderDark,
+    },
+    payReceiptNo: {
+      color: colors.textPrimary,
+      fontSize: typography.sizes.sm,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '600',
+    },
+    payDate: {
+      color: colors.textMuted,
+      fontSize: 11,
+      fontFamily: typography.fonts.inter,
+      marginTop: 2,
+    },
+    payAmount: {
+      color: colors.gold,
+      fontSize: typography.sizes.base,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    attendanceRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: 8,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderDark,
+    },
+    attLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    attDate: {
+      color: colors.textPrimary,
+      fontSize: typography.sizes.sm,
+      fontFamily: typography.fonts.inter,
+    },
+    attRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    attTime: {
+      color: colors.textSecondary,
+      fontSize: 11,
+      fontFamily: typography.fonts.inter,
+    },
+    attMethodBadge: {
+      backgroundColor: colors.goldMuted,
+      borderRadius: 4,
+      paddingHorizontal: 4,
+      paddingVertical: 1,
+    },
+    attMethodText: {
+      color: colors.gold,
+      fontSize: 9,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    deleteButton: {
+      marginTop: 10,
+      alignSelf: 'center',
+      width: '60%',
+    },
+    workoutRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderDark,
+    },
+    workoutLeft: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 8,
+      flex: 1,
+      marginRight: 10,
+    },
+    workoutTitle: {
+      color: colors.textPrimary,
+      fontSize: typography.sizes.base,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    workoutDesc: {
+      color: colors.textSecondary,
+      fontSize: 11,
+      fontFamily: typography.fonts.inter,
+      marginTop: 2,
+    },
+    workoutDate: {
+      color: colors.textMuted,
+      fontSize: 10,
+      fontFamily: typography.fonts.inter,
+    },
+    ptCardContent: {
+      marginTop: 4,
+    },
+    ptHeaderRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      marginBottom: 8,
+    },
+    ptPlanTitle: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      fontFamily: typography.fonts.rajdhani,
+      flexShrink: 1,
+    },
+    ptTrainerSubtitle: {
+      fontSize: 11,
+      color: colors.textSecondary,
+      marginTop: 2,
+      fontFamily: typography.fonts.inter,
+    },
+    ptPriceTag: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: colors.gold,
+      fontFamily: typography.fonts.rajdhani,
+    },
+    ptProgressContainer: {
+      marginVertical: 10,
+      padding: 10,
+      borderRadius: 8,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.02)' : 'rgba(0, 0, 0, 0.02)',
+      borderWidth: 1,
+      borderColor: colors.borderDark,
+    },
+    ptProgressHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginBottom: 6,
+    },
+    ptProgressLabel: {
+      fontSize: 11,
+      color: colors.textSecondary,
+      fontFamily: typography.fonts.inter,
+    },
+    ptProgressVal: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      fontFamily: typography.fonts.rajdhani,
+    },
+    progressBarTrack: {
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+      overflow: 'hidden',
+    },
+    progressBarFill: {
+      height: '100%',
+      backgroundColor: colors.gold,
+      borderRadius: 3,
+    },
+    ptStatusBox: {
+      padding: 12,
+      borderRadius: 8,
+      backgroundColor: 'rgba(168, 85, 247, 0.06)',
+      borderWidth: 1,
+      borderColor: 'rgba(168, 85, 247, 0.25)',
+      marginVertical: 8,
+    },
+    ptStatusPrompt: {
+      fontSize: 11,
+      color: colors.textSecondary,
+      lineHeight: 16,
+      fontFamily: typography.fonts.inter,
+    },
+    ptSessionsTitle: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.textSecondary,
+      letterSpacing: 0.5,
+      fontFamily: typography.fonts.rajdhani,
+    },
+    scheduleSessionBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : 'rgba(217, 130, 0, 0.12)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.3)' : 'rgba(217, 130, 0, 0.3)',
+    },
+    scheduleSessionBtnText: {
+      fontSize: 11,
+      color: colors.gold,
+      fontWeight: '700',
+      fontFamily: typography.fonts.rajdhani,
+    },
+    sessionItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: 10,
+      borderRadius: 8,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.02)' : 'rgba(0, 0, 0, 0.02)',
+      borderWidth: 1,
+      borderColor: colors.borderDark,
+      marginBottom: 6,
+      gap: 10,
+    },
+    sessionDateText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      fontFamily: typography.fonts.rajdhani,
+    },
+    sessionNotesText: {
+      fontSize: 11,
+      color: colors.textSecondary,
+      marginTop: 2,
+      fontFamily: typography.fonts.inter,
+    },
+    sessionFeedbackText: {
+      fontSize: 10,
+      color: '#16A34A',
+      marginTop: 2,
+      fontFamily: typography.fonts.inter,
+    },
+    completeSessionBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 6,
+      backgroundColor: 'rgba(34, 197, 94, 0.12)',
+      borderWidth: 1,
+      borderColor: 'rgba(34, 197, 94, 0.3)',
+    },
+    completeSessionBtnText: {
+      fontSize: 11,
+      color: colors.success,
+      fontWeight: '700',
+      fontFamily: typography.fonts.rajdhani,
+    },
   pendingUpgradeBanner: {
     backgroundColor: 'rgba(239, 161, 0, 0.08)',
     borderWidth: 1,
@@ -2625,5 +2654,42 @@ const styles = StyleSheet.create({
     color: colors.blue,
     fontFamily: typography.fonts.rajdhani,
   },
-});
-
+  holdToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  holdToggleText: {
+    fontSize: 11,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+  },
+  recordCountBadge: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '600',
+  },
+  paidStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.25)',
+  },
+  paidStatusText: {
+    color: colors.success,
+    fontSize: 11,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  });

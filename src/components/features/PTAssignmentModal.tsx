@@ -4,7 +4,8 @@ import { FVEModal } from '@/components/common/FVEModal';
 import { FVEInput } from '@/components/common/FVEInput';
 import { FVEButton } from '@/components/common/FVEButton';
 import { supabase } from '@/api/supabase';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
+import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { haptics } from '@/utils/haptics';
 import { PersonalTraining, UserProfile } from '@/types';
@@ -23,6 +24,8 @@ export function PTAssignmentModal({
   onSaved,
   pt,
 }: PTAssignmentModalProps) {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => getAssignmentStyles(colors, isDark), [colors, isDark]);
   const [trainerId, setTrainerId] = useState<string>(pt.trainer_id || '');
   const [packageName, setPackageName] = useState<string>(pt.package_name || '12 Sessions — Strength & Form');
   const [sessions, setSessions] = useState<string>(String(pt.total_sessions || 12));
@@ -281,79 +284,80 @@ export function PTAssignmentModal({
   );
 }
 
-const styles = StyleSheet.create({
-  infoBox: {
-    padding: 12,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    marginBottom: 14,
-  },
-  infoBoxTitle: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.gold,
-    letterSpacing: 0.5,
-    marginBottom: 3,
-    fontFamily: typography.fonts.rajdhani,
-  },
-  infoBoxText: {
-    fontSize: 12,
-    color: colors.textPrimary,
-    lineHeight: 16,
-    fontFamily: typography.fonts.inter,
-  },
-  fieldLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.textMuted,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginBottom: 8,
-    fontFamily: typography.fonts.rajdhani,
-  },
-  trainersList: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  trainerCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 12,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.02)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  trainerCardActive: {
-    backgroundColor: 'rgba(168, 85, 247, 0.12)',
-    borderColor: '#A855F7',
-  },
-  trainerIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  trainerName: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    fontFamily: typography.fonts.rajdhani,
-  },
-  trainerPhone: {
-    fontSize: 11,
-    color: colors.textMuted,
-    marginTop: 2,
-    fontFamily: typography.fonts.inter,
-  },
-  rowInputs: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 12,
-  },
-});
+const getAssignmentStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    infoBox: {
+      padding: 12,
+      borderRadius: 10,
+      backgroundColor: colors.bgSecondary,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+      marginBottom: 14,
+    },
+    infoBoxTitle: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: colors.gold,
+      letterSpacing: 0.5,
+      marginBottom: 3,
+      fontFamily: typography.fonts.rajdhani,
+    },
+    infoBoxText: {
+      fontSize: 12,
+      color: colors.textPrimary,
+      lineHeight: 16,
+      fontFamily: typography.fonts.inter,
+    },
+    fieldLabel: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.textMuted,
+      letterSpacing: 1,
+      textTransform: 'uppercase',
+      marginBottom: 8,
+      fontFamily: typography.fonts.rajdhani,
+    },
+    trainersList: {
+      gap: 8,
+      marginBottom: 8,
+    },
+    trainerCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      padding: 12,
+      borderRadius: 10,
+      backgroundColor: colors.bgSecondary,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+    },
+    trainerCardActive: {
+      backgroundColor: isDark ? 'rgba(168, 85, 247, 0.12)' : 'rgba(168, 85, 247, 0.15)',
+      borderColor: '#A855F7',
+    },
+    trainerIconBox: {
+      width: 36,
+      height: 36,
+      borderRadius: 8,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.04)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    trainerName: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      fontFamily: typography.fonts.rajdhani,
+    },
+    trainerPhone: {
+      fontSize: 11,
+      color: colors.textMuted,
+      marginTop: 2,
+      fontFamily: typography.fonts.inter,
+    },
+    rowInputs: {
+      flexDirection: 'row',
+      gap: 10,
+      marginTop: 12,
+    },
+  });

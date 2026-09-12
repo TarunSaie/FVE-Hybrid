@@ -10,7 +10,8 @@ import {
   Pressable,
 } from 'react-native';
 import { ChevronLeft, ChevronRight, X, Calendar, Check } from 'lucide-react-native';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
+import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { haptics } from '@/utils/haptics';
 
@@ -50,6 +51,9 @@ export function FVEDatePickerModal({
   maxDate,
   minDate,
 }: FVEDatePickerModalProps) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
+
   // Parse initial year, month, day
   const today = new Date();
   const [selectedYear, setSelectedYear] = useState(today.getFullYear());
@@ -126,12 +130,11 @@ export function FVEDatePickerModal({
   };
 
   const handleConfirm = () => {
-    haptics.medium();
-    const safeDay = Math.min(selectedDay, daysInMonth);
+    haptics.success();
     const mStr = String(selectedMonth + 1).padStart(2, '0');
-    const dStr = String(safeDay).padStart(2, '0');
-    const result = `${selectedYear}-${mStr}-${dStr}`;
-    onSelectDate(result);
+    const dStr = String(selectedDay).padStart(2, '0');
+    const formattedDate = `${selectedYear}-${mStr}-${dStr}`;
+    onSelectDate(formattedDate);
     onClose();
   };
 
@@ -144,16 +147,11 @@ export function FVEDatePickerModal({
     setViewMode('calendar');
   };
 
+  // Preview date string
   const formattedSelectedPreview = useMemo(() => {
-    const safeDay = Math.min(selectedDay, daysInMonth);
-    const dateObj = new Date(selectedYear, selectedMonth, safeDay);
-    return dateObj.toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  }, [selectedYear, selectedMonth, selectedDay, daysInMonth]);
+    const mName = MONTHS[selectedMonth]?.slice(0, 3);
+    return `${selectedDay} ${mName} ${selectedYear}`;
+  }, [selectedYear, selectedMonth, selectedDay]);
 
   return (
     <Modal
@@ -328,271 +326,272 @@ export function FVEDatePickerModal({
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
-    justifyContent: 'flex-end',
-  },
-  backdropTap: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  safeArea: {
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: '#0F1318',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    borderWidth: 1,
-    borderBottomWidth: 0,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    paddingBottom: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -6 },
-    shadowOpacity: 0.6,
-    shadowRadius: 16,
-    elevation: 24,
-  },
-  handleContainer: {
-    alignItems: 'center',
-    paddingVertical: 10,
-  },
-  sheetHandle: {
-    width: 36,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    paddingHorizontal: 22,
-    paddingBottom: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  sheetTitle: {
-    color: colors.textMuted,
-    fontSize: 10,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  previewDateText: {
-    color: colors.gold,
-    fontSize: typography.sizes.lg,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    marginTop: 2,
-  },
-  closeBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  navBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  navArrow: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  navMiddle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  monthName: {
-    color: colors.textPrimary,
-    fontSize: typography.sizes.base,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  yearToggleBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(239, 161, 0, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.25)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  yearToggleText: {
-    color: colors.gold,
-    fontSize: 13,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  yearToggleHint: {
-    color: colors.textSecondary,
-    fontSize: 9,
-    fontFamily: typography.fonts.inter,
-  },
-  calendarContainer: {
-    paddingHorizontal: 16,
-    paddingBottom: 10,
-  },
-  weekdaysRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: 8,
-  },
-  weekdayText: {
-    width: 40,
-    textAlign: 'center',
-    color: colors.textMuted,
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  weekendText: {
-    color: colors.gold,
-    opacity: 0.7,
-  },
-  daysGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  dayCellEmpty: {
-    width: '14.28%',
-    height: 40,
-  },
-  dayCell: {
-    width: '14.28%',
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 20,
-    marginVertical: 2,
-  },
-  selectedDayCell: {
-    backgroundColor: colors.gold,
-    shadowColor: colors.gold,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.6,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  currentDayCell: {
-    borderWidth: 1,
-    borderColor: colors.gold,
-  },
-  dayText: {
-    color: colors.textPrimary,
-    fontSize: 13,
-    fontFamily: typography.fonts.inter,
-    fontWeight: '500',
-  },
-  selectedDayText: {
-    color: '#050505',
-    fontWeight: '800',
-  },
-  currentDayText: {
-    color: colors.gold,
-    fontWeight: '700',
-  },
-  yearsScroll: {
-    maxHeight: 260,
-    paddingHorizontal: 16,
-  },
-  yearsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    paddingVertical: 8,
-  },
-  yearChip: {
-    width: '23%',
-    paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: '#151920',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  selectedYearChip: {
-    backgroundColor: colors.gold,
-    borderColor: colors.gold,
-  },
-  yearChipText: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  selectedYearChipText: {
-    color: '#050505',
-    fontWeight: '800',
-  },
-  footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.08)',
-    gap: 12,
-  },
-  todayBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#151922',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 13,
-  },
-  todayBtnText: {
-    color: colors.gold,
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  confirmBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: colors.gold,
-    borderRadius: 14,
-    paddingVertical: 13,
-    shadowColor: colors.gold,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  confirmBtnText: {
-    color: '#050505',
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-  },
-});
+const getStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    backdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.75)',
+      justifyContent: 'flex-end',
+    },
+    backdropTap: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+    },
+    safeArea: {
+      justifyContent: 'flex-end',
+    },
+    sheet: {
+      backgroundColor: colors.cardBackground,
+      borderTopLeftRadius: 28,
+      borderTopRightRadius: 28,
+      borderWidth: 1,
+      borderBottomWidth: 0,
+      borderColor: colors.borderDark,
+      paddingBottom: 24,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: -6 },
+      shadowOpacity: 0.25,
+      shadowRadius: 16,
+      elevation: 24,
+    },
+    handleContainer: {
+      alignItems: 'center',
+      paddingVertical: 10,
+    },
+    sheetHandle: {
+      width: 36,
+      height: 5,
+      borderRadius: 2.5,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.25)' : 'rgba(0, 0, 0, 0.2)',
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      paddingHorizontal: 22,
+      paddingBottom: 14,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.borderDark,
+    },
+    sheetTitle: {
+      color: colors.textMuted,
+      fontSize: 10,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 1,
+      textTransform: 'uppercase',
+    },
+    previewDateText: {
+      color: colors.gold,
+      fontSize: typography.sizes.lg,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      marginTop: 2,
+    },
+    closeBtn: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    navBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+    },
+    navArrow: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    navMiddle: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
+    monthName: {
+      color: colors.textPrimary,
+      fontSize: typography.sizes.base,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 0.5,
+    },
+    yearToggleBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : 'rgba(217, 130, 0, 0.12)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.25)' : 'rgba(217, 130, 0, 0.25)',
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 16,
+    },
+    yearToggleText: {
+      color: colors.gold,
+      fontSize: 13,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    yearToggleHint: {
+      color: colors.textSecondary,
+      fontSize: 9,
+      fontFamily: typography.fonts.inter,
+    },
+    calendarContainer: {
+      paddingHorizontal: 16,
+      paddingBottom: 10,
+    },
+    weekdaysRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-around',
+      marginBottom: 8,
+    },
+    weekdayText: {
+      width: 40,
+      textAlign: 'center',
+      color: colors.textMuted,
+      fontSize: 11,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    weekendText: {
+      color: colors.gold,
+      opacity: 0.8,
+    },
+    daysGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+    },
+    dayCellEmpty: {
+      width: '14.28%',
+      height: 40,
+    },
+    dayCell: {
+      width: '14.28%',
+      height: 40,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 20,
+      marginVertical: 2,
+    },
+    selectedDayCell: {
+      backgroundColor: colors.gold,
+      shadowColor: colors.gold,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.6,
+      shadowRadius: 6,
+      elevation: 4,
+    },
+    currentDayCell: {
+      borderWidth: 1,
+      borderColor: colors.gold,
+    },
+    dayText: {
+      color: colors.textPrimary,
+      fontSize: 13,
+      fontFamily: typography.fonts.inter,
+      fontWeight: '500',
+    },
+    selectedDayText: {
+      color: '#050505',
+      fontWeight: '800',
+    },
+    currentDayText: {
+      color: colors.gold,
+      fontWeight: '700',
+    },
+    yearsScroll: {
+      maxHeight: 260,
+      paddingHorizontal: 16,
+    },
+    yearsGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      paddingVertical: 8,
+    },
+    yearChip: {
+      width: '23%',
+      paddingVertical: 10,
+      borderRadius: 10,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.borderDark,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    selectedYearChip: {
+      backgroundColor: colors.gold,
+      borderColor: colors.gold,
+    },
+    yearChipText: {
+      color: colors.textSecondary,
+      fontSize: 13,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    selectedYearChipText: {
+      color: '#050505',
+      fontWeight: '800',
+    },
+    footer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 20,
+      paddingTop: 14,
+      borderTopWidth: 1,
+      borderTopColor: colors.borderDark,
+      gap: 12,
+    },
+    todayBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.borderDark,
+      borderRadius: 14,
+      paddingHorizontal: 16,
+      paddingVertical: 13,
+    },
+    todayBtnText: {
+      color: colors.gold,
+      fontSize: typography.sizes.sm,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    confirmBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      backgroundColor: colors.gold,
+      borderRadius: 14,
+      paddingVertical: 13,
+      shadowColor: colors.gold,
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.35,
+      shadowRadius: 6,
+      elevation: 4,
+    },
+    confirmBtnText: {
+      color: '#050505',
+      fontSize: typography.sizes.sm,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '800',
+      letterSpacing: 0.8,
+    },
+  });

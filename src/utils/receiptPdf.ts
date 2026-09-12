@@ -5,7 +5,8 @@ import * as Clipboard from 'expo-clipboard';
 import { supabase } from '@/api/supabase';
 import { Payment, PersonalTraining } from '@/types';
 import { formatCurrency, openWhatsAppLink } from '@/utils/format';
-import { formatDate } from '@/utils/date';
+import { sharePdfToMemberWhatsApp } from '@/utils/whatsAppPdfShare';
+import { formatDate, calculateMembershipDurationDays } from '@/utils/date';
 import { APP_NAME, TAGLINE, CHIRVEX_WEBSITE } from '@/constants/branding';
 import { GYM_LOGO_BASE64 } from '@/constants/logoBase64';
 
@@ -58,13 +59,9 @@ export function buildReceiptDataFromPayment(
   let durationDays =
     plan?.duration_days ||
     (payment.memberships?.start_date && payment.memberships?.expiry_date
-      ? Math.max(
-          1,
-          Math.round(
-            (new Date(payment.memberships.expiry_date).getTime() -
-              new Date(payment.memberships.start_date).getTime()) /
-              (1000 * 60 * 60 * 24)
-          )
+      ? calculateMembershipDurationDays(
+          payment.memberships.start_date,
+          payment.memberships.expiry_date
         )
       : null);
 
@@ -79,13 +76,7 @@ export function buildReceiptDataFromPayment(
       if (pt.start_date) startDate = formatDate(pt.start_date);
       if (pt.expiry_date) endDate = formatDate(pt.expiry_date);
       if (pt.start_date && pt.expiry_date) {
-        durationDays = Math.max(
-          1,
-          Math.round(
-            (new Date(pt.expiry_date).getTime() - new Date(pt.start_date).getTime()) /
-              (1000 * 60 * 60 * 24)
-          )
-        );
+        durationDays = calculateMembershipDurationDays(pt.start_date, pt.expiry_date);
       }
     } else {
       planName = 'Personal Training Add-On';
@@ -511,13 +502,10 @@ export function generateReceiptHtml(data: ReceiptData): string {
         ${data.visitDayLimit != null ? `
         <div class="row">
           <span class="label">Visits Allotted:</span>
-          <span class="val val-gold">${data.visitDayLimit} Days</span>
+          <span class="val val-gold">${data.visitDayLimit} Visits</span>
         </div>
-        <div style="font-size: 10px; color: #8A92A6; margin-top: 4px; margin-bottom: 6px; line-height: 1.4;">
-          <div>Visits: ${data.visitDayLimit} days allotted throughout your entire subscription period.</div>
-          <div style="color: #EFA100; font-weight: 600; margin-top: 2px;">
-            ${data.actualVisitsUsed ?? data.visitDaysUsed ?? 0}/${data.visitDayLimit} visits used. ${(data.remainingVisits ?? (data.visitDayLimit - (data.actualVisitsUsed ?? data.visitDaysUsed ?? 0))) > 1 ? `You can visit for ${data.remainingVisits ?? (data.visitDayLimit - (data.actualVisitsUsed ?? data.visitDaysUsed ?? 0))} more days during your plan.` : (data.remainingVisits ?? (data.visitDayLimit - (data.actualVisitsUsed ?? data.visitDaysUsed ?? 0))) === 1 ? `You can visit for 1 more day during your plan.` : `All allotted visit days have been used.`}
-          </div>
+        <div style="font-size: 10px; color: #8A92A6; margin-top: 2px; margin-bottom: 6px; line-height: 1.4;">
+          Visits: ${data.visitDayLimit} visits allotted throughout your entire subscription period. You can visit on any ${data.visitDayLimit} days during your plan.
         </div>` : ''}
         `}
         <div class="row">
@@ -562,11 +550,49 @@ export function generateReceiptHtml(data: ReceiptData): string {
   `.trim();
 }
 
+/** Generates the official receipt as a cleanly named PDF in the app cache. */
+export async function generateReceiptPdf(receiptData: ReceiptData): Promise<string> {
+  const html = generateReceiptHtml(receiptData);
+
+  const { uri: tempUri, base64 } = await Print.printToFileAsync({
+    html,
+    base64: true,
+  });
+
+  const safeReceiptNo = (receiptData.receiptNumber || 'Receipt').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const targetDir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+  let shareUri = tempUri;
+
+  if (targetDir) {
+    const targetUri = `${targetDir}FVE_Receipt_${safeReceiptNo}.pdf`;
+    try {
+      const existing = await FileSystem.getInfoAsync(targetUri);
+      if (existing.exists) {
+        await FileSystem.deleteAsync(targetUri, { idempotent: true });
+      }
+      await FileSystem.copyAsync({ from: tempUri, to: targetUri });
+      shareUri = targetUri;
+    } catch (copyErr) {
+      console.warn('[receiptPdf] copyAsync failed, trying base64 write fallback:', copyErr);
+      if (base64) {
+        try {
+          await FileSystem.writeAsStringAsync(targetUri, base64, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          shareUri = targetUri;
+        } catch (writeErr) {
+          console.error('[receiptPdf] base64 write fallback failed:', writeErr);
+        }
+      }
+    }
+  }
+
+  return shareUri;
+}
+
 let isSharingReceipt = false;
 
-/**
- * Generates the receipt PDF and shares it (allowing user to select WhatsApp to attach PDF).
- */
+/** Generates the receipt PDF and opens the platform's generic share sheet. */
 export async function sharePdfReceipt(receiptData: ReceiptData): Promise<void> {
   if (isSharingReceipt) {
     console.warn('[receiptPdf] A share request is already in progress, ignoring duplicate call');
@@ -575,45 +601,7 @@ export async function sharePdfReceipt(receiptData: ReceiptData): Promise<void> {
   isSharingReceipt = true;
 
   try {
-    const html = generateReceiptHtml(receiptData);
-
-    // 1. Generate official PDF file in print cache
-    const { uri: tempUri, base64 } = await Print.printToFileAsync({
-      html,
-      base64: true,
-    });
-
-    // 2. Prepare destination in app cacheDirectory with a clean file name
-    const safeReceiptNo = (receiptData.receiptNumber || 'Receipt').replace(/[^a-zA-Z0-9_-]/g, '_');
-    const targetDir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
-    let shareUri = tempUri;
-
-    if (targetDir) {
-      const targetUri = `${targetDir}FVE_Receipt_${safeReceiptNo}.pdf`;
-      try {
-        const existing = await FileSystem.getInfoAsync(targetUri);
-        if (existing.exists) {
-          await FileSystem.deleteAsync(targetUri, { idempotent: true });
-        }
-        await FileSystem.copyAsync({
-          from: tempUri,
-          to: targetUri,
-        });
-        shareUri = targetUri;
-      } catch (copyErr) {
-        console.warn('[receiptPdf] copyAsync failed, trying base64 write fallback:', copyErr);
-        if (base64) {
-          try {
-            await FileSystem.writeAsStringAsync(targetUri, base64, {
-              encoding: FileSystem.EncodingType.Base64,
-            });
-            shareUri = targetUri;
-          } catch (writeErr) {
-            console.error('[receiptPdf] base64 write fallback failed:', writeErr);
-          }
-        }
-      }
-    }
+    const shareUri = await generateReceiptPdf(receiptData);
 
     const isAvailable = await Sharing.isAvailableAsync();
     if (!isAvailable) {
@@ -637,6 +625,19 @@ export async function sharePdfReceipt(receiptData: ReceiptData): Promise<void> {
       isSharingReceipt = false;
     }, 1200);
   }
+}
+
+/**
+ * Opens the member's WhatsApp chat with this receipt PDF and the supplied
+ * receipt message attached. There is no document or application picker.
+ */
+export async function shareReceiptPdfToWhatsApp(
+  receiptData: ReceiptData,
+  memberMobile: string,
+  message: string,
+): Promise<void> {
+  const receiptUri = await generateReceiptPdf(receiptData);
+  await sharePdfToMemberWhatsApp(memberMobile, receiptUri, message);
 }
 
 /**

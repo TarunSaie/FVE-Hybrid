@@ -11,11 +11,11 @@ import {
   Animated,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
 import { typography } from '@/constants/typography';
 import { haptics } from '@/utils/haptics';
 
-export type ButtonVariant = 'gold' | 'blue' | 'outline' | 'ghost' | 'danger';
+export type ButtonVariant = 'gold' | 'blue' | 'outline' | 'ghost' | 'danger' | 'secondary';
 
 interface FVEButtonProps {
   title: string;
@@ -44,6 +44,7 @@ export function FVEButton({
   size = 'md',
   haptic = 'light',
 }: FVEButtonProps) {
+  const { colors, isDark } = useTheme();
   const isInteractive = !disabled && !loading;
   const scale = useRef(new Animated.Value(1)).current;
 
@@ -77,9 +78,9 @@ export function FVEButton({
   };
 
   const sizeStyles = {
-    sm: { paddingVertical: 8, paddingHorizontal: 14, fontSize: typography.sizes.sm },
-    md: { paddingVertical: 13, paddingHorizontal: 20, fontSize: typography.sizes.base },
-    lg: { paddingVertical: 16, paddingHorizontal: 24, fontSize: typography.sizes.md },
+    sm: { paddingVertical: 8, paddingHorizontal: 12, fontSize: typography.sizes.sm, minHeight: 36 },
+    md: { paddingVertical: 12, paddingHorizontal: 18, fontSize: typography.sizes.base, minHeight: 46 },
+    lg: { paddingVertical: 15, paddingHorizontal: 22, fontSize: typography.sizes.md, minHeight: 52 },
   }[size];
 
   if (variant === 'gold') {
@@ -96,17 +97,18 @@ export function FVEButton({
           <LinearGradient
             colors={
               disabled
-                ? ['#3A3428', '#2A241C']
+                ? isDark ? ['#3A3428', '#2A241C'] : ['#E2E8F0', '#CBD5E1']
                 : [colors.goldBright, colors.gold, colors.goldDark]
             }
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={[
               styles.gradient,
-              styles.goldGlow,
               {
                 paddingVertical: sizeStyles.paddingVertical,
                 paddingHorizontal: sizeStyles.paddingHorizontal,
+                minHeight: sizeStyles.minHeight,
+                shadowColor: colors.gold,
               },
             ]}
           >
@@ -118,9 +120,11 @@ export function FVEButton({
                   <View style={styles.iconLeft}>{icon}</View>
                 )}
                 <Text
+                  numberOfLines={1}
                   style={[
                     styles.goldText,
                     { fontSize: sizeStyles.fontSize },
+                    disabled && !isDark && { color: colors.textMuted },
                     textStyle,
                   ]}
                 >
@@ -151,7 +155,7 @@ export function FVEButton({
           <LinearGradient
             colors={
               disabled
-                ? ['#1A2535', '#101722']
+                ? isDark ? ['#1A2535', '#101722'] : ['#E2E8F0', '#CBD5E1']
                 : [colors.blueLight, colors.blue, colors.blueDark]
             }
             start={{ x: 0, y: 0 }}
@@ -161,6 +165,7 @@ export function FVEButton({
               {
                 paddingVertical: sizeStyles.paddingVertical,
                 paddingHorizontal: sizeStyles.paddingHorizontal,
+                minHeight: sizeStyles.minHeight,
               },
             ]}
           >
@@ -172,6 +177,7 @@ export function FVEButton({
                   <View style={styles.iconLeft}>{icon}</View>
                 )}
                 <Text
+                  numberOfLines={1}
                   style={[
                     styles.blueText,
                     { fontSize: sizeStyles.fontSize },
@@ -191,10 +197,65 @@ export function FVEButton({
     );
   }
 
+  if (variant === 'secondary') {
+    return (
+      <Animated.View style={[{ transform: [{ scale }] }, style]}>
+        <Pressable
+          onPress={handlePress}
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
+          disabled={!isInteractive}
+          android_ripple={{ color: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)', borderless: false }}
+          style={[
+            styles.base,
+            styles.outlineBase,
+            {
+              backgroundColor: colors.surfaceLight,
+              borderColor: colors.borderDark,
+              paddingVertical: sizeStyles.paddingVertical,
+              paddingHorizontal: sizeStyles.paddingHorizontal,
+              minHeight: sizeStyles.minHeight,
+            },
+            disabled && styles.disabled,
+          ]}
+        >
+          {loading ? (
+            <ActivityIndicator size="small" color={colors.textPrimary} />
+          ) : (
+            <View style={styles.contentRow}>
+              {icon && iconPosition === 'left' && (
+                <View style={styles.iconLeft}>{icon}</View>
+              )}
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.outlineText,
+                  { color: colors.textPrimary, fontSize: sizeStyles.fontSize },
+                  textStyle,
+                ]}
+              >
+                {title}
+              </Text>
+              {icon && iconPosition === 'right' && (
+                <View style={styles.iconRight}>{icon}</View>
+              )}
+            </View>
+          )}
+        </Pressable>
+      </Animated.View>
+    );
+  }
+
   const outlineBorder =
     variant === 'danger' ? colors.errorBorder : colors.goldBorder;
   const outlineTextColor =
     variant === 'danger' ? colors.error : colors.gold;
+  const outlineBg =
+    variant === 'ghost'
+      ? 'transparent'
+      : isDark
+      ? 'rgba(15, 17, 21, 0.7)'
+      : 'rgba(255, 255, 255, 0.9)';
 
   return (
     <Animated.View style={[{ transform: [{ scale }] }, style]}>
@@ -212,10 +273,10 @@ export function FVEButton({
           styles.outlineBase,
           {
             borderColor: variant === 'ghost' ? 'transparent' : outlineBorder,
-            backgroundColor:
-              variant === 'ghost' ? 'transparent' : 'rgba(15, 17, 21, 0.7)',
+            backgroundColor: outlineBg,
             paddingVertical: sizeStyles.paddingVertical,
             paddingHorizontal: sizeStyles.paddingHorizontal,
+            minHeight: sizeStyles.minHeight,
           },
           disabled && styles.disabled,
         ]}
@@ -228,6 +289,7 @@ export function FVEButton({
               <View style={styles.iconLeft}>{icon}</View>
             )}
             <Text
+              numberOfLines={1}
               style={[
                 styles.outlineText,
                 { color: outlineTextColor, fontSize: sizeStyles.fontSize },
@@ -255,13 +317,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 14,
-  },
-  goldGlow: {
-    shadowColor: colors.gold,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 3,
   },
   outlineBase: {
     borderWidth: 1,

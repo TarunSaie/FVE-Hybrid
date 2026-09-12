@@ -13,7 +13,8 @@ import { FVEInput } from '@/components/common/FVEInput';
 import { FVEButton } from '@/components/common/FVEButton';
 import { PersonalTrainingPlan } from '@/types';
 import { supabase } from '@/api/supabase';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
+import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { parseFeatures } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
@@ -40,6 +41,8 @@ export function PTPlanFormModal({
   onSaved,
   plan,
 }: PTPlanFormModalProps) {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => getPTPlanFormStyles(colors, isDark), [colors, isDark]);
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState('');
   const [totalSessions, setTotalSessions] = useState('12');
@@ -320,84 +323,85 @@ export function PTPlanFormModal({
   );
 }
 
-const styles = StyleSheet.create({
-  scrollContent: {
-    paddingBottom: 24,
-    gap: 12,
-  },
-  section: {
-    marginBottom: 4,
-  },
-  label: {
-    fontFamily: typography.fonts.rajdhani,
-    fontSize: 12,
-    color: colors.textMuted,
-    letterSpacing: 1,
-    marginBottom: 6,
-  },
-  presetRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 6,
-  },
-  presetChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: colors.cardBackground,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  presetChipActive: {
-    backgroundColor: colors.gold,
-    borderColor: colors.gold,
-  },
-  presetText: {
-    fontFamily: typography.fonts.rajdhani,
-    fontSize: 11,
-    color: colors.textMuted,
-    letterSpacing: 0.5,
-  },
-  presetTextActive: {
-    color: colors.background,
-  },
-  perSessionText: {
-    fontFamily: typography.fonts.inter,
-    fontSize: 11,
-    color: colors.gold,
-    marginTop: 4,
-  },
-  featuresHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  addFeatureBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  addFeatureText: {
-    fontFamily: typography.fonts.rajdhani,
-    fontSize: 11,
-    color: colors.gold,
-    letterSpacing: 0.5,
-  },
-  featureRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 4,
-  },
-  featureInputWrapper: {
-    flex: 1,
-  },
-  removeFeatureBtn: {
-    padding: 8,
-  },
-  actions: {
-    marginTop: 12,
-  },
-});
+const getPTPlanFormStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    scrollContent: {
+      paddingBottom: 24,
+      gap: 12,
+    },
+    section: {
+      marginBottom: 4,
+    },
+    label: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 12,
+      color: colors.textMuted,
+      letterSpacing: 1,
+      marginBottom: 6,
+    },
+    presetRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 6,
+      marginTop: 6,
+    },
+    presetChip: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 8,
+      backgroundColor: colors.bgSecondary,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+    },
+    presetChipActive: {
+      backgroundColor: colors.gold,
+      borderColor: colors.gold,
+    },
+    presetText: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 11,
+      color: colors.textMuted,
+      letterSpacing: 0.5,
+    },
+    presetTextActive: {
+      color: '#050505',
+    },
+    perSessionText: {
+      fontFamily: typography.fonts.inter,
+      fontSize: 11,
+      color: colors.gold,
+      marginTop: 4,
+    },
+    featuresHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 8,
+    },
+    addFeatureBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    addFeatureText: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 11,
+      color: colors.gold,
+      letterSpacing: 0.5,
+    },
+    featureRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 4,
+    },
+    featureInputWrapper: {
+      flex: 1,
+    },
+    removeFeatureBtn: {
+      padding: 8,
+    },
+    actions: {
+      marginTop: 12,
+    },
+  });

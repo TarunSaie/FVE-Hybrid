@@ -32,7 +32,8 @@ import { FVEEmptyState } from '@/components/common/FVEEmptyState';
 import { FVELogoLoader } from '@/components/common/FVELogoLoader';
 import { Expense, EXPENSE_CATEGORIES } from '@/types';
 import { supabase } from '@/api/supabase';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
+import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { formatCurrency } from '@/utils/format';
 import { formatDate, getLocalMonthStr } from '@/utils/date';
@@ -41,6 +42,8 @@ import { haptics } from '@/utils/haptics';
 export function ExpensesScreen() {
   const navigation = useNavigation();
   const qc = useQueryClient();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => getExpensesStyles(colors, isDark), [colors, isDark]);
 
   const currentMonthStr = getLocalMonthStr();
   const [selectedMonth, setSelectedMonth] = useState(currentMonthStr);
@@ -422,249 +425,255 @@ export function ExpensesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#050505',
-  },
-  addBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: colors.goldMuted,
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  addBtnText: {
-    color: colors.gold,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  monthNavBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: '#0A0D12',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  monthNavBtn: {
-    padding: 6,
-    borderRadius: 8,
-    backgroundColor: 'rgba(239, 161, 0, 0.1)',
-  },
-  monthNavBtnDisabled: {
-    opacity: 0.35,
-  },
-  monthInfoBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  monthInfoText: {
-    color: colors.textPrimary,
-    fontSize: typography.sizes.base,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  monthNavRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  currentMonthPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    backgroundColor: colors.gold,
-  },
-  currentMonthPillText: {
-    color: '#050505',
-    fontSize: 10,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-  },
-  // 3-Card P&L Grid Styles
-  pnlGrid: {
-    flexDirection: 'row',
-    paddingHorizontal: 14,
-    paddingTop: 12,
-    paddingBottom: 6,
-    gap: 8,
-  },
-  pnlCardRevenue: {
-    flex: 1,
-    backgroundColor: 'rgba(34, 197, 94, 0.07)',
-    borderWidth: 1,
-    borderColor: 'rgba(34, 197, 94, 0.28)',
-    borderRadius: 12,
-    padding: 10,
-  },
-  pnlCardExpenses: {
-    flex: 1,
-    backgroundColor: 'rgba(239, 68, 68, 0.07)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.28)',
-    borderRadius: 12,
-    padding: 10,
-  },
-  pnlCardProfit: {
-    flex: 1,
-    backgroundColor: 'rgba(239, 161, 0, 0.07)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.32)',
-    borderRadius: 12,
-    padding: 10,
-  },
-  pnlCardLoss: {
-    backgroundColor: 'rgba(239, 68, 68, 0.09)',
-    borderColor: 'rgba(239, 68, 68, 0.35)',
-  },
-  pnlHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  pnlLabel: {
-    color: colors.textMuted,
-    fontSize: 9,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-    letterSpacing: 0.6,
-  },
-  pnlValSuccess: {
-    color: colors.success,
-    fontSize: typography.sizes.base,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-  },
-  pnlValError: {
-    color: '#F87171',
-    fontSize: typography.sizes.base,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-  },
-  pnlValProfit: {
-    color: colors.gold,
-    fontSize: typography.sizes.base,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-  },
-  pnlSubText: {
-    color: colors.textMuted,
-    fontSize: 9.5,
-    fontFamily: typography.fonts.inter,
-    marginTop: 2,
-  },
-  searchContainer: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 10,
-  },
-  filterSection: {
-    paddingHorizontal: 16,
-    paddingBottom: 10,
-  },
-  filterChip: {
-    backgroundColor: '#12161C',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginRight: 8,
-  },
-  selectedFilterChip: {
-    backgroundColor: colors.goldMuted,
-    borderColor: colors.gold,
-  },
-  filterChipText: {
-    color: colors.textSecondary,
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  selectedFilterChipText: {
-    color: colors.gold,
-  },
-  listContent: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  expenseCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#0F1216',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.2)',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 8,
-  },
-  expenseInfo: {
-    flex: 1,
-    marginRight: 10,
-  },
-  categoryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 4,
-  },
-  categoryBadge: {
-    backgroundColor: colors.goldMuted,
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  categoryBadgeText: {
-    color: colors.gold,
-    fontSize: 10,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  dateText: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontFamily: typography.fonts.inter,
-  },
-  descriptionText: {
-    color: colors.textSecondary,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.inter,
-    marginTop: 2,
-  },
-  rightColumn: {
-    alignItems: 'flex-end',
-  },
-  amountText: {
-    color: colors.textPrimary,
-    fontSize: typography.sizes.base,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    marginBottom: 6,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  iconBtn: {
-    padding: 6,
-    borderRadius: 6,
-    backgroundColor: colors.goldMuted,
-  },
-  deleteIconBtn: {
-    backgroundColor: colors.errorMuted,
-  },
-});
+const getExpensesStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    addBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: colors.goldMuted,
+      borderWidth: 1,
+      borderColor: colors.goldBorder,
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    addBtnText: {
+      color: colors.gold,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    monthNavBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      backgroundColor: colors.surface,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderDark,
+    },
+    monthNavBtn: {
+      padding: 6,
+      borderRadius: 8,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.1)' : 'rgba(217, 130, 0, 0.1)',
+    },
+    monthNavBtnDisabled: {
+      opacity: 0.35,
+    },
+    monthInfoBox: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    monthInfoText: {
+      color: colors.textPrimary,
+      fontSize: typography.sizes.base,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 0.5,
+    },
+    monthNavRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    currentMonthPill: {
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+      backgroundColor: colors.gold,
+    },
+    currentMonthPillText: {
+      color: '#050505',
+      fontSize: 10,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '800',
+      letterSpacing: 0.8,
+    },
+    // 3-Card P&L Grid Styles
+    pnlGrid: {
+      flexDirection: 'row',
+      paddingHorizontal: 14,
+      paddingTop: 12,
+      paddingBottom: 6,
+      gap: 8,
+    },
+    pnlCardRevenue: {
+      flex: 1,
+      backgroundColor: 'rgba(34, 197, 94, 0.07)',
+      borderWidth: 1,
+      borderColor: 'rgba(34, 197, 94, 0.28)',
+      borderRadius: 12,
+      padding: 10,
+    },
+    pnlCardExpenses: {
+      flex: 1,
+      backgroundColor: 'rgba(239, 68, 68, 0.07)',
+      borderWidth: 1,
+      borderColor: 'rgba(239, 68, 68, 0.28)',
+      borderRadius: 12,
+      padding: 10,
+    },
+    pnlCardProfit: {
+      flex: 1,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.07)' : 'rgba(217, 130, 0, 0.08)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.32)' : 'rgba(217, 130, 0, 0.3)',
+      borderRadius: 12,
+      padding: 10,
+    },
+    pnlCardLoss: {
+      backgroundColor: 'rgba(239, 68, 68, 0.09)',
+      borderColor: 'rgba(239, 68, 68, 0.35)',
+    },
+    pnlHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 4,
+    },
+    pnlLabel: {
+      color: colors.textMuted,
+      fontSize: 9,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '800',
+      letterSpacing: 0.6,
+    },
+    pnlValSuccess: {
+      color: '#16A34A',
+      fontSize: typography.sizes.base,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '800',
+    },
+    pnlValError: {
+      color: '#DC2626',
+      fontSize: typography.sizes.base,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '800',
+    },
+    pnlValProfit: {
+      color: colors.gold,
+      fontSize: typography.sizes.base,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '800',
+    },
+    pnlSubText: {
+      color: colors.textMuted,
+      fontSize: 9.5,
+      fontFamily: typography.fonts.inter,
+      marginTop: 2,
+    },
+    searchContainer: {
+      paddingHorizontal: 16,
+      paddingTop: 8,
+      paddingBottom: 10,
+    },
+    filterSection: {
+      paddingHorizontal: 16,
+      paddingBottom: 10,
+    },
+    filterChip: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.borderDark,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      marginRight: 8,
+    },
+    selectedFilterChip: {
+      backgroundColor: colors.goldMuted,
+      borderColor: colors.gold,
+    },
+    filterChipText: {
+      color: colors.textSecondary,
+      fontSize: 11,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    selectedFilterChipText: {
+      color: colors.gold,
+    },
+    listContent: {
+      padding: 16,
+      paddingBottom: 40,
+    },
+    expenseCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: colors.cardBackground,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.2)' : 'rgba(217, 130, 0, 0.2)',
+      borderRadius: 12,
+      padding: 12,
+      marginBottom: 8,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: isDark ? 0.25 : 0.05,
+      shadowRadius: 4,
+      elevation: 2,
+    },
+    expenseInfo: {
+      flex: 1,
+      marginRight: 10,
+    },
+    categoryRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 4,
+    },
+    categoryBadge: {
+      backgroundColor: colors.goldMuted,
+      borderWidth: 1,
+      borderColor: colors.goldBorder,
+      borderRadius: 4,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+    },
+    categoryBadgeText: {
+      color: colors.gold,
+      fontSize: 10,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    dateText: {
+      color: colors.textMuted,
+      fontSize: 11,
+      fontFamily: typography.fonts.inter,
+    },
+    descriptionText: {
+      color: colors.textSecondary,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.inter,
+      marginTop: 2,
+    },
+    rightColumn: {
+      alignItems: 'flex-end',
+    },
+    amountText: {
+      color: colors.textPrimary,
+      fontSize: typography.sizes.base,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      marginBottom: 6,
+    },
+    actionRow: {
+      flexDirection: 'row',
+      gap: 6,
+    },
+    iconBtn: {
+      padding: 6,
+      borderRadius: 6,
+      backgroundColor: colors.goldMuted,
+    },
+    deleteIconBtn: {
+      backgroundColor: colors.errorMuted,
+    },
+  });

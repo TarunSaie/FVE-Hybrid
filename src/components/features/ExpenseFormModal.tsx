@@ -9,7 +9,8 @@ import { Expense, EXPENSE_CATEGORIES } from '@/types';
 import { supabase } from '@/api/supabase';
 import { getLocalDateStr, formatDate } from '@/utils/date';
 import { useAuth } from '@/contexts/AuthContext';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
+import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { haptics } from '@/utils/haptics';
 
@@ -26,6 +27,8 @@ export function ExpenseFormModal({
   onSaved,
   expense,
 }: ExpenseFormModalProps) {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => getExpenseFormStyles(colors, isDark), [colors, isDark]);
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [category, setCategory] = useState<string>('Rent');
@@ -173,73 +176,74 @@ export function ExpenseFormModal({
   );
 }
 
-const styles = StyleSheet.create({
-  form: {
-    paddingBottom: 20,
-  },
-  fieldSection: {
-    marginBottom: 16,
-  },
-  sectionLabel: {
-    color: colors.textSecondary,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhaniMedium,
-    fontWeight: '600',
-    letterSpacing: 0.8,
-    marginBottom: 8,
-  },
-  chip: {
-    backgroundColor: '#161A20',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.2)',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginRight: 8,
-  },
-  selectedChip: {
-    backgroundColor: colors.goldMuted,
-    borderColor: colors.gold,
-  },
-  chipText: {
-    color: colors.textSecondary,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.inter,
-  },
-  selectedChipText: {
-    color: colors.gold,
-    fontWeight: '700',
-  },
-  saveButton: {
-    marginTop: 10,
-  },
-  dateFieldContainer: {
-    marginBottom: 16,
-  },
-  dateFieldLabel: {
-    color: colors.textSecondary,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhaniMedium,
-    fontWeight: '600',
-    letterSpacing: 0.8,
-    marginBottom: 6,
-  },
-  datePickerTrigger: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#0E1116',
-    borderWidth: 1.2,
-    borderColor: 'rgba(239, 161, 0, 0.35)',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  datePickerValueText: {
-    color: colors.gold,
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-});
+const getExpenseFormStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    form: {
+      paddingBottom: 20,
+    },
+    fieldSection: {
+      marginBottom: 16,
+    },
+    sectionLabel: {
+      color: colors.textSecondary,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhaniMedium,
+      fontWeight: '600',
+      letterSpacing: 0.8,
+      marginBottom: 8,
+    },
+    chip: {
+      backgroundColor: colors.bgSecondary,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      marginRight: 8,
+    },
+    selectedChip: {
+      backgroundColor: isDark ? colors.goldMuted : 'rgba(239, 161, 0, 0.15)',
+      borderColor: colors.gold,
+    },
+    chipText: {
+      color: colors.textSecondary,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.inter,
+    },
+    selectedChipText: {
+      color: colors.gold,
+      fontWeight: '700',
+    },
+    saveButton: {
+      marginTop: 10,
+    },
+    dateFieldContainer: {
+      marginBottom: 16,
+    },
+    dateFieldLabel: {
+      color: colors.textSecondary,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhaniMedium,
+      fontWeight: '600',
+      letterSpacing: 0.8,
+      marginBottom: 6,
+    },
+    datePickerTrigger: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor: colors.bgSecondary,
+      borderWidth: 1.2,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.35)' : colors.goldBorder,
+      borderRadius: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+    },
+    datePickerValueText: {
+      color: colors.gold,
+      fontSize: typography.sizes.sm,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 0.5,
+    },
+  });

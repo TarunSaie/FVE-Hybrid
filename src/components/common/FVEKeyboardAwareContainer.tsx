@@ -8,6 +8,7 @@ import {
   KeyboardAvoidingView,
   ScrollViewProps,
 } from 'react-native';
+import { useTheme } from '@/contexts/ThemeContext';
 
 export interface FVEKeyboardAwareContainerProps extends ScrollViewProps {
   children: React.ReactNode;
@@ -29,10 +30,12 @@ export const FVEKeyboardAwareContainer = forwardRef<ScrollView, FVEKeyboardAware
     },
     ref
   ) {
+    const { colors } = useTheme();
+
     return (
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={[styles.container, style]}
+        style={[{ flex: 1, backgroundColor: colors.background }, style]}
       >
         <ScrollView
           ref={ref}
@@ -52,11 +55,8 @@ export const FVEKeyboardAwareContainer = forwardRef<ScrollView, FVEKeyboardAware
 );
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#050505',
-  },
   content: {
     flexGrow: 1,
   },
 });
+

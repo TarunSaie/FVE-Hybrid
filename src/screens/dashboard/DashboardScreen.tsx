@@ -46,10 +46,11 @@ import { MemberFormModal } from '@/components/features/MemberFormModal';
 import { PaymentFormModal } from '@/components/features/PaymentFormModal';
 import { FVEBadge } from '@/components/common/FVEBadge';
 import { FVELogoLoader } from '@/components/common/FVELogoLoader';
-import { colors } from '@/constants/colors';
+import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { supabase } from '@/api/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { formatCurrency, openWhatsAppLink } from '@/utils/format';
 import { getLocalDateStr, getLocalMonthStr, formatDate } from '@/utils/date';
 import { useRenewalAlerts } from '@/hooks/useRenewalAlerts';
@@ -63,6 +64,8 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 export function DashboardScreen() {
   const navigation = useNavigation<NavigationProp>();
   const { user } = useAuth();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => getDashboardStyles(colors, isDark), [colors, isDark]);
   const qc = useQueryClient();
 
   // Background renewal, birthday, and status sync
@@ -415,7 +418,11 @@ export function DashboardScreen() {
       >
         {/* ── HERO EXECUTIVE STATUS BANNER / OWNER CARD ── */}
         <LinearGradient
-          colors={['#181D2A', '#10141E', '#0B0D13']}
+          colors={
+            isDark
+              ? ['#181D2A', '#10141E', '#0B0D13']
+              : ['#FFFFFF', '#FAF8F5', '#F5EFE6']
+          }
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.heroBanner}
@@ -437,7 +444,7 @@ export function DashboardScreen() {
                 </View>
                 {user?.role === 'OWNER' && (
                   <View style={styles.ownerEliteBadge}>
-                    <Sparkles size={11} color={colors.goldBright} />
+                    <Sparkles size={11} color={isDark ? colors.goldBright : colors.gold} />
                     <Text style={styles.ownerEliteBadgeText}>EXECUTIVE OWNER</Text>
                   </View>
                 )}
@@ -469,7 +476,11 @@ export function DashboardScreen() {
               ) : (
                 <View style={styles.avatarRing}>
                   <LinearGradient
-                    colors={['#2A3245', '#161A26', '#0E1018']}
+                    colors={
+                      isDark
+                        ? ['#2A3245', '#161A26', '#0E1018']
+                        : ['#FFFBEB', '#FEF3C7', '#FDE68A']
+                    }
                     style={styles.avatarGradient}
                   >
                     <View style={styles.avatarInnerGlow} />
@@ -623,7 +634,11 @@ export function DashboardScreen() {
             style={styles.bentoHeroCard}
           >
             <LinearGradient
-              colors={['#1E1606', '#12141A', '#0B0D12']}
+              colors={
+                isDark
+                  ? ['#1E1606', '#12141A', '#0B0D12']
+                  : ['#FFFFFF', '#FCFBF8', '#F8FAFC']
+              }
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.bentoHeroGradient}
@@ -640,7 +655,7 @@ export function DashboardScreen() {
                 </View>
               </View>
 
-              <Text style={styles.bentoHeroAmount}>
+              <Text style={[styles.bentoHeroAmount, { color: colors.textPrimary }]}>
                 {formatCurrency(stats?.monthRevenue || 0)}
               </Text>
 
@@ -657,7 +672,7 @@ export function DashboardScreen() {
                 <View style={styles.bentoHeroDivider} />
                 <View style={styles.bentoHeroMetaItem}>
                   <Text style={styles.bentoHeroMetaLabel}>Today's Log</Text>
-                  <Text style={[styles.bentoHeroMetaVal, { color: colors.blueLight }]}>
+                  <Text style={[styles.bentoHeroMetaVal, { color: colors.blue }]}>
                     {stats?.todayAttendance || 0}
                   </Text>
                 </View>
@@ -668,7 +683,7 @@ export function DashboardScreen() {
           /* Non-owner hero: Gym Strength */
           <View style={styles.bentoHeroCard}>
             <LinearGradient
-              colors={['#141720', '#0E1116']}
+              colors={isDark ? ['#141720', '#0E1116'] : ['#FFFFFF', '#F8FAFC']}
               style={styles.bentoHeroGradient}
             >
               <View style={styles.bentoHeroTopRow}>
@@ -678,7 +693,7 @@ export function DashboardScreen() {
                 </View>
                 <Text style={styles.bentoHeroBadgeText}>LIVE ROSTER</Text>
               </View>
-              <Text style={styles.bentoHeroAmount}>{stats?.activeMembers || 0} Athletes</Text>
+              <Text style={[styles.bentoHeroAmount, { color: colors.textPrimary }]}>{stats?.activeMembers || 0} Athletes</Text>
             </LinearGradient>
           </View>
         )}
@@ -1098,197 +1113,207 @@ export function DashboardScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#050505',
-  },
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 110,
-  },
-  heroBanner: {
-    position: 'relative',
-    borderRadius: 22,
-    padding: 18,
-    marginBottom: 16,
-    borderWidth: 1.5,
-    borderColor: 'rgba(239, 161, 0, 0.35)',
-    shadowColor: colors.gold,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    elevation: 8,
-    overflow: 'hidden',
-  },
-  heroTopHighlight: {
-    position: 'absolute',
-    top: 0,
-    left: 24,
-    right: 24,
-    height: 2,
-    borderRadius: 1,
-  },
-  heroContentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  heroLeft: {
-    flex: 1,
-    marginRight: 14,
-  },
-  greetingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 4,
-  },
-  greetingIconPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(239, 161, 0, 0.12)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.25)',
-  },
-  greetingTimeText: {
-    color: colors.gold,
-    fontSize: 10,
-    fontFamily: typography.fonts.orbitron,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-  },
-  ownerEliteBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(239, 161, 0, 0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.45)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  ownerEliteBadgeText: {
-    color: colors.goldBright,
-    fontSize: 9.5,
-    fontFamily: typography.fonts.orbitron,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-  },
-  heroUserName: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    fontFamily: typography.fonts.orbitron,
-    fontWeight: '900',
-    letterSpacing: 0.5,
-    marginTop: 4,
-    textShadowColor: 'rgba(0, 0, 0, 0.8)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
-  },
-  statusBeaconRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 8,
-  },
-  statusBeaconGlow: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: 'rgba(34, 197, 94, 0.20)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  statusBeaconDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: colors.success,
-  },
-  statusBeaconText: {
-    color: colors.success,
-    fontSize: 9.5,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-  },
-  heroRight: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarWrapper: {
-    position: 'relative',
-    width: 64,
-    height: 64,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-  },
-  avatarGoldRim: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderRadius: 32,
-    borderWidth: 2,
-    borderColor: colors.gold,
-    shadowColor: colors.gold,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 8,
-  },
-  avatarRing: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    padding: 2.5,
-    backgroundColor: 'rgba(239, 161, 0, 0.45)',
-    shadowColor: colors.gold,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.65,
-    shadowRadius: 10,
-    elevation: 8,
-  },
-  avatarGradient: {
-    flex: 1,
-    borderRadius: 29,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: colors.gold,
-    overflow: 'hidden',
-  },
-  avatarInnerGlow: {
-    position: 'absolute',
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(239, 161, 0, 0.20)',
-  },
-  avatarInitial: {
-    color: colors.goldBright,
-    fontSize: 28,
-    fontFamily: typography.fonts.orbitron,
-    fontWeight: '900',
-    textAlign: 'center',
-    includeFontPadding: false,
-    textShadowColor: 'rgba(239, 161, 0, 0.6)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 6,
-  },
+const getDashboardStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    scrollContent: {
+      paddingHorizontal: 16,
+      paddingTop: 12,
+      paddingBottom: 110,
+    },
+    heroBanner: {
+      position: 'relative',
+      borderRadius: 22,
+      padding: 18,
+      marginBottom: 16,
+      borderWidth: 1.5,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.35)' : 'rgba(217, 119, 6, 0.25)',
+      backgroundColor: colors.card,
+      shadowColor: isDark ? colors.gold : '#000000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: isDark ? 0.25 : 0.08,
+      shadowRadius: 12,
+      elevation: 6,
+      overflow: 'hidden',
+    },
+    heroTopHighlight: {
+      position: 'absolute',
+      top: 0,
+      left: 24,
+      right: 24,
+      height: 2,
+      borderRadius: 1,
+    },
+    heroContentRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    heroLeft: {
+      flex: 1,
+      marginRight: 14,
+    },
+    greetingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginBottom: 4,
+    },
+    greetingIconPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : 'rgba(217, 119, 6, 0.10)',
+      paddingHorizontal: 8,
+      paddingVertical: 3.5,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.25)' : 'rgba(217, 119, 6, 0.25)',
+    },
+    greetingTimeText: {
+      color: colors.gold,
+      fontSize: 10,
+      fontFamily: typography.fonts.orbitron,
+      fontWeight: '700',
+      letterSpacing: 0.8,
+    },
+    ownerEliteBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.18)' : 'rgba(217, 119, 6, 0.14)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.45)' : 'rgba(217, 119, 6, 0.35)',
+      paddingHorizontal: 8,
+      paddingVertical: 3.5,
+      borderRadius: 8,
+    },
+    ownerEliteBadgeText: {
+      color: isDark ? colors.goldBright : colors.gold,
+      fontSize: 9.5,
+      fontFamily: typography.fonts.orbitron,
+      fontWeight: '800',
+      letterSpacing: 0.8,
+    },
+    heroUserName: {
+      color: colors.textPrimary,
+      fontSize: 21,
+      fontFamily: typography.fonts.orbitron,
+      fontWeight: '900',
+      letterSpacing: 0.5,
+      marginTop: 4,
+      ...(isDark
+        ? {
+            textShadowColor: 'rgba(0, 0, 0, 0.8)',
+            textShadowOffset: { width: 0, height: 2 },
+            textShadowRadius: 4,
+          }
+        : {
+            textShadowColor: 'rgba(217, 119, 6, 0.12)',
+            textShadowOffset: { width: 0, height: 1 },
+            textShadowRadius: 2,
+          }),
+    },
+    statusBeaconRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginTop: 8,
+    },
+    statusBeaconGlow: {
+      width: 14,
+      height: 14,
+      borderRadius: 7,
+      backgroundColor: isDark ? 'rgba(34, 197, 94, 0.20)' : 'rgba(22, 163, 74, 0.15)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    statusBeaconDot: {
+      width: 7,
+      height: 7,
+      borderRadius: 3.5,
+      backgroundColor: colors.success,
+    },
+    statusBeaconText: {
+      color: isDark ? colors.success : '#15803D',
+      fontSize: 9.5,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 0.8,
+    },
+    heroRight: {
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    avatarWrapper: {
+      position: 'relative',
+      width: 64,
+      height: 64,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    avatarImage: {
+      width: 60,
+      height: 60,
+      borderRadius: 30,
+    },
+    avatarGoldRim: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      borderRadius: 32,
+      borderWidth: 2,
+      borderColor: colors.gold,
+      shadowColor: colors.gold,
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: isDark ? 0.6 : 0.25,
+      shadowRadius: 8,
+    },
+    avatarRing: {
+      width: 64,
+      height: 64,
+      borderRadius: 32,
+      padding: 2.5,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.45)' : 'rgba(217, 119, 6, 0.35)',
+      shadowColor: isDark ? colors.gold : '#000000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: isDark ? 0.65 : 0.15,
+      shadowRadius: 10,
+      elevation: 6,
+    },
+    avatarGradient: {
+      flex: 1,
+      borderRadius: 29,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1.5,
+      borderColor: colors.gold,
+      overflow: 'hidden',
+    },
+    avatarInnerGlow: {
+      position: 'absolute',
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.20)' : 'rgba(217, 119, 6, 0.15)',
+    },
+    avatarInitial: {
+      color: isDark ? colors.goldBright : colors.gold,
+      fontSize: 28,
+      fontFamily: typography.fonts.orbitron,
+      fontWeight: '900',
+      textAlign: 'center',
+      includeFontPadding: false,
+      textShadowColor: isDark ? 'rgba(239, 161, 0, 0.6)' : 'rgba(217, 119, 6, 0.25)',
+      textShadowOffset: { width: 0, height: 1 },
+      textShadowRadius: 6,
+    },
   quickActionsScroll: {
     flexDirection: 'row',
     gap: 10,
@@ -1327,22 +1352,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: '#11141A',
+    backgroundColor: isDark ? '#11141A' : colors.cardBackground,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: colors.borderDark,
     borderRadius: 24,
     paddingHorizontal: 15,
     paddingVertical: 10,
   },
   actionPillBlue: {
-    borderColor: 'rgba(0, 102, 255, 0.25)',
-    backgroundColor: '#0C121E',
+    borderColor: colors.blueBorder,
+    backgroundColor: isDark ? '#0C121E' : colors.blueMuted,
   },
   actionPillIconDark: {
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: 'rgba(239, 161, 0, 0.12)',
+    backgroundColor: colors.goldMuted,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1350,7 +1375,7 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: 'rgba(0, 102, 255, 0.15)',
+    backgroundColor: colors.blueMuted,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1365,13 +1390,13 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.25)',
+    borderColor: colors.goldBorder,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.4,
+    shadowColor: colors.shadowColor,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
     shadowRadius: 10,
-    elevation: 6,
+    elevation: 4,
   },
   bentoHeroGradient: {
     padding: 20,
@@ -1395,7 +1420,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   bentoHeroBadge: {
-    backgroundColor: 'rgba(239, 161, 0, 0.18)',
+    backgroundColor: colors.goldMuted,
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -1407,7 +1432,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   bentoHeroAmount: {
-    color: '#FFFFFF',
     fontSize: 34,
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '800',
@@ -1420,7 +1444,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
     paddingTop: 14,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+    borderTopColor: colors.borderDark,
   },
   bentoHeroMetaItem: {
     flex: 1,
@@ -1442,7 +1466,7 @@ const styles = StyleSheet.create({
   bentoHeroDivider: {
     width: 1,
     height: 24,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: colors.borderDark,
   },
   bentoRow: {
     flexDirection: 'row',
@@ -1451,17 +1475,22 @@ const styles = StyleSheet.create({
   },
   bentoCard: {
     flex: 1,
-    backgroundColor: '#11141A',
+    backgroundColor: colors.cardBackground,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: colors.borderDark,
     borderRadius: 18,
     padding: 16,
+    shadowColor: colors.shadowColor,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 2,
   },
   bentoCardBlue: {
-    borderColor: 'rgba(0, 102, 255, 0.22)',
+    borderColor: colors.blueBorder,
   },
   bentoCardAmber: {
-    borderColor: 'rgba(239, 161, 0, 0.22)',
+    borderColor: colors.goldBorder,
   },
   bentoIconHeader: {
     flexDirection: 'row',
@@ -1480,7 +1509,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(0, 102, 255, 0.12)',
+    backgroundColor: colors.blueMuted,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 6,
@@ -1489,10 +1518,10 @@ const styles = StyleSheet.create({
     width: 5,
     height: 5,
     borderRadius: 3,
-    backgroundColor: colors.blueLight,
+    backgroundColor: colors.blue,
   },
   bentoLiveText: {
-    color: colors.blueLight,
+    color: colors.blue,
     fontSize: 9,
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '800',
@@ -1502,7 +1531,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '800',
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    backgroundColor: colors.warningMuted,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 6,
@@ -1523,9 +1552,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#0B0E13',
+    backgroundColor: isDark ? '#0B0E13' : colors.surfaceLight,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: colors.borderDark,
     borderRadius: 14,
     paddingVertical: 10,
     paddingHorizontal: 16,
@@ -1551,7 +1580,7 @@ const styles = StyleSheet.create({
   pillStatDivider: {
     width: 1,
     height: 18,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: colors.borderDark,
   },
   sectionContainer: {
     marginBottom: 22,
@@ -1592,11 +1621,16 @@ const styles = StyleSheet.create({
   },
   expiringCard: {
     width: 175,
-    backgroundColor: '#11141A',
+    backgroundColor: colors.cardBackground,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: colors.borderDark,
     borderRadius: 18,
     padding: 14,
+    shadowColor: colors.shadowColor,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 2,
   },
   expiringCardTop: {
     flexDirection: 'row',
@@ -1608,7 +1642,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#161B22',
+    backgroundColor: isDark ? '#161B22' : '#EDF2F7',
     borderWidth: 1,
     borderColor: colors.gold,
     alignItems: 'center',
@@ -1621,13 +1655,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   daysLeftPill: {
-    backgroundColor: 'rgba(239, 161, 0, 0.15)',
+    backgroundColor: colors.goldMuted,
     borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
   daysLeftPillUrgent: {
-    backgroundColor: 'rgba(239, 68, 68, 0.2)',
+    backgroundColor: colors.errorMuted,
   },
   daysLeftPillText: {
     color: colors.gold,
@@ -1682,11 +1716,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   trendCard: {
-    backgroundColor: '#11141A',
+    backgroundColor: colors.cardBackground,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: colors.borderDark,
     borderRadius: 20,
     padding: 18,
+    shadowColor: colors.shadowColor,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 2,
   },
   chartBarsRow: {
     flexDirection: 'row',
@@ -1713,7 +1752,7 @@ const styles = StyleSheet.create({
   barTrack: {
     width: 14,
     height: 85,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : '#E2E8F0',
     borderRadius: 7,
     justifyContent: 'flex-end',
     overflow: 'hidden',
@@ -1735,28 +1774,33 @@ const styles = StyleSheet.create({
   recentPayRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#11141A',
+    backgroundColor: colors.cardBackground,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: colors.borderDark,
     borderRadius: 16,
     padding: 14,
     marginBottom: 8,
+    shadowColor: colors.shadowColor,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 1,
   },
   payAvatarImage: {
     width: 40,
     height: 40,
     borderRadius: 20,
     borderWidth: 1.5,
-    borderColor: 'rgba(239, 161, 0, 0.35)',
+    borderColor: colors.goldBorder,
     marginRight: 12,
   },
   payAvatarFallback: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(239, 161, 0, 0.14)',
+    backgroundColor: colors.goldMuted,
     borderWidth: 1.5,
-    borderColor: 'rgba(239, 161, 0, 0.28)',
+    borderColor: colors.goldBorder,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -1800,9 +1844,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   emptyCard: {
-    backgroundColor: '#0D1014',
+    backgroundColor: isDark ? '#0D1014' : colors.surfaceLight,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
+    borderColor: colors.borderDark,
     borderRadius: 14,
     padding: 20,
     alignItems: 'center',
@@ -1812,14 +1856,13 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.sm,
     fontFamily: typography.fonts.inter,
   },
-  // Executive Filter Bar Styles
   execFilterBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#0C0F14',
+    backgroundColor: isDark ? '#0C0F14' : colors.surfaceLight,
     borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.22)',
+    borderColor: colors.goldBorder,
     borderRadius: 14,
     marginHorizontal: 16,
     marginBottom: 14,
@@ -1848,14 +1891,14 @@ const styles = StyleSheet.create({
   execMonthArrow: {
     padding: 4,
     borderRadius: 6,
-    backgroundColor: 'rgba(239, 161, 0, 0.08)',
+    backgroundColor: colors.goldMuted,
   },
   execMonthBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(239, 161, 0, 0.12)',
+    backgroundColor: colors.goldMuted,
     borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.3)',
+    borderColor: colors.goldBorder,
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -1870,9 +1913,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#141820',
+    backgroundColor: isDark ? '#141820' : colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: colors.borderDark,
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -1908,12 +1951,17 @@ const styles = StyleSheet.create({
   },
   holdCard: {
     width: 170,
-    backgroundColor: '#11141A',
+    backgroundColor: colors.cardBackground,
     borderWidth: 1,
-    borderColor: 'rgba(251, 191, 36, 0.25)',
+    borderColor: 'rgba(251, 191, 36, 0.35)',
     borderRadius: 14,
     padding: 12,
     marginRight: 10,
+    shadowColor: colors.shadowColor,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   holdBadgePill: {
     backgroundColor: 'rgba(251, 191, 36, 0.15)',
@@ -1930,11 +1978,10 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.5,
   },
-  // Plan Distribution Styles
   planDistributionGrid: {
-    backgroundColor: '#0E1116',
+    backgroundColor: isDark ? '#0E1116' : colors.surfaceLight,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
+    borderColor: colors.borderDark,
     borderRadius: 14,
     padding: 14,
     gap: 12,
@@ -1960,7 +2007,7 @@ const styles = StyleSheet.create({
   },
   planDistBarBg: {
     height: 6,
-    backgroundColor: '#1A1E26',
+    backgroundColor: isDark ? '#1A1E26' : '#E2E8F0',
     borderRadius: 3,
     overflow: 'hidden',
   },

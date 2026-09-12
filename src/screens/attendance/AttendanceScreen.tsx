@@ -42,7 +42,8 @@ import { FVEModal } from '@/components/common/FVEModal';
 import { AttendanceCalendarModal } from '@/components/features/AttendanceCalendarModal';
 import { Attendance, Member, Membership } from '@/types';
 import { supabase } from '@/api/supabase';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
+import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { getLocalDateStr, getLocalMonthStr, formatDate } from '@/utils/date';
 import { visitLimitStatus, consumeVisitDay } from '@/utils/visitLimit';
@@ -73,6 +74,8 @@ export function AttendanceScreen() {
   const navigation = useNavigation<NavigationProp>();
   const { user } = useAuth();
   const qc = useQueryClient();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => getAttendanceStyles(colors, isDark), [colors, isDark]);
 
   const todayStr = getLocalDateStr();
   const [mode, setMode] = useState<AttendanceMode>('LOG');
@@ -419,11 +422,11 @@ export function AttendanceScreen() {
   return (
     <View style={styles.container}>
       <FVEHeader
-        title="ATTENDANCE & ROSTER"
+        title="ATTENDANCE"
         subtitle={
           mode === 'LOG'
-            ? `${selectedDate === todayStr ? 'Today' : formatDate(selectedDate)}: ${logs?.length || 0} checked in`
-            : `Live Roster: ${presentCount} present · ${absentCount} absent`
+            ? `${selectedDate === todayStr ? 'Today' : formatDate(selectedDate)} · ${logs?.length || 0} checked in`
+            : `Live Roster · ${presentCount} present, ${absentCount} absent`
         }
         rightAction={
           <TouchableOpacity
@@ -431,7 +434,7 @@ export function AttendanceScreen() {
             disabled={exporting}
             style={styles.exportHeaderBtn}
           >
-            <FileSpreadsheet size={16} color={colors.gold} />
+            <FileSpreadsheet size={15} color={colors.gold} />
             <Text style={styles.exportHeaderBtnText}>CSV</Text>
           </TouchableOpacity>
         }
@@ -447,9 +450,12 @@ export function AttendanceScreen() {
           style={[styles.modeSegmentBtn, mode === 'LOG' && styles.modeSegmentBtnActive]}
           activeOpacity={0.8}
         >
-          <Clock size={15} color={mode === 'LOG' ? '#050505' : colors.textSecondary} />
-          <Text style={[styles.modeSegmentText, mode === 'LOG' && styles.modeSegmentTextActive]}>
-            DAILY LOG & CHECK-IN
+          <Clock size={14} color={mode === 'LOG' ? '#050505' : colors.textSecondary} />
+          <Text
+            numberOfLines={1}
+            style={[styles.modeSegmentText, mode === 'LOG' && styles.modeSegmentTextActive]}
+          >
+            DAILY LOG
           </Text>
         </TouchableOpacity>
 
@@ -461,9 +467,12 @@ export function AttendanceScreen() {
           style={[styles.modeSegmentBtn, mode === 'MONITORING' && styles.modeSegmentBtnActive]}
           activeOpacity={0.8}
         >
-          <Users size={15} color={mode === 'MONITORING' ? '#050505' : colors.textSecondary} />
-          <Text style={[styles.modeSegmentText, mode === 'MONITORING' && styles.modeSegmentTextActive]}>
-            MEMBER MONITORING
+          <Users size={14} color={mode === 'MONITORING' ? '#050505' : colors.textSecondary} />
+          <Text
+            numberOfLines={1}
+            style={[styles.modeSegmentText, mode === 'MONITORING' && styles.modeSegmentTextActive]}
+          >
+            MEMBER ROSTER
           </Text>
         </TouchableOpacity>
       </View>
@@ -639,21 +648,31 @@ export function AttendanceScreen() {
           {/* Summary Strip */}
           <View style={styles.monitorSummaryStrip}>
             <View style={styles.summaryBadgeBox}>
-              <Users size={14} color={colors.gold} />
-              <Text style={styles.summaryBadgeVal}>{monitoringMembers.length}</Text>
-              <Text style={styles.summaryBadgeLabel}>Total</Text>
+              <View style={styles.summaryBadgeTopRow}>
+                <Users size={13} color={colors.gold} />
+                <Text style={styles.summaryBadgeVal}>{monitoringMembers.length}</Text>
+              </View>
+              <Text style={styles.summaryBadgeLabel} numberOfLines={1}>Total</Text>
             </View>
 
             <View style={[styles.summaryBadgeBox, styles.summaryBadgeBoxPresent]}>
-              <CheckCircle size={14} color={colors.success} />
-              <Text style={[styles.summaryBadgeVal, { color: colors.success }]}>{presentCount}</Text>
-              <Text style={styles.summaryBadgeLabel}>Present Today</Text>
+              <View style={styles.summaryBadgeTopRow}>
+                <CheckCircle size={13} color={colors.success} />
+                <Text style={[styles.summaryBadgeVal, { color: colors.success }]}>{presentCount}</Text>
+              </View>
+              <Text style={[styles.summaryBadgeLabel, { color: isDark ? '#86EFAC' : '#15803D' }]} numberOfLines={1}>
+                Present Today
+              </Text>
             </View>
 
             <View style={[styles.summaryBadgeBox, styles.summaryBadgeBoxAbsent]}>
-              <UserX size={14} color="#F87171" />
-              <Text style={[styles.summaryBadgeVal, { color: '#F87171' }]}>{absentCount}</Text>
-              <Text style={styles.summaryBadgeLabel}>Absent Today</Text>
+              <View style={styles.summaryBadgeTopRow}>
+                <UserX size={13} color="#F87171" />
+                <Text style={[styles.summaryBadgeVal, { color: '#F87171' }]}>{absentCount}</Text>
+              </View>
+              <Text style={[styles.summaryBadgeLabel, { color: isDark ? '#FCA5A5' : '#DC2626' }]} numberOfLines={1}>
+                Absent Today
+              </Text>
             </View>
           </View>
 
@@ -910,491 +929,507 @@ export function AttendanceScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#050505',
-  },
-  exportHeaderBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(239, 161, 0, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.35)',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  exportHeaderBtnText: {
-    color: colors.gold,
-    fontSize: 12,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  modeSegmentBar: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: '#0A0D12',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
-    gap: 8,
-  },
-  modeSegmentBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 9,
-    borderRadius: 12,
-    backgroundColor: '#11141A',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  modeSegmentBtnActive: {
-    backgroundColor: colors.gold,
-    borderColor: colors.goldBright,
-  },
-  modeSegmentText: {
-    color: colors.textSecondary,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  modeSegmentTextActive: {
-    color: '#050505',
-    fontWeight: '800',
-  },
-  dateNavBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: '#0F1318',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(239, 161, 0, 0.15)',
-  },
-  dateNavBtn: {
-    padding: 6,
-    borderRadius: 8,
-    backgroundColor: 'rgba(239, 161, 0, 0.1)',
-  },
-  dateNavBtnDisabled: {
-    opacity: 0.35,
-  },
-  dateInfoContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  dateInfoText: {
-    color: colors.textPrimary,
-    fontSize: typography.sizes.base,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  dateNavRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  todayPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    backgroundColor: colors.gold,
-  },
-  todayPillText: {
-    color: '#050505',
-    fontSize: 10,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-  },
-  actionsBar: {
-    flexDirection: 'row',
-    padding: 16,
-    paddingBottom: 8,
-    gap: 10,
-  },
-  scanButton: {
-    flex: 2,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: colors.gold,
-    borderRadius: 14,
-    paddingVertical: 13,
-    shadowColor: colors.gold,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  scanButtonText: {
-    color: '#050505',
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  manualButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: '#11141A',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 14,
-    paddingVertical: 13,
-  },
-  manualButtonText: {
-    color: colors.gold,
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  filterSection: {
-    paddingHorizontal: 16,
-    paddingBottom: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  tabButtonsRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  tabBtn: {
-    flex: 1,
-    backgroundColor: '#11141A',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 20,
-    paddingVertical: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  selectedTabPill: {
-    ...StyleSheet.absoluteFill,
-    borderRadius: 20,
-    backgroundColor: 'rgba(239, 161, 0, 0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.38)',
-  },
-  tabBtnText: {
-    color: colors.textSecondary,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  selectedTabBtnText: {
-    color: colors.gold,
-  },
-  listContent: {
-    padding: 16,
-    paddingBottom: 110,
-  },
-  manualList: {
-    maxHeight: 350,
-  },
-  manualMemberItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#11141A',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 8,
-  },
-  manualMemberName: {
-    color: colors.textPrimary,
-    fontSize: typography.sizes.base,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  manualMemberId: {
-    color: colors.textMuted,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.inter,
-    marginTop: 2,
-  },
-  // Monitoring Styles
-  monitorSummaryStrip: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 8,
-    backgroundColor: '#0A0D12',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.06)',
-  },
-  summaryBadgeBox: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: '#11141A',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.2)',
-    borderRadius: 10,
-    paddingVertical: 8,
-  },
-  summaryBadgeBoxPresent: {
-    borderColor: 'rgba(34, 197, 94, 0.3)',
-    backgroundColor: 'rgba(34, 197, 94, 0.06)',
-  },
-  summaryBadgeBoxAbsent: {
-    borderColor: 'rgba(239, 68, 68, 0.3)',
-    backgroundColor: 'rgba(239, 68, 68, 0.06)',
-  },
-  summaryBadgeVal: {
-    color: colors.textPrimary,
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-  },
-  summaryBadgeLabel: {
-    color: colors.textMuted,
-    fontSize: 10,
-    fontFamily: typography.fonts.inter,
-  },
-  monitorCard: {
-    backgroundColor: '#11141A',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 10,
-  },
-  monitorCardTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  monitorAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 1.5,
-    borderColor: colors.goldBorder,
-  },
-  monitorAvatarFallback: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#1C212B',
-    borderWidth: 1.5,
-    borderColor: colors.goldBorder,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  monitorAvatarText: {
-    color: colors.gold,
-    fontSize: 18,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-  },
-  monitorDetails: {
-    flex: 1,
-  },
-  monitorNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  monitorName: {
-    color: colors.textPrimary,
-    fontSize: typography.sizes.base,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    flexShrink: 1,
-  },
-  monitorIdBadge: {
-    backgroundColor: 'rgba(239, 161, 0, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.3)',
-    borderRadius: 4,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-  },
-  monitorIdBadgeText: {
-    color: colors.gold,
-    fontSize: 10,
-    fontFamily: typography.fonts.orbitron,
-    fontWeight: '700',
-  },
-  monitorMeta: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontFamily: typography.fonts.inter,
-    marginTop: 2,
-  },
-  presentPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(34, 197, 94, 0.15)',
-    borderWidth: 1,
-    borderColor: '#22C55E',
-    borderRadius: 20,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  presentPillText: {
-    color: '#4ADE80',
-    fontSize: 9.5,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  absentPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-    borderWidth: 1,
-    borderColor: '#EF4444',
-    borderRadius: 20,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  absentPillText: {
-    color: '#F87171',
-    fontSize: 9.5,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  monitorActionsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 12,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.05)',
-  },
-  monitorCheckInBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: colors.gold,
-    borderRadius: 10,
-    paddingVertical: 8,
-  },
-  monitorCheckInBtnText: {
-    color: '#050505',
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-  },
-  checkedInTimeBadge: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(34, 197, 94, 0.08)',
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-  },
-  checkedInTimeText: {
-    color: colors.success,
-    fontSize: 11,
-    fontFamily: typography.fonts.inter,
-    fontWeight: '600',
-  },
-  monitorCalendarBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(239, 161, 0, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.25)',
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  monitorCalendarBtnText: {
-    color: colors.gold,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  monitorQrBtn: {
-    backgroundColor: '#161B24',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 10,
-    padding: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // QR Modal Styles
-  qrModalBody: {
-    alignItems: 'center',
-    paddingVertical: 10,
-  },
-  qrModalCard: {
-    padding: 14,
-    borderRadius: 16,
-    backgroundColor: '#0A0A0A',
-    borderWidth: 2,
-    borderColor: colors.goldBorder,
-    marginBottom: 12,
-  },
-  qrModalCodeText: {
-    color: colors.gold,
-    fontSize: 12,
-    fontFamily: typography.fonts.orbitron,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    marginBottom: 6,
-  },
-  qrModalIdBadge: {
-    backgroundColor: 'rgba(239, 161, 0, 0.12)',
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 2,
-    marginBottom: 8,
-  },
-  qrModalIdBadgeText: {
-    color: colors.textSecondary,
-    fontSize: 11,
-    fontFamily: typography.fonts.inter,
-  },
-  qrModalNote: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontFamily: typography.fonts.inter,
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  qrModalCopyBtn: {
-    width: '100%',
-    backgroundColor: colors.gold,
-    borderRadius: 12,
-    paddingVertical: 11,
-    alignItems: 'center',
-  },
-  qrModalCopyBtnText: {
-    color: '#050505',
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-  },
-});
+const getAttendanceStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    exportHeaderBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : 'rgba(217, 130, 0, 0.1)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.35)' : 'rgba(217, 130, 0, 0.25)',
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    exportHeaderBtnText: {
+      color: colors.gold,
+      fontSize: 12,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    modeSegmentBar: {
+      flexDirection: 'row',
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      backgroundColor: colors.surface,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderDark,
+      gap: 8,
+    },
+    modeSegmentBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      paddingVertical: 9,
+      borderRadius: 12,
+      backgroundColor: colors.cardBackground,
+      borderWidth: 1,
+      borderColor: colors.borderDark,
+    },
+    modeSegmentBtnActive: {
+      backgroundColor: colors.gold,
+      borderColor: colors.goldBright,
+    },
+    modeSegmentText: {
+      color: colors.textSecondary,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 0.5,
+    },
+    modeSegmentTextActive: {
+      color: '#050505',
+      fontWeight: '800',
+    },
+    dateNavBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      backgroundColor: colors.cardBackground,
+      borderBottomWidth: 1,
+      borderBottomColor: isDark ? 'rgba(239, 161, 0, 0.15)' : 'rgba(217, 130, 0, 0.15)',
+    },
+    dateNavBtn: {
+      padding: 6,
+      borderRadius: 8,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.1)' : 'rgba(217, 130, 0, 0.1)',
+    },
+    dateNavBtnDisabled: {
+      opacity: 0.35,
+    },
+    dateInfoContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    dateInfoText: {
+      color: colors.textPrimary,
+      fontSize: typography.sizes.base,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 0.5,
+    },
+    dateNavRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    todayPill: {
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+      backgroundColor: colors.gold,
+    },
+    todayPillText: {
+      color: '#050505',
+      fontSize: 10,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '800',
+      letterSpacing: 0.8,
+    },
+    actionsBar: {
+      flexDirection: 'row',
+      padding: 16,
+      paddingBottom: 8,
+      gap: 10,
+    },
+    scanButton: {
+      flex: 2,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      backgroundColor: colors.gold,
+      borderRadius: 14,
+      paddingVertical: 13,
+      shadowColor: colors.gold,
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.35,
+      shadowRadius: 6,
+      elevation: 4,
+    },
+    scanButtonText: {
+      color: '#050505',
+      fontSize: typography.sizes.sm,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 0.5,
+    },
+    manualButton: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      backgroundColor: colors.cardBackground,
+      borderWidth: 1,
+      borderColor: colors.borderDark,
+      borderRadius: 14,
+      paddingVertical: 13,
+    },
+    manualButtonText: {
+      color: colors.gold,
+      fontSize: typography.sizes.sm,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    filterSection: {
+      paddingHorizontal: 16,
+      paddingBottom: 10,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.borderDark,
+    },
+    tabButtonsRow: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    tabBtn: {
+      flex: 1,
+      backgroundColor: colors.cardBackground,
+      borderWidth: 1,
+      borderColor: colors.borderDark,
+      borderRadius: 20,
+      paddingVertical: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+      position: 'relative',
+      overflow: 'hidden',
+    },
+    selectedTabPill: {
+      ...StyleSheet.absoluteFill,
+      borderRadius: 20,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.18)' : 'rgba(217, 130, 0, 0.15)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.38)' : 'rgba(217, 130, 0, 0.35)',
+    },
+    tabBtnText: {
+      color: colors.textSecondary,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    selectedTabBtnText: {
+      color: colors.gold,
+    },
+    listContent: {
+      padding: 16,
+      paddingBottom: 110,
+    },
+    manualList: {
+      maxHeight: 350,
+    },
+    manualMemberItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: colors.cardBackground,
+      borderWidth: 1,
+      borderColor: colors.borderDark,
+      borderRadius: 14,
+      padding: 14,
+      marginBottom: 8,
+    },
+    manualMemberName: {
+      color: colors.textPrimary,
+      fontSize: typography.sizes.base,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    manualMemberId: {
+      color: colors.textMuted,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.inter,
+      marginTop: 2,
+    },
+    // Monitoring Styles
+    monitorSummaryStrip: {
+      flexDirection: 'row',
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      gap: 8,
+      backgroundColor: colors.surface,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderDark,
+    },
+    summaryBadgeBox: {
+      flex: 1,
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 8,
+      paddingHorizontal: 4,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.25)' : 'rgba(217, 130, 0, 0.25)',
+      backgroundColor: colors.cardBackground,
+    },
+    summaryBadgeTopRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 5,
+      marginBottom: 3,
+    },
+    summaryBadgeBoxPresent: {
+      borderColor: isDark ? 'rgba(34, 197, 94, 0.35)' : 'rgba(22, 163, 74, 0.35)',
+      backgroundColor: isDark ? 'rgba(34, 197, 94, 0.08)' : 'rgba(22, 163, 74, 0.06)',
+    },
+    summaryBadgeBoxAbsent: {
+      borderColor: isDark ? 'rgba(239, 68, 68, 0.35)' : 'rgba(220, 38, 38, 0.35)',
+      backgroundColor: isDark ? 'rgba(239, 68, 68, 0.08)' : 'rgba(220, 38, 38, 0.06)',
+    },
+    summaryBadgeVal: {
+      color: colors.textPrimary,
+      fontSize: 16,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '800',
+    },
+    summaryBadgeLabel: {
+      color: colors.textSecondary,
+      fontSize: 10.5,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 0.3,
+      textAlign: 'center',
+    },
+    monitorCard: {
+      backgroundColor: colors.cardBackground,
+      borderWidth: 1,
+      borderColor: colors.borderDark,
+      borderRadius: 16,
+      padding: 14,
+      marginBottom: 10,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: isDark ? 0.3 : 0.05,
+      shadowRadius: 4,
+      elevation: 2,
+    },
+    monitorCardTop: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
+    monitorAvatar: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      borderWidth: 1.5,
+      borderColor: colors.goldBorder,
+    },
+    monitorAvatarFallback: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: colors.surface,
+      borderWidth: 1.5,
+      borderColor: colors.goldBorder,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    monitorAvatarText: {
+      color: colors.gold,
+      fontSize: 18,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '800',
+    },
+    monitorDetails: {
+      flex: 1,
+    },
+    monitorNameRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    monitorName: {
+      color: colors.textPrimary,
+      fontSize: typography.sizes.base,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      flexShrink: 1,
+    },
+    monitorIdBadge: {
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : 'rgba(217, 130, 0, 0.12)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.3)' : 'rgba(217, 130, 0, 0.3)',
+      borderRadius: 4,
+      paddingHorizontal: 5,
+      paddingVertical: 1,
+    },
+    monitorIdBadgeText: {
+      color: colors.gold,
+      fontSize: 10,
+      fontFamily: typography.fonts.orbitron,
+      fontWeight: '700',
+    },
+    monitorMeta: {
+      color: colors.textMuted,
+      fontSize: 11,
+      fontFamily: typography.fonts.inter,
+      marginTop: 2,
+    },
+    presentPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: 'rgba(34, 197, 94, 0.15)',
+      borderWidth: 1,
+      borderColor: '#22C55E',
+      borderRadius: 20,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+    },
+    presentPillText: {
+      color: '#16A34A',
+      fontSize: 9.5,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '800',
+      letterSpacing: 0.5,
+    },
+    absentPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: 'rgba(239, 68, 68, 0.15)',
+      borderWidth: 1,
+      borderColor: '#EF4444',
+      borderRadius: 20,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+    },
+    absentPillText: {
+      color: '#DC2626',
+      fontSize: 9.5,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '800',
+      letterSpacing: 0.5,
+    },
+    monitorActionsRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginTop: 12,
+      paddingTop: 10,
+      borderTopWidth: 1,
+      borderTopColor: colors.borderDark,
+    },
+    monitorCheckInBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      backgroundColor: colors.gold,
+      borderRadius: 10,
+      paddingVertical: 8,
+    },
+    monitorCheckInBtnText: {
+      color: '#050505',
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '800',
+    },
+    checkedInTimeBadge: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      backgroundColor: 'rgba(34, 197, 94, 0.08)',
+      borderRadius: 10,
+      paddingVertical: 8,
+      paddingHorizontal: 10,
+    },
+    checkedInTimeText: {
+      color: colors.success,
+      fontSize: 11,
+      fontFamily: typography.fonts.inter,
+      fontWeight: '600',
+    },
+    monitorCalendarBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.1)' : 'rgba(217, 130, 0, 0.1)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.25)' : 'rgba(217, 130, 0, 0.25)',
+      borderRadius: 10,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+    },
+    monitorCalendarBtnText: {
+      color: colors.gold,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    monitorQrBtn: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.borderDark,
+      borderRadius: 10,
+      padding: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    // QR Modal Styles
+    qrModalBody: {
+      alignItems: 'center',
+      paddingVertical: 10,
+    },
+    qrModalCard: {
+      padding: 14,
+      borderRadius: 16,
+      backgroundColor: '#FFFFFF',
+      borderWidth: 2,
+      borderColor: colors.goldBorder,
+      marginBottom: 12,
+    },
+    qrModalCodeText: {
+      color: colors.gold,
+      fontSize: 12,
+      fontFamily: typography.fonts.orbitron,
+      fontWeight: '700',
+      letterSpacing: 0.5,
+      marginBottom: 6,
+    },
+    qrModalIdBadge: {
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : 'rgba(217, 130, 0, 0.12)',
+      borderRadius: 6,
+      paddingHorizontal: 10,
+      paddingVertical: 2,
+      marginBottom: 8,
+    },
+    qrModalIdBadgeText: {
+      color: colors.textSecondary,
+      fontSize: 11,
+      fontFamily: typography.fonts.inter,
+    },
+    qrModalNote: {
+      color: colors.textMuted,
+      fontSize: 11,
+      fontFamily: typography.fonts.inter,
+      textAlign: 'center',
+      marginBottom: 16,
+    },
+    qrModalCopyBtn: {
+      width: '100%',
+      backgroundColor: colors.gold,
+      borderRadius: 12,
+      paddingVertical: 11,
+      alignItems: 'center',
+    },
+    qrModalCopyBtnText: {
+      color: '#050505',
+      fontSize: typography.sizes.sm,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '800',
+    },
+  });

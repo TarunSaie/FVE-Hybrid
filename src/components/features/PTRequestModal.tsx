@@ -5,7 +5,8 @@ import { FVEInput } from '@/components/common/FVEInput';
 import { FVEButton } from '@/components/common/FVEButton';
 import { supabase } from '@/api/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
+import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { haptics } from '@/utils/haptics';
 import { Dumbbell, ShieldCheck, UserCheck } from 'lucide-react-native';
@@ -36,6 +37,8 @@ export function PTRequestModal({
   membershipId,
   planName,
 }: PTRequestModalProps) {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => getPTRequestStyles(colors, isDark), [colors, isDark]);
   const { user } = useAuth();
   const [dbPlans, setDbPlans] = useState<any[]>([]);
   const [selectedPkgId, setSelectedPkgId] = useState<string>('p1');
@@ -353,94 +356,95 @@ export function PTRequestModal({
   );
 }
 
-const styles = StyleSheet.create({
-  protectionBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: 'rgba(239, 161, 0, 0.08)',
-    borderColor: 'rgba(239, 161, 0, 0.25)',
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 16,
-  },
-  protectionText: {
-    flex: 1,
-    fontSize: 11,
-    color: colors.textMuted,
-    lineHeight: 16,
-    fontFamily: typography.fonts.inter,
-  },
-  fieldLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.textMuted,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginBottom: 8,
-    fontFamily: typography.fonts.rajdhani,
-  },
-  templateGrid: {
-    gap: 8,
-    marginBottom: 12,
-  },
-  templateCard: {
-    padding: 12,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.02)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  templateCardActive: {
-    backgroundColor: 'rgba(239, 161, 0, 0.12)',
-    borderColor: colors.gold,
-  },
-  templateTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    fontFamily: typography.fonts.rajdhani,
-  },
-  templateSessions: {
-    fontSize: 11,
-    color: colors.gold,
-    fontWeight: '600',
-    marginTop: 2,
-    fontFamily: typography.fonts.inter,
-  },
-  rowInputs: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 6,
-    marginBottom: 8,
-  },
-  trainerChipsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 8,
-  },
-  trainerChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  trainerChipActive: {
-    backgroundColor: 'rgba(168, 85, 247, 0.15)',
-    borderColor: '#A855F7',
-  },
-  trainerChipText: {
-    fontSize: 12,
-    color: colors.textMuted,
-    fontFamily: typography.fonts.inter,
-    fontWeight: '500',
-  },
-  trainerChipTextActive: {
-    color: '#D8B4FE',
-    fontWeight: '700',
-  },
-});
+const getPTRequestStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    protectionBox: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.08)' : 'rgba(239, 161, 0, 0.12)',
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.25)' : 'rgba(239, 161, 0, 0.35)',
+      borderWidth: 1,
+      borderRadius: 10,
+      padding: 12,
+      marginBottom: 16,
+    },
+    protectionText: {
+      flex: 1,
+      fontSize: 11,
+      color: colors.textMuted,
+      lineHeight: 16,
+      fontFamily: typography.fonts.inter,
+    },
+    fieldLabel: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.textMuted,
+      letterSpacing: 1,
+      textTransform: 'uppercase',
+      marginBottom: 8,
+      fontFamily: typography.fonts.rajdhani,
+    },
+    templateGrid: {
+      gap: 8,
+      marginBottom: 12,
+    },
+    templateCard: {
+      padding: 12,
+      borderRadius: 10,
+      backgroundColor: colors.bgSecondary,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+    },
+    templateCardActive: {
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : 'rgba(239, 161, 0, 0.18)',
+      borderColor: colors.gold,
+    },
+    templateTitle: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      fontFamily: typography.fonts.rajdhani,
+    },
+    templateSessions: {
+      fontSize: 11,
+      color: colors.gold,
+      fontWeight: '600',
+      marginTop: 2,
+      fontFamily: typography.fonts.inter,
+    },
+    rowInputs: {
+      flexDirection: 'row',
+      gap: 10,
+      marginTop: 6,
+      marginBottom: 8,
+    },
+    trainerChipsRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginBottom: 8,
+    },
+    trainerChip: {
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 8,
+      backgroundColor: colors.bgSecondary,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+    },
+    trainerChipActive: {
+      backgroundColor: isDark ? 'rgba(168, 85, 247, 0.15)' : 'rgba(168, 85, 247, 0.2)',
+      borderColor: '#A855F7',
+    },
+    trainerChipText: {
+      fontSize: 12,
+      color: colors.textMuted,
+      fontFamily: typography.fonts.inter,
+      fontWeight: '500',
+    },
+    trainerChipTextActive: {
+      color: isDark ? '#D8B4FE' : '#9333EA',
+      fontWeight: '700',
+    },
+  });

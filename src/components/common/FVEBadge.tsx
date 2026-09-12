@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ViewStyle, StyleProp } from 'react-native';
-import { getMembershipStatusStyle } from '@/utils/format';
-import { ROLE_BADGE_STYLES, ROLE_DISPLAY_NAMES } from '@/constants/permissions';
+import { useTheme } from '@/contexts/ThemeContext';
+import { ROLE_DISPLAY_NAMES } from '@/constants/permissions';
 import { UserRole } from '@/types';
 import { typography } from '@/constants/typography';
 
@@ -26,23 +26,65 @@ export function FVEBadge({
   size = 'md',
   style,
 }: FVEBadgeProps) {
+  const { colors, isDark } = useTheme();
+
   let text = label || '';
-  let bg = bgColor || 'rgba(255, 255, 255, 0.08)';
-  let textColor = color || '#FFFFFF';
+  let bg = bgColor || (isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(15, 23, 42, 0.06)');
+  let textColor = color || colors.textPrimary;
   let border = borderColor || 'transparent';
 
   if (status) {
-    const s = getMembershipStatusStyle(status);
-    text = s.label;
-    bg = s.bg;
-    textColor = s.text;
-    border = s.border;
-  } else if (role && (role as UserRole) in ROLE_BADGE_STYLES) {
-    const r = ROLE_BADGE_STYLES[role as UserRole];
-    text = ROLE_DISPLAY_NAMES[role as UserRole] || role;
-    bg = r.bg;
-    textColor = r.text;
-    border = r.border;
+    const s = status.toUpperCase();
+    if (s === 'ACTIVE') {
+      text = 'ACTIVE';
+      bg = colors.successMuted;
+      textColor = colors.success;
+      border = colors.successBorder;
+    } else if (s === 'EXPIRING_SOON') {
+      text = 'EXPIRING SOON';
+      bg = colors.warningMuted;
+      textColor = colors.warning;
+      border = colors.warningBorder;
+    } else if (s === 'EXPIRED') {
+      text = 'EXPIRED';
+      bg = colors.errorMuted;
+      textColor = colors.error;
+      border = colors.errorBorder;
+    } else if (s === 'HOLD') {
+      text = 'ON HOLD';
+      bg = isDark ? 'rgba(156, 163, 175, 0.15)' : 'rgba(100, 116, 139, 0.12)';
+      textColor = isDark ? '#9CA3AF' : '#475569';
+      border = isDark ? 'rgba(156, 163, 175, 0.35)' : 'rgba(100, 116, 139, 0.3)';
+    } else {
+      text = status;
+      bg = colors.goldMuted;
+      textColor = colors.gold;
+      border = colors.goldBorder;
+    }
+  } else if (role) {
+    const r = role.toUpperCase() as UserRole;
+    text = ROLE_DISPLAY_NAMES[r] || role;
+    if (r === 'OWNER') {
+      bg = colors.goldMuted;
+      textColor = colors.roleOwner;
+      border = colors.goldBorder;
+    } else if (r === 'ADMIN') {
+      bg = colors.blueMuted;
+      textColor = colors.roleAdmin;
+      border = colors.blueBorder;
+    } else if (r === 'RECEPTIONIST') {
+      bg = colors.successMuted;
+      textColor = colors.roleReceptionist;
+      border = colors.successBorder;
+    } else if (r === 'TRAINER') {
+      bg = isDark ? 'rgba(168, 85, 247, 0.15)' : 'rgba(147, 51, 234, 0.12)';
+      textColor = colors.roleTrainer;
+      border = isDark ? 'rgba(168, 85, 247, 0.35)' : 'rgba(147, 51, 234, 0.3)';
+    } else if (r === 'ATTENDANCE_SCANNER') {
+      bg = isDark ? 'rgba(6, 182, 212, 0.15)' : 'rgba(8, 145, 178, 0.12)';
+      textColor = colors.roleScanner;
+      border = isDark ? 'rgba(6, 182, 212, 0.35)' : 'rgba(8, 145, 178, 0.3)';
+    }
   }
 
   const isSmall = size === 'sm';
@@ -61,6 +103,7 @@ export function FVEBadge({
       ]}
     >
       <Text
+        numberOfLines={1}
         style={[
           styles.text,
           {

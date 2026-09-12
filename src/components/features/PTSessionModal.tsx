@@ -5,7 +5,8 @@ import { FVEInput } from '@/components/common/FVEInput';
 import { FVEButton } from '@/components/common/FVEButton';
 import { supabase } from '@/api/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import { colors } from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
+import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { haptics } from '@/utils/haptics';
 import { getLocalDateStr } from '@/utils/date';
@@ -44,6 +45,8 @@ export function PTSessionModal({
   session,
   mode = 'schedule',
 }: PTSessionModalProps) {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => getPTSessionStyles(colors, isDark), [colors, isDark]);
   const { user } = useAuth();
   const isCompleting = mode === 'complete' && !!session;
 
@@ -299,94 +302,95 @@ export function PTSessionModal({
   );
 }
 
-const styles = StyleSheet.create({
-  fieldLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.textMuted,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginBottom: 8,
-    fontFamily: typography.fonts.rajdhani,
-  },
-  timeGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  timeBtn: {
-    paddingHorizontal: 9,
-    paddingVertical: 7,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.02)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    alignItems: 'center',
-    minWidth: '18%',
-  },
-  timeBtnActive: {
-    backgroundColor: 'rgba(239, 161, 0, 0.15)',
-    borderColor: colors.gold,
-  },
-  timeBtnText: {
-    fontSize: 11,
-    color: colors.textMuted,
-    fontWeight: '600',
-    fontFamily: typography.fonts.inter,
-  },
-  timeBtnTextActive: {
-    color: colors.gold,
-    fontWeight: '700',
-  },
-  focusGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  focusBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.02)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  focusBtnActive: {
-    backgroundColor: 'rgba(0, 102, 255, 0.15)',
-    borderColor: colors.blue,
-  },
-  focusBtnText: {
-    fontSize: 11,
-    color: colors.textMuted,
-    fontWeight: '500',
-    fontFamily: typography.fonts.inter,
-  },
-  focusBtnTextActive: {
-    color: colors.blueLight,
-    fontWeight: '700',
-  },
-  completeHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: 'rgba(34, 197, 94, 0.08)',
-    borderColor: 'rgba(34, 197, 94, 0.25)',
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 8,
-  },
-  completeTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.success,
-    letterSpacing: 0.5,
-    fontFamily: typography.fonts.rajdhani,
-  },
-  completeSubtitle: {
-    fontSize: 11,
-    color: colors.textPrimary,
-    marginTop: 2,
-    fontFamily: typography.fonts.inter,
-  },
-});
+const getPTSessionStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    fieldLabel: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.textMuted,
+      letterSpacing: 1,
+      textTransform: 'uppercase',
+      marginBottom: 8,
+      fontFamily: typography.fonts.rajdhani,
+    },
+    timeGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 6,
+    },
+    timeBtn: {
+      paddingHorizontal: 9,
+      paddingVertical: 7,
+      borderRadius: 8,
+      backgroundColor: colors.bgSecondary,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+      alignItems: 'center',
+      minWidth: '18%',
+    },
+    timeBtnActive: {
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.15)' : 'rgba(239, 161, 0, 0.2)',
+      borderColor: colors.gold,
+    },
+    timeBtnText: {
+      fontSize: 11,
+      color: colors.textMuted,
+      fontWeight: '600',
+      fontFamily: typography.fonts.inter,
+    },
+    timeBtnTextActive: {
+      color: colors.gold,
+      fontWeight: '700',
+    },
+    focusGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 6,
+    },
+    focusBtn: {
+      paddingHorizontal: 10,
+      paddingVertical: 7,
+      borderRadius: 8,
+      backgroundColor: colors.bgSecondary,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+    },
+    focusBtnActive: {
+      backgroundColor: isDark ? 'rgba(0, 102, 255, 0.15)' : 'rgba(0, 102, 255, 0.18)',
+      borderColor: colors.blue,
+    },
+    focusBtnText: {
+      fontSize: 11,
+      color: colors.textMuted,
+      fontWeight: '500',
+      fontFamily: typography.fonts.inter,
+    },
+    focusBtnTextActive: {
+      color: colors.blueLight,
+      fontWeight: '700',
+    },
+    completeHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      backgroundColor: isDark ? 'rgba(34, 197, 94, 0.08)' : 'rgba(34, 197, 94, 0.12)',
+      borderColor: isDark ? 'rgba(34, 197, 94, 0.25)' : 'rgba(34, 197, 94, 0.35)',
+      borderWidth: 1,
+      borderRadius: 10,
+      padding: 12,
+      marginBottom: 8,
+    },
+    completeTitle: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.success,
+      letterSpacing: 0.5,
+      fontFamily: typography.fonts.rajdhani,
+    },
+    completeSubtitle: {
+      fontSize: 11,
+      color: colors.textPrimary,
+      marginTop: 2,
+      fontFamily: typography.fonts.inter,
+    },
+  });
