@@ -465,6 +465,8 @@ const styles = StyleSheet.create({
     fontFamily: typography.fonts.inter,
     paddingRight: 14,
     paddingVertical: 0,
+    textAlignVertical: 'center',
+    includeFontPadding: false,
   },
   textInputRight: {
     paddingRight: 48,
