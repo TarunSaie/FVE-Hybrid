@@ -36,9 +36,11 @@ import {
   Sun,
   Moon,
   Laptop,
+  Palette,
 } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useBranding } from '@/contexts/BrandingContext';
 import { typography } from '@/constants/typography';
 import { FVEBadge } from '@/components/common/FVEBadge';
 import { canAccessRoute } from '@/constants/permissions';
@@ -88,6 +90,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { screen: 'Staff', icon: ClipboardList, label: 'Staff Directory', route: '/staff' },
       { screen: 'Reports', icon: BarChart3, label: 'Reports & Analytics', route: '/reports' },
+      { screen: 'BrandStudio', icon: Palette, label: 'Brand Studio & Clients', route: '/brand-studio' },
     ],
   },
   {
@@ -103,6 +106,7 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
   const navigation = useNavigation<NavigationProp>();
   const { user, logout } = useAuth();
   const { colors, isDark, theme, setTheme } = useTheme();
+  const { brandConfig } = useBranding();
   const insets = useSafeAreaInsets();
 
   const [rendered, setRendered] = useState(visible);
@@ -115,8 +119,8 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
     const current = state.routes[state.index];
     if (current.name === 'MainTabs') {
       const tabState = current.state;
-      if (tabState && tabState.routes && tabState.routes.length > 0) {
-        const tabIndex = typeof tabState.index === 'number' ? tabState.index : 0;
+      if (tabState && tabState.routes) {
+        const tabIndex = tabState.index || 0;
         return tabState.routes[tabIndex]?.name || 'Dashboard';
       }
       return 'Dashboard';
@@ -203,6 +207,8 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
         navigation.navigate('QRScanner');
       } else if (screenName === 'PaymentQR') {
         navigation.navigate('PaymentQR');
+      } else if (screenName === 'BrandStudio') {
+        navigation.navigate('BrandStudio');
       }
     });
   };
@@ -273,13 +279,21 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
             <View style={[styles.header, { backgroundColor: headerBg, borderBottomColor: colors.borderDark }]}>
               <View style={styles.logoRow}>
                 <Image
-                  source={require('@/../assets/logo.png')}
+                  source={
+                    brandConfig.logo_url
+                      ? { uri: brandConfig.logo_url }
+                      : require('@/../assets/logo.png')
+                  }
                   style={styles.logo}
                   resizeMode="contain"
                 />
                 <View>
-                  <Text style={[styles.brandTitle, { color: colors.gold }]}>FITVERSE</Text>
-                  <Text style={[styles.brandSubtitle, { color: colors.textSecondary }]}>ELITE MOBILE</Text>
+                  <Text numberOfLines={1} style={[styles.brandTitle, { color: colors.gold }]}>
+                    {(brandConfig.gym_name || 'FITVERSE').toUpperCase()}
+                  </Text>
+                  <Text numberOfLines={1} style={[styles.brandSubtitle, { color: colors.textSecondary }]}>
+                    {(brandConfig.page_title_prefix || 'ELITE MOBILE').toUpperCase()}
+                  </Text>
                 </View>
               </View>
               <TouchableOpacity

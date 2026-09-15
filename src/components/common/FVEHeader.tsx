@@ -16,6 +16,7 @@ import { ArrowLeft, Bell, Menu } from 'lucide-react-native';
 import { typography } from '@/constants/typography';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useBranding } from '@/contexts/BrandingContext';
 import { supabase } from '@/api/supabase';
 import { AppDrawerModal } from '@/components/layout/AppDrawerModal';
 import { haptics } from '@/utils/haptics';
@@ -45,6 +46,7 @@ export function FVEHeader({
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { user } = useAuth();
   const { colors, isDark } = useTheme();
+  const { brandConfig } = useBranding();
   const [drawerVisible, setDrawerVisible] = useState(false);
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : insets.top;
@@ -120,7 +122,11 @@ export function FVEHeader({
 
             {showLogo && !showBack ? (
               <Image
-                source={require('@/../assets/logo.png')}
+                source={
+                  brandConfig.logo_url
+                    ? { uri: brandConfig.logo_url }
+                    : require('@/../assets/logo.png')
+                }
                 style={styles.logo}
                 resizeMode="contain"
               />
@@ -132,7 +138,9 @@ export function FVEHeader({
                   {title}
                 </Text>
               ) : (
-                <Text style={[styles.brandTitle, { color: colors.gold }]}>FITVERSE ELITE</Text>
+                <Text style={[styles.brandTitle, { color: colors.gold }]}>
+                  {(brandConfig.gym_name || 'FITVERSE ELITE').toUpperCase()}
+                </Text>
               )}
               {subtitle && (
                 <Text numberOfLines={1} style={[styles.subtitle, { color: colors.textMuted }]}>

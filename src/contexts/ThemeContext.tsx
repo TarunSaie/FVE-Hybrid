@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useMemo, useCall
 import { Appearance, ColorSchemeName } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { darkColors, lightColors, ThemeColors, getThemeColors } from '@/constants/colors';
+import { useBranding } from '@/contexts/BrandingContext';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 export type ResolvedTheme = 'light' | 'dark';
@@ -28,6 +29,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [theme, setThemeState] = useState<ThemeMode>('dark');
   const [systemScheme, setSystemScheme] = useState<ResolvedTheme>(getSystemColorScheme);
   const [isLoaded, setIsLoaded] = useState(false);
+  const { brandConfig } = useBranding();
 
   // Load saved theme on mount
   useEffect(() => {
@@ -36,6 +38,8 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const saved = await AsyncStorage.getItem(THEME_STORAGE_KEY);
         if (saved === 'light' || saved === 'dark' || saved === 'system') {
           setThemeState(saved as ThemeMode);
+        } else if (brandConfig.theme_mode) {
+          setThemeState(brandConfig.theme_mode);
         }
       } catch {
         // Fallback to default dark
@@ -44,7 +48,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     }
     loadTheme();
-  }, []);
+  }, [brandConfig.theme_mode]);
 
   // Listen for OS appearance changes
   useEffect(() => {
@@ -62,7 +66,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [theme, systemScheme]);
 
   const isDark = resolvedTheme === 'dark';
-  const colors = useMemo(() => getThemeColors(isDark), [isDark]);
+  const colors = useMemo(() => getThemeColors(isDark, brandConfig), [isDark, brandConfig]);
 
   const setTheme = useCallback(async (nextTheme: ThemeMode) => {
     setThemeState(nextTheme);

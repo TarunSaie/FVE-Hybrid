@@ -18,6 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Mail, Lock, Eye, EyeOff, ShieldCheck, ArrowRight } from 'lucide-react-native';
 import { FVEButton } from '@/components/common/FVEButton';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useBranding } from '@/contexts/BrandingContext';
 import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { supabase } from '@/api/supabase';
@@ -156,6 +157,7 @@ export function LoginScreen() {
   const insets = useSafeAreaInsets();
   const { login } = useAuth();
   const { colors, isDark } = useTheme();
+  const { brandConfig } = useBranding();
   const styles = React.useMemo(() => getLoginStyles(colors, isDark), [colors, isDark]);
 
   // Values in refs — typing never triggers a parent re-render
@@ -259,14 +261,22 @@ export function LoginScreen() {
           <View style={styles.hero}>
             <View style={styles.logoWrap}>
               <Image
-                source={require('@/../assets/logo.png')}
+                source={
+                  brandConfig.logo_url
+                    ? { uri: brandConfig.logo_url }
+                    : require('@/../assets/logo.png')
+                }
                 style={styles.logo}
                 resizeMode="contain"
               />
               <View style={styles.logoRing} />
             </View>
-            <Text style={styles.brandTitle}>FITVERSE ELITE</Text>
-            <Text style={styles.brandTagline}>DISCIPLINE · STRENGTH · TRANSFORMATION</Text>
+            <Text style={styles.brandTitle}>
+              {(brandConfig.gym_name || 'FITVERSE ELITE').toUpperCase()}
+            </Text>
+            <Text style={styles.brandTagline}>
+              {(brandConfig.slogan || 'DISCIPLINE · STRENGTH · TRANSFORMATION').toUpperCase()}
+            </Text>
             <View style={styles.welcomeWrap}>
               <Text style={styles.welcomeHeading}>Sign In</Text>
               <Text style={styles.welcomeSub}>

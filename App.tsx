@@ -21,6 +21,7 @@ import {
   Inter_700Bold,
 } from '@expo-google-fonts/inter';
 import * as SplashScreen from 'expo-splash-screen';
+import { BrandingProvider } from '@/contexts/BrandingContext';
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
 import { DialogProvider } from '@/contexts/DialogContext';
 import { AuthProvider } from '@/contexts/AuthContext';
@@ -129,13 +130,15 @@ export default function App() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <ThemeProvider>
-          <DialogProvider>
-            <AuthProvider>
-              <AppContent fontsLoaded={fontsLoaded} />
-            </AuthProvider>
-          </DialogProvider>
-        </ThemeProvider>
+        <BrandingProvider>
+          <ThemeProvider>
+            <DialogProvider>
+              <AuthProvider>
+                <AppContent fontsLoaded={fontsLoaded} />
+              </AuthProvider>
+            </DialogProvider>
+          </ThemeProvider>
+        </BrandingProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   );

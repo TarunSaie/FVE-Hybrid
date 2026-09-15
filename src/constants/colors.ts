@@ -150,12 +150,90 @@ export const lightColors: Record<keyof typeof darkColors, string> = {
   chipBackground: '#EEF2F6',
 };
 
-export type ThemeColors = typeof darkColors;
+export type ThemeColors = Record<keyof typeof darkColors, string>;
 export type ColorToken = keyof ThemeColors;
 
 // Default exported colors object for backward compatibility
 export const colors: ThemeColors = darkColors;
 
-export function getThemeColors(isDark: boolean): ThemeColors {
-  return isDark ? darkColors : (lightColors as ThemeColors);
+function hexToRgba(hex: string, alpha: number, fallback: string): string {
+  const clean = (hex || '').trim();
+  if (/^#([0-9A-Fa-f]{6})$/.test(clean)) {
+    const r = parseInt(clean.slice(1, 3), 16);
+    const g = parseInt(clean.slice(3, 5), 16);
+    const b = parseInt(clean.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+  return fallback;
 }
+
+export function getThemeColors(
+  isDark: boolean,
+  brandConfig?: {
+    primary_color?: string;
+    secondary_color?: string;
+    background_color?: string;
+    card_color?: string;
+    border_color?: string;
+    light_background_color?: string;
+    light_card_color?: string;
+    light_border_color?: string;
+  }
+): ThemeColors {
+  const base = isDark ? { ...darkColors } : { ...(lightColors as ThemeColors) };
+
+  if (!brandConfig) {
+    return base;
+  }
+
+  const primary = brandConfig.primary_color || (isDark ? darkColors.gold : lightColors.gold);
+  const secondary = brandConfig.secondary_color || (isDark ? darkColors.blue : lightColors.blue);
+
+  // Dynamic Primary (Gold tokens adapt to custom brand primary)
+  base.gold = primary;
+  base.goldBright = primary;
+  base.goldDark = primary;
+  base.goldBorder = hexToRgba(primary, isDark ? 0.35 : 0.3, base.goldBorder);
+  base.goldGlow = hexToRgba(primary, isDark ? 0.4 : 0.25, base.goldGlow);
+  base.goldMuted = hexToRgba(primary, 0.12, base.goldMuted);
+  base.goldSubtle = hexToRgba(primary, 0.06, base.goldSubtle);
+
+  // Dynamic Secondary (Blue tokens adapt to custom brand secondary)
+  base.blue = secondary;
+  base.blueLight = secondary;
+  base.blueDark = secondary;
+  base.blueBorder = hexToRgba(secondary, isDark ? 0.4 : 0.35, base.blueBorder);
+  base.blueMuted = hexToRgba(secondary, 0.12, base.blueMuted);
+
+  // Surface overrides
+  if (isDark) {
+    if (brandConfig.background_color) {
+      base.background = brandConfig.background_color;
+      base.bgPrimary = brandConfig.background_color;
+    }
+    if (brandConfig.card_color) {
+      base.card = brandConfig.card_color;
+      base.cardBackground = brandConfig.card_color;
+      base.surface = brandConfig.card_color;
+    }
+    if (brandConfig.border_color) {
+      base.border = brandConfig.border_color;
+    }
+  } else {
+    if (brandConfig.light_background_color) {
+      base.background = brandConfig.light_background_color;
+      base.bgPrimary = brandConfig.light_background_color;
+    }
+    if (brandConfig.light_card_color) {
+      base.card = brandConfig.light_card_color;
+      base.cardBackground = brandConfig.light_card_color;
+      base.surface = brandConfig.light_card_color;
+    }
+    if (brandConfig.light_border_color) {
+      base.border = brandConfig.light_border_color;
+    }
+  }
+
+  return base;
+}
+

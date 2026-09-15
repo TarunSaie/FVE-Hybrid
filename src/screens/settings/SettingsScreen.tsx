@@ -347,6 +347,40 @@ export function SettingsScreen() {
                 </View>
                 <ChevronRight size={18} color={colors.textMuted} />
               </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => navigation.navigate('BrandStudio')}
+                style={styles.menuItem}
+              >
+                <View style={styles.menuLeft}>
+                  <Palette size={18} color={colors.gold} />
+                  <Text style={styles.menuTitle}>Brand Studio & Client Manager</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <View
+                    style={{
+                      backgroundColor: colors.gold + '20',
+                      paddingHorizontal: 6,
+                      paddingVertical: 2,
+                      borderRadius: 4,
+                      borderWidth: 1,
+                      borderColor: colors.gold + '40',
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 10,
+                        fontFamily: typography.fonts.rajdhani,
+                        color: colors.gold,
+                        fontWeight: '700',
+                      }}
+                    >
+                      PRO
+                    </Text>
+                  </View>
+                  <ChevronRight size={18} color={colors.textMuted} />
+                </View>
+              </TouchableOpacity>
             </>
           )}
 

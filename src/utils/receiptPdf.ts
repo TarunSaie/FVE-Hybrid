@@ -2,6 +2,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Clipboard from 'expo-clipboard';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/api/supabase';
 import { Payment, PersonalTraining } from '@/types';
 import { formatCurrency, openWhatsAppLink } from '@/utils/format';
@@ -122,12 +123,39 @@ export function buildReceiptDataFromPayment(
   };
 }
 
-export function generateReceiptHtml(data: ReceiptData): string {
+export async function getCachedReceiptBrand(): Promise<{
+  gym_name?: string;
+  slogan?: string;
+  logo_url?: string;
+  primary_color?: string;
+} | null> {
+  try {
+    const raw = await AsyncStorage.getItem('@fve_brand_config');
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function generateReceiptHtml(
+  data: ReceiptData,
+  brand?: {
+    gym_name?: string;
+    slogan?: string;
+    logo_url?: string;
+    primary_color?: string;
+  } | null
+): string {
   const formattedAmount = formatCurrency(data.amount);
+  const gymName = brand?.gym_name || APP_NAME;
+  const gymTagline = brand?.slogan || TAGLINE;
+  const logoSrc = brand?.logo_url || GYM_LOGO_BASE64;
+  const primaryColor = brand?.primary_color || '#EFA100';
+  const hexNoHash = primaryColor.replace('#', '');
   const qrUrl = data.memberQrCode
     ? `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(
         data.memberQrCode
-      )}&bgcolor=141820&color=EFA100`
+      )}&bgcolor=141820&color=${hexNoHash}`
     : '';
 
   return `
@@ -401,10 +429,10 @@ export function generateReceiptHtml(data: ReceiptData): string {
   <div class="receipt-card">
     <div class="header">
       <div class="brand-left">
-        <img class="brand-logo" src="${GYM_LOGO_BASE64}" alt="FitVerse Elite" />
+        <img class="brand-logo" src="${logoSrc}" alt="${gymName}" />
         <div>
-          <div class="brand-title">${APP_NAME}</div>
-          <div class="brand-tagline">${TAGLINE}</div>
+          <div class="brand-title">${gymName}</div>
+          <div class="brand-tagline">${gymTagline}</div>
         </div>
       </div>
       <div class="invoice-title-block">
@@ -552,7 +580,8 @@ export function generateReceiptHtml(data: ReceiptData): string {
 
 /** Generates the official receipt as a cleanly named PDF in the app cache. */
 export async function generateReceiptPdf(receiptData: ReceiptData): Promise<string> {
-  const html = generateReceiptHtml(receiptData);
+  const brand = await getCachedReceiptBrand();
+  const html = generateReceiptHtml(receiptData, brand);
 
   const { uri: tempUri, base64 } = await Print.printToFileAsync({
     html,
@@ -644,7 +673,8 @@ export async function shareReceiptPdfToWhatsApp(
  * Opens native print preview / airprint dialog directly.
  */
 export async function printPdfReceipt(receiptData: ReceiptData): Promise<void> {
-  const html = generateReceiptHtml(receiptData);
+  const brand = await getCachedReceiptBrand();
+  const html = generateReceiptHtml(receiptData, brand);
   await Print.printAsync({ html });
 }
 
@@ -654,7 +684,8 @@ export async function printPdfReceipt(receiptData: ReceiptData): Promise<void> {
  */
 export async function uploadReceiptPdf(receiptData: ReceiptData): Promise<string | null> {
   try {
-    const html = generateReceiptHtml(receiptData);
+    const brand = await getCachedReceiptBrand();
+    const html = generateReceiptHtml(receiptData, brand);
     const { uri } = await Print.printToFileAsync({ html });
 
     const safeReceiptNo = (receiptData.receiptNumber || 'Receipt').replace(/[^a-zA-Z0-9_-]/g, '_');
