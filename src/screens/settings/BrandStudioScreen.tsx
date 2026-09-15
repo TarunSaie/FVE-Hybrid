@@ -38,6 +38,8 @@ import { FVEBadge } from '@/components/common/FVEBadge';
 import { FVEKeyboardAwareContainer } from '@/components/common/FVEKeyboardAwareContainer';
 import { useBranding } from '@/contexts/BrandingContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { canAccessBrandStudio } from '@/constants/permissions';
 import { useDialog } from '@/contexts/DialogContext';
 import {
   BrandConfig,
@@ -117,9 +119,27 @@ const QUICK_SECONDARY_SWATCHES = [
 ];
 
 export function BrandStudioScreen() {
+  const { user } = useAuth();
   const { brandConfig, saveBranding, resetBranding } = useBranding();
   const { colors, isDark } = useTheme();
   const dialog = useDialog();
+
+  if (!canAccessBrandStudio(user?.role, user?.email)) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
+        <FVEHeader title="Brand Studio" showBack />
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <ShieldCheck size={48} color={colors.gold} style={{ marginBottom: 16 }} />
+          <Text style={{ fontFamily: typography.fonts.rajdhani, fontSize: 20, color: colors.textPrimary, textAlign: 'center', marginBottom: 8 }}>
+            Chirvex Developer Tool
+          </Text>
+          <Text style={{ fontFamily: typography.fonts.inter, fontSize: 13, color: colors.textSecondary, textAlign: 'center', maxWidth: 300, lineHeight: 20 }}>
+            Brand Studio & Client Manager is restricted to Chirvex deployment engineers and internal administrators.
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
   const [activeTab, setActiveTab] = useState<'branding' | 'supabase'>('branding');
   const [draft, setDraft] = useState<BrandConfig>(brandConfig);

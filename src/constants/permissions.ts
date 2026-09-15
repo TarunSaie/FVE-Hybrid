@@ -111,8 +111,32 @@ export function getRouteKey(pathname: string): string {
   return pathname;
 }
 
-export function canAccessRoute(role: string | null | undefined, pathname: string): boolean {
+export function isChirvexInternalUser(email?: string | null, role?: string | null): boolean {
+  const normalizedEmail = (email || '').trim().toLowerCase();
+  const isChirvexEmail =
+    normalizedEmail.endsWith('@chirvex.in') ||
+    normalizedEmail.endsWith('@chirvex.tech') ||
+    normalizedEmail.endsWith('@chirvex.co') ||
+    normalizedEmail.endsWith('@chirvex.com') ||
+    normalizedEmail.includes('chirvex');
+
+  if (isChirvexEmail) return true;
+
+  const normalizedRole = (role || '').trim().toUpperCase();
+  return (
+    normalizedRole === 'CHIRVEX_ADMIN' ||
+    normalizedRole === 'CHIRVEX_DEVELOPER' ||
+    normalizedRole === 'SUPERADMIN'
+  );
+}
+
+export function canAccessBrandStudio(role: string | null | undefined, email?: string | null): boolean {
+  return isChirvexInternalUser(email, role);
+}
+
+export function canAccessRoute(role: string | null | undefined, pathname: string, email?: string | null): boolean {
   if (!role || !(role in ROLE_ALLOWED_ROUTES)) return false;
+  if (pathname === '/brand-studio') return canAccessBrandStudio(role, email);
   return ROLE_ALLOWED_ROUTES[role as UserRole].includes(getRouteKey(pathname));
 }
 

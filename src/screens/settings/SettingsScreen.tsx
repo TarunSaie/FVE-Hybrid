@@ -44,6 +44,7 @@ import { supabase } from '@/api/supabase';
 import { typography } from '@/constants/typography';
 import { APP_NAME, TAGLINE, CHIRVEX_WEBSITE } from '@/constants/branding';
 import { ThemeColors } from '@/constants/colors';
+import { canAccessBrandStudio } from '@/constants/permissions';
 import { haptics } from '@/utils/haptics';
 import { sounds } from '@/utils/sounds';
 import { RootStackParamList } from '@/navigation/types';
@@ -348,39 +349,41 @@ export function SettingsScreen() {
                 <ChevronRight size={18} color={colors.textMuted} />
               </TouchableOpacity>
 
-              <TouchableOpacity
-                onPress={() => navigation.navigate('BrandStudio')}
-                style={styles.menuItem}
-              >
-                <View style={styles.menuLeft}>
-                  <Palette size={18} color={colors.gold} />
-                  <Text style={styles.menuTitle}>Brand Studio & Client Manager</Text>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <View
-                    style={{
-                      backgroundColor: colors.gold + '20',
-                      paddingHorizontal: 6,
-                      paddingVertical: 2,
-                      borderRadius: 4,
-                      borderWidth: 1,
-                      borderColor: colors.gold + '40',
-                    }}
-                  >
-                    <Text
+              {canAccessBrandStudio(user?.role, user?.email) && (
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('BrandStudio')}
+                  style={styles.menuItem}
+                >
+                  <View style={styles.menuLeft}>
+                    <Palette size={18} color={colors.gold} />
+                    <Text style={styles.menuTitle}>Brand Studio & Client Manager</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <View
                       style={{
-                        fontSize: 10,
-                        fontFamily: typography.fonts.rajdhani,
-                        color: colors.gold,
-                        fontWeight: '700',
+                        backgroundColor: colors.gold + '20',
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                        borderRadius: 4,
+                        borderWidth: 1,
+                        borderColor: colors.gold + '40',
                       }}
                     >
-                      PRO
-                    </Text>
+                      <Text
+                        style={{
+                          fontSize: 10,
+                          fontFamily: typography.fonts.rajdhani,
+                          color: colors.gold,
+                          fontWeight: '700',
+                        }}
+                      >
+                        PRO
+                      </Text>
+                    </View>
+                    <ChevronRight size={18} color={colors.textMuted} />
                   </View>
-                  <ChevronRight size={18} color={colors.textMuted} />
-                </View>
-              </TouchableOpacity>
+                </TouchableOpacity>
+              )}
             </>
           )}
 
