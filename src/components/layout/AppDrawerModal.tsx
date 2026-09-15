@@ -348,7 +348,7 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
             >
               {NAV_SECTIONS.map((section, idx) => {
                 const accessibleItems = section.items.filter((item) =>
-                  canAccessRoute(user?.role, item.route)
+                  canAccessRoute(user?.role, item.route, user?.email)
                 );
 
                 if (accessibleItems.length === 0) return null;
