@@ -44,6 +44,7 @@ import {
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { MemberFormModal } from '@/components/features/MemberFormModal';
 import { PaymentFormModal } from '@/components/features/PaymentFormModal';
+import { WhatsAppQueueModal, ExpiringQueueItem } from '@/components/features/WhatsAppQueueModal';
 import { FVEBadge } from '@/components/common/FVEBadge';
 import { FVELogoLoader } from '@/components/common/FVELogoLoader';
 import { ThemeColors } from '@/constants/colors';
@@ -51,6 +52,7 @@ import { typography } from '@/constants/typography';
 import { supabase } from '@/api/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useBranding } from '@/contexts/BrandingContext';
 import { formatCurrency, openWhatsAppLink } from '@/utils/format';
 import { getLocalDateStr, getLocalMonthStr, formatDate } from '@/utils/date';
 import { useRenewalAlerts } from '@/hooks/useRenewalAlerts';
@@ -65,6 +67,7 @@ export function DashboardScreen() {
   const navigation = useNavigation<NavigationProp>();
   const { user } = useAuth();
   const { colors, isDark } = useTheme();
+  const { brandConfig } = useBranding();
   const styles = useMemo(() => getDashboardStyles(colors, isDark), [colors, isDark]);
   const qc = useQueryClient();
 
@@ -75,6 +78,8 @@ export function DashboardScreen() {
 
   const [showMemberModal, setShowMemberModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showWhatsAppQueueModal, setShowWhatsAppQueueModal] = useState(false);
+  const [whatsAppQueue, setWhatsAppQueue] = useState<ExpiringQueueItem[]>([]);
   const [preselectedMemberId, setPreselectedMemberId] = useState<string | undefined>(undefined);
 
   const todayStr = getLocalDateStr();
@@ -358,28 +363,31 @@ export function DashboardScreen() {
       return;
     }
 
-    Alert.alert(
-      'Notify All Expiring Members',
-      `Send WhatsApp renewal reminders to ${withMobile.length} member${withMobile.length > 1 ? 's' : ''}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Send Reminders',
-          onPress: () => {
-            const first = withMobile[0];
-            const member = first.members as any;
-            const plan = first.membership_plans as any;
-            handleWhatsAppReminder(member || {}, first.expiry_date, plan?.name);
-            if (withMobile.length > 1) {
-              Alert.alert(
-                'Sequential Reminders',
-                `Reminder opened for ${member?.full_name || 'Member'}. Tap the WhatsApp icon on each member below to notify the rest.`
-              );
-            }
-          },
-        },
-      ]
-    );
+    const gymName = brandConfig.gym_name || 'FitVerse Elite';
+    const queueItems: ExpiringQueueItem[] = withMobile.map((m: any) => {
+      const member = m.members || {};
+      const plan = m.membership_plans || {};
+      const memberName = member.full_name || 'Member';
+      const planName = plan.name || 'gym';
+      const daysLeft = Math.ceil(
+        (new Date(m.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+      );
+      const msg = `Hi *${memberName}*,\n\nYour *${planName}* membership at *${gymName}* expires on *${formatDate(m.expiry_date)}* (${daysLeft <= 0 ? 'today' : `in ${daysLeft} days`}).\n\nPlease renew to continue your training uninterrupted.\n\n— Team ${gymName}`;
+
+      return {
+        id: m.id,
+        memberId: m.member_id,
+        memberName,
+        memberMobile: member.mobile || '',
+        planName,
+        expiryDate: m.expiry_date,
+        daysLeft,
+        message: msg,
+      };
+    });
+
+    setWhatsAppQueue(queueItems);
+    setShowWhatsAppQueueModal(true);
   };
 
   const isFinancialVisible = user?.role === 'OWNER' || user?.role === 'ADMIN';
@@ -1108,6 +1116,13 @@ export function DashboardScreen() {
           setPreselectedMemberId(undefined);
         }}
         onSaved={onRefresh}
+      />
+
+      {/* WhatsApp Fast-Queue Modal */}
+      <WhatsAppQueueModal
+        visible={showWhatsAppQueueModal}
+        onClose={() => setShowWhatsAppQueueModal(false)}
+        queue={whatsAppQueue}
       />
     </View>
   );
