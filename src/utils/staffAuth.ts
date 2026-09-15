@@ -1,5 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
-import { getActiveSupabaseConfig, supabase } from '@/utils/supabase';
+import { supabase, getActiveSupabaseConfig } from '@/utils/supabase';
 import { UserRole } from '@/types';
 
 export interface CreateStaffAccountParams {
@@ -11,8 +10,11 @@ export interface CreateStaffAccountParams {
 }
 
 /**
- * Creates an authentic Supabase Auth account for a staff member (Admin, Receptionist, Trainer)
- * using an isolated client so the gym Owner's active session is NOT interrupted on mobile.
+ * Creates an authentic Supabase Auth account for a staff member via the
+ * `create-staff` Edge Function, which uses the service-role key and
+ * auth.admin.createUser() — bypassing the "signups disabled" restriction
+ * while keeping the Owner's active session intact and the service role key
+ * out of client-side code.
  */
 export async function createStaffAccount(
   params: CreateStaffAccountParams
@@ -22,54 +24,42 @@ export async function createStaffAccount(
 
   const normalizedEmail = email.trim().toLowerCase();
 
-  // Create an isolated non-persisted client
-  const isolatedClient = createClient(config.url, config.anonKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-  });
+  // Retrieve the current Owner's JWT to authenticate the edge function call
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) {
+    return { success: false, error: 'You must be signed in as Owner to create staff accounts' };
+  }
 
   try {
-    const { data, error } = await isolatedClient.auth.signUp({
-      email: normalizedEmail,
-      password,
-      options: {
-        data: {
-          full_name: fullName,
-          role,
-        },
+    const functionUrl = `${config.url}/functions/v1/create-staff`;
+
+    const response = await fetch(functionUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        // Pass the Owner's JWT — the Edge Function validates this and checks the OWNER role
+        'Authorization': `Bearer ${session.access_token}`,
       },
+      body: JSON.stringify({
+        email: normalizedEmail,
+        password,
+        full_name: fullName,
+        role,
+        phone: phone || null,
+      }),
     });
 
-    if (error) {
-      return { success: false, error: error.message };
-    }
+    const json = await response.json();
 
-    if (data.user) {
-      // Upsert the profile row linked directly to auth.users.id
-      const { error: profileError } = await supabase
-        .from('user_profiles')
-        .upsert({
-          id: data.user.id,
-          email: normalizedEmail,
-          username: normalizedEmail.split('@')[0],
-          full_name: fullName,
-          role,
-          phone: phone || null,
-        });
-
-      if (profileError) {
-        console.warn('Profile upsert notice:', profileError);
-      }
+    if (!response.ok || json.error) {
+      return { success: false, error: json.error || `HTTP ${response.status}` };
     }
 
     return { success: true };
   } catch (err: unknown) {
     return {
       success: false,
-      error: (err as Error).message || 'Failed to create staff auth account',
+      error: (err as Error).message || 'Failed to create staff account',
     };
   }
 }
