@@ -31,6 +31,11 @@ import {
   ShieldCheck,
   Server,
   Zap,
+  Package,
+  Terminal,
+  Smartphone,
+  Info,
+  Folder,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEButton } from '@/components/common/FVEButton';
@@ -84,6 +89,7 @@ CREATE TABLE IF NOT EXISTS public.gym_branding (
   light_foreground_color TEXT NOT NULL DEFAULT '#0F172A',
   light_border_color TEXT NOT NULL DEFAULT 'rgba(15, 23, 42, 0.08)',
   page_title_prefix TEXT NOT NULL DEFAULT 'FitVerse Elite',
+  gym_subtag TEXT NOT NULL DEFAULT 'ELITE',
   logo_alt TEXT NOT NULL DEFAULT 'FitVerse Elite',
   accent_text_color TEXT NOT NULL DEFAULT '#050505',
   theme_mode TEXT NOT NULL DEFAULT 'dark',
@@ -141,7 +147,39 @@ export function BrandStudioScreen() {
     );
   }
 
-  const [activeTab, setActiveTab] = useState<'branding' | 'supabase'>('branding');
+  const [activeTab, setActiveTab] = useState<'branding' | 'supabase' | 'build'>('branding');
+  const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
+
+  const handleCopyCommand = async (cmd: string, label: string) => {
+    await Clipboard.setStringAsync(cmd);
+    setCopiedCommand(label);
+    haptics.success();
+    dialog.alert('Command Copied', `"${cmd}" copied to clipboard.`);
+    setTimeout(() => setCopiedCommand(null), 3000);
+  };
+
+  const handleCopyEnvConfig = async () => {
+    const url = supabaseConfig.url || 'https://your-project.supabase.co';
+    const key = supabaseConfig.anonKey || 'your-anon-key';
+    const envSnippet = `# FitVerse Elite Client Mobile Environment
+EXPO_PUBLIC_SUPABASE_URL=${url}
+EXPO_PUBLIC_SUPABASE_ANON_KEY=${key}
+EXPO_PUBLIC_SUPABASE_KEY=${key}
+`;
+    await Clipboard.setStringAsync(envSnippet);
+    haptics.success();
+    dialog.alert(
+      'Environment Config Copied',
+      'Paste this into fve-mobile/.env before compiling the client APK.'
+    );
+  };
+
+  const handleCopyApkPath = async () => {
+    const apkPath = 'android/app/build/outputs/apk/release/app-release.apk';
+    await Clipboard.setStringAsync(apkPath);
+    haptics.success();
+    dialog.alert('Path Copied', `"${apkPath}" copied to clipboard.`);
+  };
   const [draft, setDraft] = useState<BrandConfig>(brandConfig);
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
   const [previewDark, setPreviewDark] = useState(true);
@@ -490,6 +528,26 @@ export function BrandStudioScreen() {
           </Text>
           {supabaseConfig.isCustom && <View style={styles.customDot} />}
         </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => {
+            haptics.selection();
+            setActiveTab('build');
+          }}
+          activeOpacity={0.8}
+          style={[styles.tabButton, activeTab === 'build' && styles.tabButtonActive]}
+        >
+          <Package
+            size={16}
+            color={activeTab === 'build' ? '#050505' : colors.textMuted}
+            style={{ marginRight: 6 }}
+          />
+          <Text
+            style={[styles.tabButtonText, activeTab === 'build' && styles.tabButtonTextActive]}
+          >
+            APK Build
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <FVEKeyboardAwareContainer contentContainerStyle={styles.scrollContent}>
@@ -553,13 +611,13 @@ export function BrandStudioScreen() {
                         numberOfLines={1}
                         style={[styles.mockupGymTitle, { color: draft.primary_color }]}
                       >
-                        {draft.gym_name.toUpperCase()}
+                        {(draft.gym_name || 'FitVerse Elite').toUpperCase()}
                       </Text>
                       <Text
                         numberOfLines={1}
                         style={[styles.mockupGymSlogan, { color: draft.secondary_color }]}
                       >
-                        {draft.slogan.toUpperCase()}
+                        {(draft.gym_subtag || 'ELITE').toUpperCase()}
                       </Text>
                     </View>
                   </View>
@@ -642,21 +700,30 @@ export function BrandStudioScreen() {
                 placeholderTextColor={colors.textMuted}
               />
 
+              <Text style={styles.inputLabel}>GYM NAME SUB-TAG</Text>
+              <TextInput
+                style={styles.textInput}
+                value={draft.gym_subtag || ''}
+                onChangeText={(t) => setDraft((prev) => ({ ...prev, gym_subtag: t }))}
+                placeholder="e.g. ELITE or FITNESS CLUB"
+                placeholderTextColor={colors.textMuted}
+              />
+
+              <Text style={styles.inputLabel}>PAGE TITLE PREFIX (BROWSER & APP)</Text>
+              <TextInput
+                style={styles.textInput}
+                value={draft.page_title_prefix}
+                onChangeText={(t) => setDraft((prev) => ({ ...prev, page_title_prefix: t }))}
+                placeholder="e.g. FitVerse Elite"
+                placeholderTextColor={colors.textMuted}
+              />
+
               <Text style={styles.inputLabel}>SLOGAN / TAGLINE</Text>
               <TextInput
                 style={styles.textInput}
                 value={draft.slogan}
                 onChangeText={(t) => setDraft((prev) => ({ ...prev, slogan: t }))}
                 placeholder="e.g. Strength • Discipline • Glory"
-                placeholderTextColor={colors.textMuted}
-              />
-
-              <Text style={styles.inputLabel}>HEADER SUBTITLE PREFIX</Text>
-              <TextInput
-                style={styles.textInput}
-                value={draft.page_title_prefix}
-                onChangeText={(t) => setDraft((prev) => ({ ...prev, page_title_prefix: t }))}
-                placeholder="e.g. FitVerse Elite"
                 placeholderTextColor={colors.textMuted}
               />
             </View>
@@ -862,7 +929,7 @@ export function BrandStudioScreen() {
               </TouchableOpacity>
             </View>
           </>
-        ) : (
+        ) : activeTab === 'supabase' ? (
           <>
             {/* ── SUPABASE MULTI-CLIENT TAB ── */}
             <View style={styles.cardSection}>
@@ -1030,9 +1097,9 @@ export function BrandStudioScreen() {
             {/* ── SAVED CLIENT PROFILES ── */}
             {clientProfiles.length > 0 && (
               <View style={styles.cardSection}>
-                <Text style={styles.sectionTitle}>SAVED CLIENT PROFILES</Text>
+                <Text style={styles.sectionTitle}>SAVED CLIENT GYMS</Text>
                 <Text style={styles.sectionSubtitle}>
-                  Quickly toggle between different gym database environments.
+                  Fast-switch between connected client gym databases.
                 </Text>
 
                 {clientProfiles.map((profile) => (
@@ -1076,6 +1143,223 @@ export function BrandStudioScreen() {
                 <Copy size={15} color="#050505" style={{ marginRight: 6 }} />
                 <Text style={styles.copySqlBtnText}>Copy Setup SQL Query</Text>
               </TouchableOpacity>
+            </View>
+          </>
+        ) : (
+          <>
+            {/* ── APK BUILD & DISTRIBUTION TAB ── */}
+            <View style={styles.cardSection}>
+              <View style={styles.sectionHeaderRow}>
+                <Package size={18} color={colors.gold} style={{ marginRight: 8 }} />
+                <Text style={styles.sectionTitle}>CLIENT APK BUILD & DISTRIBUTION</Text>
+              </View>
+              <Text style={styles.sectionSubtitle}>
+                Generate standalone, white-labeled Android release APKs for your client gym. Baked with custom branding, app identity, and Supabase credentials.
+              </Text>
+
+              {/* Status & Output Path */}
+              <View style={styles.buildOutputCard}>
+                <View style={styles.buildOutputHeader}>
+                  <Text style={styles.buildOutputLabel}>STANDALONE RELEASE APK OUTPUT</Text>
+                  <FVEBadge
+                    label="GRADLE RELEASE"
+                    color={colors.gold}
+                    bgColor={colors.goldMuted}
+                    borderColor={colors.goldBorder}
+                    size="sm"
+                  />
+                </View>
+                <Text numberOfLines={2} style={styles.buildOutputPath}>
+                  fve-mobile/android/app/build/outputs/apk/release/app-release.apk
+                </Text>
+                <TouchableOpacity onPress={handleCopyApkPath} style={styles.copyPathBtn}>
+                  <Copy size={13} color={colors.gold} style={{ marginRight: 5 }} />
+                  <Text style={styles.copyPathBtnText}>Copy File Path</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* ── ARCHITECTURE NOTICE: RUNTIME SWITCH VS COMPILED APK ── */}
+            <View style={styles.noticeCard}>
+              <View style={styles.noticeHeader}>
+                <Info size={16} color={colors.blue} style={{ marginRight: 6 }} />
+                <Text style={styles.noticeTitle}>RUNTIME SWITCH VS COMPILED APK</Text>
+              </View>
+              <Text style={styles.noticeBody}>
+                <Text style={{ fontWeight: '700', color: colors.textPrimary }}>💡 Good News:</Text> You rarely need to re-compile an APK! If you only want this phone to connect to the client's database with their custom colors and logo, switch directly in the <Text style={{ fontWeight: '700', color: colors.gold }}>Supabase Switcher</Text> tab. The app adapts dynamically at runtime.
+              </Text>
+              <Text style={[styles.noticeBody, { marginTop: 8 }]}>
+                <Text style={{ fontWeight: '700', color: colors.textPrimary }}>When to compile an APK:</Text> Only when the client requires a completely isolated standalone app with their own package name (<Text style={{ fontFamily: typography.fonts.rajdhani, color: colors.gold }}>com.clientgym.app</Text>), custom launcher icon on Google Play, or pre-baked credentials for offline install.
+              </Text>
+            </View>
+
+            {/* ── BUILD COMMANDS (TERMINAL READY) ── */}
+            <View style={styles.cardSection}>
+              <View style={styles.sectionHeaderRow}>
+                <Terminal size={16} color={colors.gold} style={{ marginRight: 8 }} />
+                <Text style={styles.sectionTitle}>CLI COMPILATION PIPELINES</Text>
+              </View>
+              <Text style={styles.sectionSubtitle}>
+                Run these commands from your computer terminal in the project root to compile the release APK:
+              </Text>
+
+              {/* Command 1: Fast Build */}
+              <View style={styles.commandCard}>
+                <View style={styles.commandHeader}>
+                  <Text style={styles.commandTitle}>1. Local Release APK (Recommended)</Text>
+                  <TouchableOpacity
+                    onPress={() => handleCopyCommand('cd fve-mobile && npm run build:apk', 'local')}
+                    style={styles.copyCommandBtn}
+                  >
+                    <Copy size={13} color="#050505" style={{ marginRight: 4 }} />
+                    <Text style={styles.copyCommandBtnText}>
+                      {copiedCommand === 'local' ? 'COPIED!' : 'COPY'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.commandDesc}>
+                  Compiles an optimized, signed release APK using local Java 17 and Gradle daemon.
+                </Text>
+                <View style={styles.commandSnippetBox}>
+                  <Text style={styles.commandSnippet}>cd fve-mobile && npm run build:apk</Text>
+                </View>
+              </View>
+
+              {/* Command 2: Clean Rebuild */}
+              <View style={styles.commandCard}>
+                <View style={styles.commandHeader}>
+                  <Text style={styles.commandTitle}>2. Clean Rebuild (Clear Cache)</Text>
+                  <TouchableOpacity
+                    onPress={() =>
+                      handleCopyCommand(
+                        'cd fve-mobile/android && ./gradlew clean && cd .. && npm run build:apk',
+                        'clean'
+                      )
+                    }
+                    style={styles.copyCommandBtn}
+                  >
+                    <Copy size={13} color="#050505" style={{ marginRight: 4 }} />
+                    <Text style={styles.copyCommandBtnText}>
+                      {copiedCommand === 'clean' ? 'COPIED!' : 'COPY'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.commandDesc}>
+                  Purges stale Gradle build artifacts when changing .env credentials or native assets.
+                </Text>
+                <View style={styles.commandSnippetBox}>
+                  <Text style={styles.commandSnippet}>
+                    cd fve-mobile/android && ./gradlew clean && cd .. && npm run build:apk
+                  </Text>
+                </View>
+              </View>
+
+              {/* Command 3: Cloud EAS Build */}
+              <View style={styles.commandCard}>
+                <View style={styles.commandHeader}>
+                  <Text style={styles.commandTitle}>3. Cloud EAS Build (No Android SDK Required)</Text>
+                  <TouchableOpacity
+                    onPress={() =>
+                      handleCopyCommand(
+                        'cd fve-mobile && npx eas build -p android --profile production',
+                        'eas'
+                      )
+                    }
+                    style={styles.copyCommandBtn}
+                  >
+                    <Copy size={13} color="#050505" style={{ marginRight: 4 }} />
+                    <Text style={styles.copyCommandBtnText}>
+                      {copiedCommand === 'eas' ? 'COPIED!' : 'COPY'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.commandDesc}>
+                  Builds on Expo Cloud infrastructure and provides a direct APK download link.
+                </Text>
+                <View style={styles.commandSnippetBox}>
+                  <Text style={styles.commandSnippet}>
+                    cd fve-mobile && npx eas build -p android --profile production
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* ── CLIENT .ENV GENERATOR ── */}
+            <View style={styles.cardSection}>
+              <View style={styles.sectionHeaderRow}>
+                <Smartphone size={16} color={colors.gold} style={{ marginRight: 8 }} />
+                <Text style={styles.sectionTitle}>CLIENT .ENV PREPARATION</Text>
+              </View>
+              <Text style={styles.sectionSubtitle}>
+                Mobile APKs bake environment variables at compile time. Ensure <Text style={{ fontFamily: typography.fonts.rajdhani, color: colors.gold }}>fve-mobile/.env</Text> contains the client credentials below before running the build:
+              </Text>
+
+              <View style={styles.envSnippetBox}>
+                <Text style={styles.envSnippetText}>
+                  {`EXPO_PUBLIC_SUPABASE_URL=${supabaseConfig.url || 'https://your-project.supabase.co'}\nEXPO_PUBLIC_SUPABASE_ANON_KEY=${supabaseConfig.anonKey || 'your-anon-key'}\nEXPO_PUBLIC_SUPABASE_KEY=${supabaseConfig.anonKey || 'your-anon-key'}`}
+                </Text>
+              </View>
+
+              <TouchableOpacity onPress={handleCopyEnvConfig} style={styles.copySqlBtn}>
+                <Copy size={15} color="#050505" style={{ marginRight: 6 }} />
+                <Text style={styles.copySqlBtnText}>Copy Client .env Snippet</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* ── 4-STEP RELEASE CHECKLIST ── */}
+            <View style={styles.cardSection}>
+              <Text style={styles.sectionTitle}>RELEASE DEPLOYMENT CHECKLIST</Text>
+              <Text style={styles.sectionSubtitle}>
+                Follow these 4 steps to produce a verified client production build:
+              </Text>
+
+              <View style={styles.checklistItem}>
+                <View style={styles.stepBadge}>
+                  <Text style={styles.stepBadgeText}>1</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.stepTitle}>Configure Database & Branding</Text>
+                  <Text style={styles.stepDesc}>
+                    In Supabase Switcher, test and verify database connection. In Brand & Theme, configure colors and logo.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.checklistItem}>
+                <View style={styles.stepBadge}>
+                  <Text style={styles.stepBadgeText}>2</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.stepTitle}>Update fve-mobile/.env & app.json</Text>
+                  <Text style={styles.stepDesc}>
+                    Copy the client .env snippet above into fve-mobile/.env. Optionally update package name in app.json.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.checklistItem}>
+                <View style={styles.stepBadge}>
+                  <Text style={styles.stepBadgeText}>3</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.stepTitle}>Compile Standalone APK</Text>
+                  <Text style={styles.stepDesc}>
+                    Open terminal on your computer, navigate to fve-mobile, and run `npm run build:apk`.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.checklistItem}>
+                <View style={styles.stepBadge}>
+                  <Text style={styles.stepBadgeText}>4</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.stepTitle}>Distribute to Gym Staff & Members</Text>
+                  <Text style={styles.stepDesc}>
+                    Locate the generated app-release.apk and transfer via Google Drive, WhatsApp, or direct USB sideload.
+                  </Text>
+                </View>
+              </View>
             </View>
           </>
         )}
@@ -1590,5 +1874,177 @@ const getStyles = (colors: ThemeColors, isDark: boolean) =>
       fontSize: 13,
       fontWeight: '700',
       color: '#050505',
+    },
+    buildOutputCard: {
+      backgroundColor: isDark ? '#080A0D' : colors.cardBackground,
+      borderRadius: 12,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.2)' : 'rgba(15, 23, 42, 0.08)',
+      marginTop: 4,
+    },
+    buildOutputHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    buildOutputLabel: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 11,
+      fontWeight: '700',
+      letterSpacing: 0.5,
+      color: colors.textMuted,
+    },
+    buildOutputPath: {
+      fontFamily: typography.fonts.interMedium,
+      fontSize: 12,
+      color: colors.gold,
+      marginVertical: 8,
+      lineHeight: 18,
+    },
+    copyPathBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      paddingVertical: 4,
+    },
+    copyPathBtnText: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.gold,
+    },
+    noticeCard: {
+      backgroundColor: 'rgba(0, 102, 255, 0.08)',
+      borderColor: 'rgba(0, 102, 255, 0.25)',
+      borderWidth: 1,
+      borderRadius: 14,
+      padding: 14,
+      marginBottom: 16,
+    },
+    noticeHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 6,
+    },
+    noticeTitle: {
+      fontFamily: typography.fonts.orbitron,
+      fontSize: 11,
+      fontWeight: '800',
+      letterSpacing: 0.8,
+      color: colors.blue,
+    },
+    noticeBody: {
+      fontFamily: typography.fonts.inter,
+      fontSize: 12,
+      color: colors.textSecondary,
+      lineHeight: 18,
+    },
+    commandCard: {
+      backgroundColor: isDark ? '#0A0D12' : colors.cardBackground,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(15, 23, 42, 0.08)',
+      padding: 14,
+      marginBottom: 12,
+    },
+    commandHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 4,
+    },
+    commandTitle: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      flex: 1,
+    },
+    copyCommandBtn: {
+      backgroundColor: colors.gold,
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 6,
+      marginLeft: 8,
+    },
+    copyCommandBtnText: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 10,
+      fontWeight: '800',
+      color: '#050505',
+      letterSpacing: 0.5,
+    },
+    commandDesc: {
+      fontFamily: typography.fonts.inter,
+      fontSize: 11,
+      color: colors.textMuted,
+      marginBottom: 8,
+      lineHeight: 16,
+    },
+    commandSnippetBox: {
+      backgroundColor: '#030405',
+      padding: 10,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.06)',
+    },
+    commandSnippet: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 12,
+      color: colors.gold,
+      fontWeight: '700',
+    },
+    envSnippetBox: {
+      backgroundColor: '#030405',
+      padding: 12,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: 'rgba(239, 161, 0, 0.25)',
+      marginBottom: 12,
+    },
+    envSnippetText: {
+      fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+      fontSize: 11,
+      color: colors.textPrimary,
+      lineHeight: 18,
+    },
+    checklistItem: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      marginBottom: 14,
+    },
+    stepBadge: {
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      backgroundColor: colors.goldMuted,
+      borderWidth: 1,
+      borderColor: colors.goldBorder,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: 10,
+      marginTop: 2,
+    },
+    stepBadgeText: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 11,
+      fontWeight: '800',
+      color: colors.gold,
+    },
+    stepTitle: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.textPrimary,
+    },
+    stepDesc: {
+      fontFamily: typography.fonts.inter,
+      fontSize: 11,
+      color: colors.textMuted,
+      marginTop: 2,
+      lineHeight: 16,
     },
   });

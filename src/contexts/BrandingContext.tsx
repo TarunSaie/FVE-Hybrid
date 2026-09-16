@@ -19,11 +19,12 @@ export function normalizeBrandConfig(raw: Partial<BrandConfig> | null | undefine
   if (!raw) return DEFAULT_BRAND_CONFIG;
 
   return {
-    id: raw.id || 'default',
-    gym_name: raw.gym_name?.trim() || DEFAULT_BRAND_CONFIG.gym_name,
-    slogan: raw.slogan?.trim() || DEFAULT_BRAND_CONFIG.slogan,
-    logo_url: raw.logo_url || '',
-    favicon_url: raw.favicon_url || '',
+    id: raw.id || DEFAULT_BRAND_CONFIG.id,
+    gym_name: raw.gym_name || DEFAULT_BRAND_CONFIG.gym_name,
+    gym_subtag: raw.gym_subtag || DEFAULT_BRAND_CONFIG.gym_subtag || 'ELITE',
+    slogan: raw.slogan || DEFAULT_BRAND_CONFIG.slogan,
+    logo_url: raw.logo_url || DEFAULT_BRAND_CONFIG.logo_url,
+    favicon_url: raw.favicon_url || DEFAULT_BRAND_CONFIG.favicon_url,
     primary_color: raw.primary_color || DEFAULT_BRAND_CONFIG.primary_color,
     secondary_color: raw.secondary_color || DEFAULT_BRAND_CONFIG.secondary_color,
     background_color: raw.background_color || DEFAULT_BRAND_CONFIG.background_color,
@@ -58,13 +59,16 @@ export const BrandingProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           const parsed = JSON.parse(cached);
           setBrandConfig(normalizeBrandConfig(parsed));
         }
-      } catch {
-        // Continue with default config
+      } catch (err) {
+        console.warn('Failed to read cached branding:', err);
+      } finally {
+        setLoading(false);
       }
     }
     loadCached();
   }, []);
 
+  // Fetch from Supabase gym_branding
   const refreshBranding = useCallback(async () => {
     try {
       const { data, error } = await supabase
@@ -74,7 +78,7 @@ export const BrandingProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         .maybeSingle();
 
       if (error) {
-        // Table might not exist yet or offline, keep cached
+        console.warn('Could not fetch gym_branding from Supabase:', error.message);
         return;
       }
 
@@ -83,27 +87,16 @@ export const BrandingProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setBrandConfig(normalized);
         await AsyncStorage.setItem(FVE_BRAND_STORAGE_KEY, JSON.stringify(normalized)).catch(() => {});
       }
-    } catch {
-      // Offline fallback
+    } catch (err) {
+      console.warn('Error refreshing branding:', err);
     }
   }, []);
 
   useEffect(() => {
-    let isMounted = true;
-    const init = async () => {
-      setLoading(true);
-      try {
-        await refreshBranding();
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
-    init();
-    return () => {
-      isMounted = false;
-    };
+    refreshBranding();
   }, [refreshBranding]);
 
+  // Save branding updates
   const saveBranding = useCallback(
     async (next: Partial<BrandConfig>): Promise<{ error?: Error | null; schemaNotice?: string }> => {
       const merged = normalizeBrandConfig({ ...brandConfig, ...next, id: 'default' });
@@ -116,6 +109,7 @@ export const BrandingProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const fullPayload = {
         id: 'default',
         gym_name: merged.gym_name,
+        gym_subtag: merged.gym_subtag,
         slogan: merged.slogan,
         logo_url: merged.logo_url,
         favicon_url: merged.favicon_url,

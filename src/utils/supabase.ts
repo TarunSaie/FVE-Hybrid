@@ -7,9 +7,11 @@ export const FVE_SUPABASE_ANON_KEY = 'fve_supabase_anon_key';
 export const FVE_CLIENT_PROFILES_KEY = 'fve_client_profiles';
 
 export const DEFAULT_SUPABASE_URL =
-  process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://pmrxrqneaqjqjazfidtf.supabase.co';
+  process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://eerxprcgvsgbckbgwboe.supabase.co';
 export const DEFAULT_SUPABASE_ANON_KEY =
-  process.env.EXPO_PUBLIC_SUPABASE_KEY || 'sb_publishable_eLmMv90HOEJNF8K07yaVMg_cqk38Ltr';
+  process.env.EXPO_PUBLIC_SUPABASE_KEY ||
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
+  'sb_publishable_pf_KSQgSi9XZMLrQjXHa4g_RhUapGrT';
 
 export interface SupabaseConnectionConfig {
   url: string;

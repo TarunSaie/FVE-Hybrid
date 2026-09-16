@@ -1,6 +1,7 @@
 export interface BrandConfig {
   id: string;
   gym_name: string;
+  gym_subtag?: string;
   slogan: string;
   logo_url: string;
   favicon_url: string;
@@ -59,6 +60,7 @@ export interface SupabaseTestResult {
 export const DEFAULT_BRAND_CONFIG: BrandConfig = {
   id: 'default',
   gym_name: 'FitVerse Elite',
+  gym_subtag: 'ELITE',
   slogan: 'Discipline • Strength • Transformation',
   logo_url: '',
   favicon_url: '',

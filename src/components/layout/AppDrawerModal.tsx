@@ -292,7 +292,7 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
                     {(brandConfig.gym_name || 'FITVERSE').toUpperCase()}
                   </Text>
                   <Text numberOfLines={1} style={[styles.brandSubtitle, { color: colors.textSecondary }]}>
-                    {(brandConfig.page_title_prefix || 'ELITE MOBILE').toUpperCase()}
+                    {(brandConfig.gym_subtag || 'ELITE MOBILE').toUpperCase()}
                   </Text>
                 </View>
               </View>
