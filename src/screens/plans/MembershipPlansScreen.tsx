@@ -167,6 +167,15 @@ export function MembershipPlansScreen() {
     qc.invalidateQueries({ queryKey: ['mobile-membership-plans'] });
     qc.invalidateQueries({ queryKey: ['mobile-pt-plans'] });
     qc.invalidateQueries({ queryKey: ['plan-change-requests'] });
+    qc.invalidateQueries({ queryKey: ['mobile-members'] });
+    qc.invalidateQueries({ queryKey: ['mobile-payments'] });
+    qc.invalidateQueries({ queryKey: ['mobile-dashboard-stats'] });
+    qc.invalidateQueries({ queryKey: ['mobile-expiring-memberships'] });
+    qc.invalidateQueries({ queryKey: ['mobile-hold-members'] });
+    qc.invalidateQueries({ queryKey: ['mobile-plan-distribution'] });
+    qc.invalidateQueries({ queryKey: ['mobile-reports-popular-plans'] });
+    qc.invalidateQueries({ queryKey: ['payment-detail'] });
+    qc.invalidateQueries({ queryKey: ['membership-for-payment'] });
   }, [qc]);
 
   // Membership Plan Actions

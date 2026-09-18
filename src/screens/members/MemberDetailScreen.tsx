@@ -936,12 +936,24 @@ export function MemberDetailScreen() {
                 </View>
 
                 {activeMembership.visit_day_limit != null && (
-                  <View style={styles.detailRow}>
-                    <UserCheck size={14} color={colors.gold} />
-                    <Text style={styles.detailLabel}>Usable Visits:</Text>
-                    <Text style={styles.detailValue}>
-                      {activeMembership.visit_days_used || 0} /{' '}
-                      {activeMembership.visit_day_limit} days used                    </Text>
+                  <View
+                    style={[
+                      styles.visitUsageBox,
+                      {
+                        backgroundColor: isDark ? 'rgba(239, 161, 0, 0.08)' : '#FFFBEB',
+                        borderColor: colors.goldBorder,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.visitUsageLimitText, { color: colors.textMuted }]}>
+                      Visits: {activeMembership.visit_day_limit} visits are allotted for the entire subscription period.
+                    </Text>
+                    <Text style={[styles.visitUsageProgressText, { color: colors.gold }]}>
+                      {activeMembership.visit_days_used || 0} of {activeMembership.visit_day_limit} visits used.{' '}
+                      {Math.max(0, activeMembership.visit_day_limit - (activeMembership.visit_days_used || 0)) === 1
+                        ? '1 visit remaining for the duration of your plan.'
+                        : `${Math.max(0, activeMembership.visit_day_limit - (activeMembership.visit_days_used || 0))} visits remaining for the duration of your plan.`}
+                    </Text>
                   </View>
                 )}
               </View>
@@ -1558,7 +1570,14 @@ export function MemberDetailScreen() {
             qc.invalidateQueries({ queryKey: ['member-plan-change-requests', memberId] });
             qc.invalidateQueries({ queryKey: ['plan-change-requests'] });
             qc.invalidateQueries({ queryKey: ['mobile-membership-plans'] });
+            qc.invalidateQueries({ queryKey: ['mobile-members'] });
+            qc.invalidateQueries({ queryKey: ['mobile-payments'] });
             qc.invalidateQueries({ queryKey: ['mobile-dashboard-stats'] });
+            qc.invalidateQueries({ queryKey: ['mobile-expiring-memberships'] });
+            qc.invalidateQueries({ queryKey: ['mobile-hold-members'] });
+            qc.invalidateQueries({ queryKey: ['mobile-plan-distribution'] });
+            qc.invalidateQueries({ queryKey: ['payment-detail'] });
+            qc.invalidateQueries({ queryKey: ['membership-for-payment'] });
           }}
         />
       )}
@@ -2073,6 +2092,25 @@ const getMemberDetailStyles = (colors: ThemeColors, isDark: boolean) =>
       fontSize: typography.sizes.xs,
       fontFamily: typography.fonts.inter,
       fontWeight: '600',
+    },
+    visitUsageBox: {
+      marginTop: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderRadius: 10,
+      borderWidth: 1,
+    },
+    visitUsageLimitText: {
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.inter,
+      lineHeight: 16,
+    },
+    visitUsageProgressText: {
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.inter,
+      fontWeight: '600',
+      marginTop: 3,
+      lineHeight: 16,
     },
     emptyNotice: {
       padding: 14,

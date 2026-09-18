@@ -356,7 +356,14 @@ export function PlanChangeModal({
       qc.invalidateQueries({ queryKey: ['plan-change-requests'] });
       qc.invalidateQueries({ queryKey: ['member-plan-change-requests', member.id] });
       qc.invalidateQueries({ queryKey: ['mobile-membership-plans'] });
+      qc.invalidateQueries({ queryKey: ['mobile-members'] });
+      qc.invalidateQueries({ queryKey: ['mobile-payments'] });
       qc.invalidateQueries({ queryKey: ['mobile-dashboard-stats'] });
+      qc.invalidateQueries({ queryKey: ['mobile-expiring-memberships'] });
+      qc.invalidateQueries({ queryKey: ['mobile-hold-members'] });
+      qc.invalidateQueries({ queryKey: ['mobile-plan-distribution'] });
+      qc.invalidateQueries({ queryKey: ['payment-detail'] });
+      qc.invalidateQueries({ queryKey: ['membership-for-payment'] });
 
       haptics.success();
 

@@ -120,6 +120,21 @@ export function PaymentItem({
                 <Text style={[styles.receiptNo, { color: colors.textSecondary }]}>
                   #{payment.receipt_number || 'N/A'}
                 </Text>
+                {payment.memberships?.membership_plans?.name ? (
+                  <View
+                    style={[
+                      styles.planBadge,
+                      {
+                        backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : colors.goldMuted,
+                        borderColor: colors.goldBorder,
+                      },
+                    ]}
+                  >
+                    <Text numberOfLines={1} style={[styles.planText, { color: colors.gold }]}>
+                      {payment.memberships.membership_plans.name}
+                    </Text>
+                  </View>
+                ) : null}
                 <View
                   style={[
                     styles.methodBadge,
@@ -232,6 +247,18 @@ const styles = StyleSheet.create({
   receiptNo: {
     fontSize: typography.sizes.xs,
     fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+  },
+  planBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 6,
+    borderWidth: 1,
+    maxWidth: 110,
+  },
+  planText: {
+    fontSize: 10,
+    fontFamily: typography.fonts.inter,
     fontWeight: '700',
   },
   methodBadge: {

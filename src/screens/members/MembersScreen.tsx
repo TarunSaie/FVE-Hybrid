@@ -45,6 +45,8 @@ interface RawJoinedMembership {
   expiry_date: string;
   status: string | null;
   created_at: string;
+  visit_day_limit?: number | null;
+  visit_days_used?: number | null;
   membership_plans: { name: string } | null;
 }
 
@@ -113,7 +115,7 @@ export function MembersScreen() {
     queryFn: async () => {
       let q = supabase
         .from('members')
-        .select('*, memberships(id, start_date, expiry_date, status, created_at, membership_plans(name))');
+        .select('*, memberships(id, start_date, expiry_date, status, created_at, visit_day_limit, visit_days_used, membership_plans(name))');
 
       if (debouncedSearch.trim()) {
         q = q.or(
@@ -175,6 +177,8 @@ export function MembersScreen() {
           membership_status: computedStatus,
           plan_name: latest?.membership_plans?.name || null,
           expiry_sort_group: group,
+          visit_day_limit: latest?.visit_day_limit ?? null,
+          visit_days_used: latest?.visit_days_used ?? 0,
         };
       });
 

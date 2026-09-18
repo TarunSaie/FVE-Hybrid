@@ -207,6 +207,28 @@ export function MemberCard({ member, onPress, onShare, isSharing, onWhatsAppAler
             <ChevronRight size={18} color={isExpired ? colors.error : colors.gold} style={styles.chevron} />
           </View>
         </View>
+
+        {member.visit_day_limit != null && (
+          <View
+            style={[
+              styles.visitUsageBox,
+              {
+                backgroundColor: isDark ? 'rgba(239, 161, 0, 0.08)' : '#FFFBEB',
+                borderColor: colors.goldBorder,
+              },
+            ]}
+          >
+            <Text style={[styles.visitUsageLimitText, { color: colors.textMuted }]}>
+              Visits: {member.visit_day_limit} visits are allotted for the entire subscription period.
+            </Text>
+            <Text style={[styles.visitUsageProgressText, { color: colors.gold }]}>
+              {member.visit_days_used ?? 0} of {member.visit_day_limit} visits used.{' '}
+              {Math.max(0, member.visit_day_limit - (member.visit_days_used ?? 0)) === 1
+                ? '1 visit remaining for the duration of your plan.'
+                : `${Math.max(0, member.visit_day_limit - (member.visit_days_used ?? 0))} visits remaining for the duration of your plan.`}
+            </Text>
+          </View>
+        )}
       </Pressable>
     </Animated.View>
   );
@@ -343,5 +365,24 @@ const styles = StyleSheet.create({
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '700',
     letterSpacing: 0.5,
+  },
+  visitUsageBox: {
+    marginTop: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  visitUsageLimitText: {
+    fontSize: 11,
+    fontFamily: typography.fonts.inter,
+    lineHeight: 15,
+  },
+  visitUsageProgressText: {
+    fontSize: 11,
+    fontFamily: typography.fonts.inter,
+    fontWeight: '600',
+    marginTop: 2,
+    lineHeight: 15,
   },
 });

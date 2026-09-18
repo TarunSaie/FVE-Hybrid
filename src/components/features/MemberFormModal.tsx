@@ -369,13 +369,12 @@ export function MemberFormModal({
               .from('memberships')
               .insert({
                 member_id: insertedMember.id,
-                membership_plan_id: selectedPlan.id,
+                plan_id: selectedPlan.id,
                 start_date: planStartDate,
                 expiry_date: planExpiry,
                 status: 'ACTIVE',
                 visit_day_limit: selectedPlan.visit_day_limit || null,
                 visit_days_used: 0,
-                created_by: user?.id || null,
                 created_at: new Date().toISOString(),
               })
               .select('id')
@@ -389,20 +388,22 @@ export function MemberFormModal({
             const { error: payErr } = await supabase.from('payments').insert({
               member_id: insertedMember.id,
               membership_id: newMembership.id,
-              membership_plan_id: selectedPlan.id,
               amount: paidAmount,
               payment_method: paymentMethod,
-              receipt_no: receiptNo,
+              receipt_number: receiptNo,
               payment_date: planStartDate,
-              created_by: user?.id || null,
+              received_by: user?.id || null,
               created_at: new Date().toISOString(),
             });
 
             if (payErr) console.warn('[MemberFormModal] Payment creation error:', payErr);
 
-            qc.invalidateQueries({ queryKey: ['payments'] });
-            qc.invalidateQueries({ queryKey: ['recent-payments'] });
-            qc.invalidateQueries({ queryKey: ['dashboard-stats'] });
+            qc.invalidateQueries({ queryKey: ['mobile-members'] });
+            qc.invalidateQueries({ queryKey: ['mobile-payments'] });
+            qc.invalidateQueries({ queryKey: ['mobile-dashboard-stats'] });
+            qc.invalidateQueries({ queryKey: ['mobile-expiring-memberships'] });
+            qc.invalidateQueries({ queryKey: ['mobile-hold-members'] });
+            qc.invalidateQueries({ queryKey: ['mobile-plan-distribution'] });
           } catch (enrollErr) {
             console.warn('[MemberFormModal] Auto-enrollment error:', enrollErr);
           }

@@ -41,6 +41,8 @@ export interface MemberWithMembership extends Member {
   plan_name?: string | null;
   expiry_sort_group?: number | null;
   member_id_num?: number | null;
+  visit_day_limit?: number | null;
+  visit_days_used?: number | null;
 }
 
 export interface MembershipPlan {
