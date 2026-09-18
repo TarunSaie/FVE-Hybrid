@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Image,
   Alert,
+  Switch,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -40,6 +41,9 @@ import {
   Layers,
   MessageCircle,
   Clock,
+  Eye,
+  EyeOff,
+  Lock,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { MemberFormModal } from '@/components/features/MemberFormModal';
@@ -87,6 +91,9 @@ export function DashboardScreen() {
 
   const [filterMonth, setFilterMonth] = useState(() => getLocalMonthStr());
   const [checkInDate, setCheckInDate] = useState(() => getLocalDateStr());
+
+  // Confidential Data Visibility Toggle (Hidden by default for privacy)
+  const [showConfidentialData, setShowConfidentialData] = useState(false);
 
   const formattedMonthLabel = useMemo(() => {
     if (!filterMonth) return '';
@@ -435,7 +442,8 @@ export function DashboardScreen() {
     setShowWhatsAppQueueModal(true);
   };
 
-  const isFinancialVisible = user?.role === 'OWNER' || user?.role === 'ADMIN';
+  const isOwnerOrAdmin = user?.role === 'OWNER' || user?.role === 'ADMIN';
+  const isFinancialVisible = isOwnerOrAdmin;
   const maxAttendance = Math.max(...(weeklyAttendance?.map((w) => w.count) || [1]), 1);
 
   if (isLoading && !stats) {
@@ -674,14 +682,74 @@ export function DashboardScreen() {
           </View>
         </View>
 
+        {/* ── PRIVACY / CONFIDENTIAL DATA TOGGLE ── */}
+        {isOwnerOrAdmin && (
+          <View style={styles.privacyToggleCard}>
+            <View style={styles.privacyToggleLeft}>
+              <View
+                style={[
+                  styles.privacyIconBadge,
+                  showConfidentialData && styles.privacyIconBadgeActive,
+                ]}
+              >
+                {showConfidentialData ? (
+                  <Eye size={15} color={colors.gold} />
+                ) : (
+                  <EyeOff size={15} color={colors.textMuted} />
+                )}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={[
+                    styles.privacyToggleTitle,
+                    showConfidentialData && { color: colors.gold },
+                  ]}
+                >
+                  Show Reports &amp; Stats
+                </Text>
+                <Text style={styles.privacyToggleSub}>
+                  {showConfidentialData
+                    ? 'Confidential figures visible'
+                    : 'Confidential figures hidden'}
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={showConfidentialData}
+              onValueChange={(val) => {
+                haptics.selection();
+                setShowConfidentialData(val);
+              }}
+              trackColor={{
+                false: isDark ? '#2A2E39' : '#E2E8F0',
+                true: colors.gold,
+              }}
+              thumbColor={
+                showConfidentialData
+                  ? isDark
+                    ? '#050505'
+                    : '#FFFFFF'
+                  : isDark
+                  ? '#8E95A5'
+                  : '#94A3B8'
+              }
+            />
+          </View>
+        )}
+
         {/* ── BENTO METRICS ARCHITECTURE ── */}
 
         {/* Primary Bento Hero: Month Revenue (or Total Strength) */}
         {isFinancialVisible ? (
           <TouchableOpacity
             onPress={() => {
-              haptics.light();
-              navigation.navigate('Reports');
+              if (showConfidentialData) {
+                haptics.light();
+                navigation.navigate('Reports');
+              } else {
+                haptics.selection();
+                setShowConfidentialData(true);
+              }
             }}
             activeOpacity={0.9}
             style={styles.bentoHeroCard}
@@ -703,13 +771,17 @@ export function DashboardScreen() {
                 </View>
                 <View style={styles.bentoHeroBadge}>
                   <Text style={styles.bentoHeroBadgeText}>
-                    {new Date().toLocaleString('en-US', { month: 'short' }).toUpperCase()} PERFORMANCE
+                    {showConfidentialData
+                      ? `${new Date().toLocaleString('en-US', { month: 'short' }).toUpperCase()} PERFORMANCE`
+                      : 'CONFIDENTIAL'}
                   </Text>
                 </View>
               </View>
 
               <Text style={[styles.bentoHeroAmount, { color: colors.textPrimary }]}>
-                {formatCurrency(stats?.monthRevenue || 0)}
+                {showConfidentialData
+                  ? formatCurrency(stats?.monthRevenue || 0)
+                  : '••••••'}
               </Text>
 
               <View style={styles.bentoHeroFooter}>
@@ -1080,7 +1152,9 @@ export function DashboardScreen() {
                   </View>
 
                   <View style={styles.payRightCol}>
-                    <Text style={styles.payAmountText}>{formatCurrency(p.amount)}</Text>
+                    <Text style={styles.payAmountText}>
+                      {showConfidentialData ? formatCurrency(p.amount) : '••••••'}
+                    </Text>
                     <Text style={styles.payStatusSuccess}>PAID</Text>
                   </View>
                 </TouchableOpacity>
@@ -1186,6 +1260,50 @@ const getDashboardStyles = (colors: ThemeColors, isDark: boolean) =>
       paddingHorizontal: 16,
       paddingTop: 12,
       paddingBottom: 110,
+    },
+    privacyToggleCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 14,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      backgroundColor: isDark ? '#11141A' : colors.cardBackground,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.25)' : colors.border,
+    },
+    privacyToggleLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      flex: 1,
+      marginRight: 8,
+    },
+    privacyIconBadge: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: isDark ? '#1C202B' : '#F1F5F9',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    privacyIconBadgeActive: {
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.15)' : '#FEF3C7',
+    },
+    privacyToggleTitle: {
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      fontSize: 14,
+      color: colors.textPrimary,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    privacyToggleSub: {
+      fontFamily: typography.fonts.inter,
+      fontSize: 11,
+      color: colors.textMuted,
+      marginTop: 1,
     },
     heroBanner: {
       position: 'relative',
