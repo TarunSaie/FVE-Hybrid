@@ -244,27 +244,71 @@ export function DashboardScreen() {
     },
   });
 
-  // Fetch Plan Distribution
+  // Fetch Plan Distribution (matches exact active athlete criteria and month filter)
   const { data: planDistribution = [] } = useQuery({
-    queryKey: ['mobile-plan-distribution'],
+    queryKey: ['mobile-plan-distribution', filterMonth],
     queryFn: async () => {
+      const [year, month] = filterMonth.split('-');
+      const lastDayOfMonth = new Date(parseInt(year, 10), parseInt(month, 10), 0).getDate();
+      const monthStart = `${filterMonth}-01`;
+      const monthEnd = `${filterMonth}-${String(lastDayOfMonth).padStart(2, '0')}`;
+
+      // 1. Fetch plans for fallback name lookup
       const { data: plans } = await supabase
         .from('membership_plans')
-        .select('id, name')
-        .eq('active', true);
-      if (!plans) return [];
-      const result: { name: string; count: number }[] = [];
-      for (const plan of plans.slice(0, 6)) {
-        const { count } = await supabase
-          .from('memberships')
-          .select('*', { count: 'exact', head: true })
-          .eq('plan_id', plan.id)
-          .eq('status', 'ACTIVE');
-        if ((count || 0) > 0) {
-          result.push({ name: plan.name, count: count || 0 });
+        .select('id, name');
+      const planMap = new Map<string, string>();
+      (plans || []).forEach((p) => {
+        if (p.id && p.name) planMap.set(p.id, p.name);
+      });
+
+      // 2. Fetch all active memberships matching the exact active athlete date window & status
+      const { data: memberships, error } = await supabase
+        .from('memberships')
+        .select('id, member_id, plan_id, start_date, expiry_date, status, created_at, membership_plans(id, name)')
+        .lte('start_date', monthEnd)
+        .gte('expiry_date', monthStart)
+        .neq('status', 'HOLD')
+        .limit(5000);
+
+      if (error) {
+        console.error('Error fetching plan distribution memberships:', error);
+        return [];
+      }
+
+      // Deduplicate by member_id (keep latest membership by expiry/created_at) so each active athlete is counted once
+      const latestByMember = new Map<string, (typeof memberships)[0]>();
+      for (const m of memberships || []) {
+        const key = m.member_id || m.id;
+        if (!key) continue;
+        const existing = latestByMember.get(key);
+        if (!existing) {
+          latestByMember.set(key, m);
+        } else {
+          const mExp = m.expiry_date || '';
+          const exExp = existing.expiry_date || '';
+          if (mExp > exExp || (mExp === exExp && (m.created_at || '') > (existing.created_at || ''))) {
+            latestByMember.set(key, m);
+          }
         }
       }
-      return result;
+
+      // Tally active athletes by plan name
+      const countsByPlan: Record<string, number> = {};
+      for (const m of latestByMember.values()) {
+        const planObj = Array.isArray(m.membership_plans)
+          ? m.membership_plans[0]
+          : m.membership_plans;
+        const planName =
+          planObj?.name ||
+          (m.plan_id ? planMap.get(m.plan_id) : null) ||
+          'Standard Plan';
+        countsByPlan[planName] = (countsByPlan[planName] || 0) + 1;
+      }
+
+      return Object.entries(countsByPlan)
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count);
     },
   });
 
@@ -325,6 +369,7 @@ export function DashboardScreen() {
   const onRefresh = useCallback(() => {
     haptics.light();
     qc.invalidateQueries({ queryKey: ['mobile-dashboard-stats'] });
+    qc.invalidateQueries({ queryKey: ['mobile-plan-distribution'] });
     qc.invalidateQueries({ queryKey: ['mobile-expiring-memberships'] });
     qc.invalidateQueries({ queryKey: ['mobile-recent-payments'] });
     qc.invalidateQueries({ queryKey: ['mobile-weekly-attendance'] });
@@ -1080,12 +1125,15 @@ export function DashboardScreen() {
                                 100
                             )
                           )}%`,
-                          backgroundColor:
-                            idx === 0
-                              ? colors.gold
-                              : idx === 1
-                              ? colors.blueLight
-                              : colors.success,
+                          backgroundColor: [
+                            colors.gold,
+                            colors.blueLight,
+                            colors.success,
+                            colors.warning,
+                            '#A855F7',
+                            '#EC4899',
+                            '#06B6D4',
+                          ][idx % 7],
                         },
                       ]}
                     />
