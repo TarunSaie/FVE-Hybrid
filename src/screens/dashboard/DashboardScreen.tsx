@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   Image,
   Alert,
-  Switch,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -51,6 +50,7 @@ import { PaymentFormModal } from '@/components/features/PaymentFormModal';
 import { WhatsAppQueueModal, ExpiringQueueItem } from '@/components/features/WhatsAppQueueModal';
 import { FVEBadge } from '@/components/common/FVEBadge';
 import { FVELogoLoader } from '@/components/common/FVELogoLoader';
+import { M3Switch } from '@/components/common/M3Switch';
 import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { supabase } from '@/api/supabase';
@@ -714,25 +714,10 @@ export function DashboardScreen() {
                 </Text>
               </View>
             </View>
-            <Switch
+            <M3Switch
               value={showConfidentialData}
-              onValueChange={(val) => {
-                haptics.selection();
-                setShowConfidentialData(val);
-              }}
-              trackColor={{
-                false: isDark ? '#2A2E39' : '#E2E8F0',
-                true: colors.gold,
-              }}
-              thumbColor={
-                showConfidentialData
-                  ? isDark
-                    ? '#050505'
-                    : '#FFFFFF'
-                  : isDark
-                  ? '#8E95A5'
-                  : '#94A3B8'
-              }
+              onValueChange={setShowConfidentialData}
+              accessibilityLabel="Show Reports and Stats"
             />
           </View>
         )}
