@@ -326,6 +326,36 @@ export function MemberDetailScreen() {
   const activeMembership =
     memberships?.find(m => m.status === 'ACTIVE' || m.status === 'EXPIRING_SOON') ||
     memberships?.[0];
+
+  // Query actual attendance records for this member within the active membership period
+  const activeMembershipStart = activeMembership?.start_date;
+  const activeMembershipExpiry = activeMembership?.expiry_date;
+  const activeVisitDayLimit = activeMembership?.visit_day_limit;
+
+  const { data: attendanceVisitCount } = useQuery({
+    queryKey: ['member-active-attendance-visits', memberId, activeMembershipStart, activeMembershipExpiry],
+    queryFn: async () => {
+      if (!memberId || activeVisitDayLimit == null) return 0;
+      let q = supabase
+        .from('attendance')
+        .select('id', { count: 'exact', head: true })
+        .eq('member_id', memberId);
+
+      if (activeMembershipStart) q = q.gte('date', activeMembershipStart);
+      if (activeMembershipExpiry) q = q.lte('date', activeMembershipExpiry);
+
+      const { count, error } = await q;
+      if (error) {
+        console.error('Error fetching attendance count for member detail:', error);
+        return null;
+      }
+      return count ?? 0;
+    },
+    enabled: !!memberId && activeVisitDayLimit != null,
+    refetchInterval: 5000,
+  });
+
+  const actualVisitsUsed = Math.max(attendanceVisitCount ?? 0, activeMembership?.visit_days_used ?? 0);
   const initial = member?.full_name?.charAt(0)?.toUpperCase() || '?';
 
   const onRefresh = async () => {
@@ -338,6 +368,7 @@ export function MemberDetailScreen() {
       qc.invalidateQueries({ queryKey: ['member-memberships', memberId] }),
       qc.invalidateQueries({ queryKey: ['member-payments', memberId] }),
       qc.invalidateQueries({ queryKey: ['member-attendance', memberId] }),
+      qc.invalidateQueries({ queryKey: ['member-active-attendance-visits', memberId] }),
       qc.invalidateQueries({ queryKey: ['member-workouts', memberId] }),
       qc.invalidateQueries({ queryKey: ['member-pt', memberId] }),
       qc.invalidateQueries({ queryKey: ['member-pt-sessions', personalTraining?.id] }),
@@ -949,10 +980,10 @@ export function MemberDetailScreen() {
                       Visits: {activeMembership.visit_day_limit} visits are allotted for the entire subscription period.
                     </Text>
                     <Text style={[styles.visitUsageProgressText, { color: colors.gold }]}>
-                      {activeMembership.visit_days_used || 0} of {activeMembership.visit_day_limit} visits used.{' '}
-                      {Math.max(0, activeMembership.visit_day_limit - (activeMembership.visit_days_used || 0)) === 1
+                      {actualVisitsUsed} of {activeMembership.visit_day_limit} visits used.{' '}
+                      {Math.max(0, activeMembership.visit_day_limit - actualVisitsUsed) === 1
                         ? '1 visit remaining for the duration of your plan.'
-                        : `${Math.max(0, activeMembership.visit_day_limit - (activeMembership.visit_days_used || 0))} visits remaining for the duration of your plan.`}
+                        : `${Math.max(0, activeMembership.visit_day_limit - actualVisitsUsed)} visits remaining for the duration of your plan.`}
                     </Text>
                   </View>
                 )}
