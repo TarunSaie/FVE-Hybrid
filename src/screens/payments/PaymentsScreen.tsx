@@ -180,40 +180,29 @@ export function PaymentsScreen() {
       <FVEHeader
         title="PAYMENTS"
         subtitle={`${payments?.length || 0} transactions`}
+        showLogo={false}
         rightAction={
-          <View style={styles.headerRightActions}>
-            <TouchableOpacity
-              onPress={() => {
-                haptics.light();
-                navigation.navigate('PaymentQR');
-              }}
-              style={styles.qrHeaderBtn}
-              activeOpacity={0.75}
-            >
-              <QrCode size={14} color={colors.gold} />
-              <Text style={styles.qrHeaderBtnText}>UPI QR</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => {
-                haptics.light();
-                setShowPayModal(true);
-              }}
-              style={styles.addHeaderBtn}
-              activeOpacity={0.75}
-            >
-              <Plus size={16} color={colors.gold} />
-              <Text style={styles.addHeaderBtnText}>Collect</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            onPress={() => {
+              haptics.light();
+              navigation.navigate('PaymentQR');
+            }}
+            style={styles.qrHeaderBtn}
+            activeOpacity={0.75}
+          >
+            <QrCode size={14} color={colors.gold} />
+            <Text style={styles.qrHeaderBtnText}>UPI QR</Text>
+          </TouchableOpacity>
         }
       />
 
       {/* Revenue Header Card */}
       <View style={styles.summaryCard}>
-        <View>
+        <View style={styles.summaryLeft}>
           <Text style={styles.summaryLabel}>TOTAL REVENUE</Text>
-          <Text style={styles.summaryValue}>{formatCurrency(totalRevenue)}</Text>
+          <Text numberOfLines={1} adjustsFontSizeToFit style={styles.summaryValue}>
+            {formatCurrency(totalRevenue)}
+          </Text>
         </View>
         <View style={styles.recordCountBox}>
           <Text style={styles.recordCountText}>
@@ -403,6 +392,10 @@ const getPaymentsStyles = (colors: ThemeColors, isDark: boolean) =>
       shadowRadius: 8,
       elevation: 4,
     },
+    summaryLeft: {
+      flex: 1,
+      marginRight: 12,
+    },
     summaryLabel: {
       color: colors.textMuted,
       fontSize: 10,
@@ -424,6 +417,7 @@ const getPaymentsStyles = (colors: ThemeColors, isDark: boolean) =>
       borderRadius: 10,
       paddingHorizontal: 10,
       paddingVertical: 6,
+      flexShrink: 0,
     },
     recordCountText: {
       color: colors.gold,
@@ -459,7 +453,7 @@ const getPaymentsStyles = (colors: ThemeColors, isDark: boolean) =>
     },
     listContent: {
       padding: 16,
-      paddingBottom: 110,
+      paddingBottom: 130,
     },
     fab: {
       position: 'absolute',

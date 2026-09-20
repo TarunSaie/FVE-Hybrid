@@ -115,43 +115,44 @@ export function PaymentItem({
               </Text>
             </View>
 
-            <View style={styles.bottomLine}>
-              <View style={styles.receiptContainer}>
-                <Text style={[styles.receiptNo, { color: colors.textSecondary }]}>
-                  #{payment.receipt_number || 'N/A'}
-                </Text>
-                {payment.memberships?.membership_plans?.name ? (
-                  <View
-                    style={[
-                      styles.planBadge,
-                      {
-                        backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : colors.goldMuted,
-                        borderColor: colors.goldBorder,
-                      },
-                    ]}
-                  >
-                    <Text numberOfLines={1} style={[styles.planText, { color: colors.gold }]}>
-                      {payment.memberships.membership_plans.name}
-                    </Text>
-                  </View>
-                ) : null}
-                <View
-                  style={[
-                    styles.methodBadge,
-                    {
-                      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : colors.chipBackground,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.methodText, { color: colors.textMuted }]}>
-                    {payment.payment_method || 'CASH'}
-                  </Text>
-                </View>
-              </View>
-
+            <View style={styles.metaLine}>
+              <Text style={[styles.receiptNo, { color: colors.textSecondary }]}>
+                #{payment.receipt_number || 'N/A'}
+              </Text>
+              <Text style={[styles.metaDot, { color: colors.textMuted }]}>·</Text>
               <Text style={[styles.dateText, { color: colors.textMuted }]}>
                 {formatDate(payment.payment_date || payment.created_at)}
               </Text>
+            </View>
+
+            <View style={styles.badgesRow}>
+              {payment.memberships?.membership_plans?.name ? (
+                <View
+                  style={[
+                    styles.planBadge,
+                    {
+                      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : colors.goldMuted,
+                      borderColor: colors.goldBorder,
+                    },
+                  ]}
+                >
+                  <Text numberOfLines={1} style={[styles.planText, { color: colors.gold }]}>
+                    {payment.memberships.membership_plans.name}
+                  </Text>
+                </View>
+              ) : null}
+              <View
+                style={[
+                  styles.methodBadge,
+                  {
+                    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : colors.chipBackground,
+                  },
+                ]}
+              >
+                <Text style={[styles.methodText, { color: colors.textMuted }]}>
+                  {payment.payment_method || 'CASH'}
+                </Text>
+              </View>
             </View>
           </View>
 
@@ -234,27 +235,33 @@ const styles = StyleSheet.create({
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '700',
   },
-  bottomLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  receiptContainer: {
+  metaLine: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    marginBottom: 5,
+  },
+  metaDot: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   receiptNo: {
     fontSize: typography.sizes.xs,
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '700',
   },
+  badgesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
   planBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 1.5,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
     borderRadius: 6,
     borderWidth: 1,
-    maxWidth: 110,
+    maxWidth: 160,
   },
   planText: {
     fontSize: 10,
