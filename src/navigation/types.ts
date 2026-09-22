@@ -23,5 +23,8 @@ export type RootStackParamList = {
   PersonalTraining: undefined;
   PaymentQR: undefined;
   BrandStudio: undefined;
+  DailyPass: undefined;
 };
+
+
 

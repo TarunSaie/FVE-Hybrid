@@ -32,6 +32,7 @@ import {
   Laptop,
   Palette,
   Check,
+  Ticket,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEInput } from '@/components/common/FVEInput';
@@ -142,6 +143,7 @@ export function SettingsScreen() {
 
   const isStaff = user?.isStaffProfile;
   const isOwnerOrAdmin = user?.role === 'OWNER' || user?.role === 'ADMIN';
+  const canAccessDailyPass = user?.role === 'OWNER' || user?.role === 'ADMIN' || user?.role === 'RECEPTIONIST';
 
   const themeOptions = [
     {
@@ -302,6 +304,19 @@ export function SettingsScreen() {
         {/* Management Shortcuts */}
         <View style={styles.menuSection}>
           <Text style={styles.sectionHeader}>MANAGEMENT & MODULES</Text>
+
+          {canAccessDailyPass && (
+            <TouchableOpacity
+              onPress={() => navigation.navigate('DailyPass')}
+              style={styles.menuItem}
+            >
+              <View style={styles.menuLeft}>
+                <Ticket size={18} color={colors.gold} />
+                <Text style={styles.menuTitle}>Daily Pass</Text>
+              </View>
+              <ChevronRight size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+          )}
 
           {isOwnerOrAdmin && (
             <>

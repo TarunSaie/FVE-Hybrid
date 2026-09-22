@@ -110,6 +110,24 @@ export interface Expense {
   created_at: string;
 }
 
+export type DailyPassPaymentStatus = 'PAID' | 'PENDING' | 'WAIVED';
+
+export interface DailyPass {
+  id: string;
+  visitor_name: string;
+  mobile: string | null;
+  purpose: string | null;
+  pass_date: string;
+  amount: string;
+  payment_method: string;
+  payment_status: DailyPassPaymentStatus;
+  notes: string | null;
+  issued_by: string | null;
+  created_at: string;
+}
+
+
+
 export interface WorkoutPlan {
   id: string;
   member_id: string;

@@ -37,6 +37,7 @@ import {
   Moon,
   Laptop,
   Palette,
+  Ticket,
 } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -80,6 +81,7 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'FINANCE & PLANS',
     items: [
       { screen: 'Payments', icon: CreditCard, label: 'Payments', route: '/payments' },
+      { screen: 'DailyPass', icon: Ticket, label: 'Daily Pass', route: '/daily-pass' },
       { screen: 'PaymentQR', icon: QrCode, label: 'Payment QR Code', route: '/payment-qr' },
       { screen: 'MembershipPlans', icon: Award, label: 'Membership Plans', route: '/plans' },
       { screen: 'Expenses', icon: DollarSign, label: 'Gym Expenses', route: '/expenses' },
@@ -195,6 +197,8 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
         navigation.navigate('MainTabs', { screen: 'Settings' });
       } else if (screenName === 'MembershipPlans') {
         navigation.navigate('MembershipPlans');
+      } else if (screenName === 'DailyPass') {
+        navigation.navigate('DailyPass');
       } else if (screenName === 'Expenses') {
         navigation.navigate('Expenses');
       } else if (screenName === 'Reports') {

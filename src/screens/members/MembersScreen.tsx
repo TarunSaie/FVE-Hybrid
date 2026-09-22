@@ -17,6 +17,7 @@ import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEInput } from '@/components/common/FVEInput';
 import { MemberCard } from '@/components/features/MemberCard';
 import { MemberFormModal } from '@/components/features/MemberFormModal';
+import { ProfilePhotoModal } from '@/components/features/ProfilePhotoModal';
 import { FVEModal } from '@/components/common/FVEModal';
 import { FVEEmptyState } from '@/components/common/FVEEmptyState';
 import { FVELogoLoader } from '@/components/common/FVELogoLoader';
@@ -101,6 +102,7 @@ export function MembersScreen() {
   const [sortBy, setSortBy] = useState<MemberSortOption>('expiry_asc');
   const [showSortModal, setShowSortModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [previewMember, setPreviewMember] = useState<MemberWithMembership | null>(null);
   const [sharingMemberId, setSharingMemberId] = useState<string | null>(null);
 
   // Debounce search 400ms
@@ -559,6 +561,7 @@ export function MembersScreen() {
               onShare={handleShareMember}
               isSharing={sharingMemberId === item.id}
               onWhatsAppAlert={handleSendWhatsAppAlert}
+              onAvatarPress={(m) => setPreviewMember(m)}
             />
           )}
         contentContainerStyle={styles.listContent}
@@ -616,6 +619,15 @@ export function MembersScreen() {
         visible={showAddModal}
         onClose={() => setShowAddModal(false)}
         onSaved={onRefresh}
+      />
+
+      {/* Full-Size Profile Photo Modal */}
+      <ProfilePhotoModal
+        visible={!!previewMember}
+        onClose={() => setPreviewMember(null)}
+        photoUrl={previewMember?.profile_photo}
+        memberName={previewMember?.full_name || ''}
+        memberId={previewMember?.member_id}
       />
 
       {/* Sort Options Modal */}

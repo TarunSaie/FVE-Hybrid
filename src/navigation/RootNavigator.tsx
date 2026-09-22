@@ -15,6 +15,7 @@ import { NotificationsScreen } from '@/screens/notifications/NotificationsScreen
 import { PersonalTrainingScreen } from '@/screens/pt/PersonalTrainingScreen';
 import { PaymentQRScreen } from '@/screens/payments/PaymentQRScreen';
 import { BrandStudioScreen } from '@/screens/settings/BrandStudioScreen';
+import { DailyPassScreen } from '@/screens/daily-pass/DailyPassScreen';
 import { RootStackParamList } from './types';
 import { useNotificationSoundListener } from '@/hooks/useNotificationSoundListener';
 import { useRenewalAlerts } from '@/hooks/useRenewalAlerts';
@@ -51,6 +52,7 @@ export function RootNavigator() {
             options={{ presentation: 'fullScreenModal' }}
           />
           <Stack.Screen name="MembershipPlans" component={MembershipPlansScreen} />
+          <Stack.Screen name="DailyPass" component={DailyPassScreen} />
           <Stack.Screen name="Expenses" component={ExpensesScreen} />
           <Stack.Screen name="Reports" component={ReportsScreen} />
           <Stack.Screen name="Staff" component={StaffScreen} />

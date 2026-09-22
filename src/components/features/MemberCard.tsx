@@ -24,9 +24,10 @@ interface MemberCardProps {
   onShare?: (member: MemberWithMembership) => void;
   isSharing?: boolean;
   onWhatsAppAlert?: (member: MemberWithMembership) => void;
+  onAvatarPress?: (member: MemberWithMembership) => void;
 }
 
-export function MemberCard({ member, onPress, onShare, isSharing, onWhatsAppAlert }: MemberCardProps) {
+export function MemberCard({ member, onPress, onShare, isSharing, onWhatsAppAlert, onAvatarPress }: MemberCardProps) {
   const { colors, isDark } = useTheme();
   const initial = member.full_name?.charAt(0)?.toUpperCase() || '?';
   const scale = useRef(new Animated.Value(1)).current;
@@ -94,7 +95,20 @@ export function MemberCard({ member, onPress, onShare, isSharing, onWhatsAppAler
           {/* Avatar */}
           <View style={styles.avatarContainer}>
             {member.profile_photo ? (
-              <Image source={{ uri: member.profile_photo }} style={[styles.avatar, { borderColor: colors.goldBorder }]} />
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => {
+                  if (onAvatarPress) {
+                    haptics.light();
+                    onAvatarPress(member);
+                  }
+                }}
+                disabled={!onAvatarPress}
+                accessibilityRole="button"
+                accessibilityLabel={`View full profile photo of ${member.full_name}`}
+              >
+                <Image source={{ uri: member.profile_photo }} style={[styles.avatar, { borderColor: colors.goldBorder }]} />
+              </TouchableOpacity>
             ) : (
               <View
                 style={[

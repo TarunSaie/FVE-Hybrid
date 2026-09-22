@@ -40,6 +40,7 @@ import {
   Lock,
   ChevronDown,
   ChevronRight,
+  ZoomIn,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEBadge } from '@/components/common/FVEBadge';
@@ -55,6 +56,7 @@ import { PTPaymentModal } from '@/components/features/PTPaymentModal';
 import { PTSessionModal } from '@/components/features/PTSessionModal';
 import { PlanChangeModal } from '@/components/features/PlanChangeModal';
 import { DietPlanModal } from '@/components/features/DietPlanModal';
+import { ProfilePhotoModal } from '@/components/features/ProfilePhotoModal';
 import {
   Member,
   Membership,
@@ -123,6 +125,7 @@ export function MemberDetailScreen() {
   const [selectedPlanChangeRequest, setSelectedPlanChangeRequest] = useState<PlanChangeRequest | null>(null);
   const [ptSessionModalMode, setPtSessionModalMode] = useState<'schedule' | 'complete'>('schedule');
   const [activePTSession, setActivePTSession] = useState<PTSession | null>(null);
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   // Fetch Member Details
@@ -702,10 +705,24 @@ export function MemberDetailScreen() {
         <View style={styles.profileCard}>
           <View style={styles.profileTopRow}>
             {member?.profile_photo ? (
-              <Image
-                source={{ uri: member.profile_photo }}
-                style={styles.avatar}
-              />
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => {
+                  haptics.light();
+                  setShowPhotoModal(true);
+                }}
+                style={styles.avatarTouchable}
+                accessibilityRole="button"
+                accessibilityLabel={`View full profile photo of ${member.full_name}`}
+              >
+                <Image
+                  source={{ uri: member.profile_photo }}
+                  style={styles.avatar}
+                />
+                <View style={styles.avatarZoomBadge}>
+                  <ZoomIn size={11} color="#050505" strokeWidth={2.5} />
+                </View>
+              </TouchableOpacity>
             ) : (
               <View style={styles.fallbackAvatar}>
                 <Text style={styles.fallbackText}>{initial}</Text>
@@ -1766,6 +1783,17 @@ export function MemberDetailScreen() {
           </View>
         </FVEModal>
       )}
+
+      {/* Full-Size Profile Photo Modal */}
+      {showPhotoModal && member?.profile_photo && (
+        <ProfilePhotoModal
+          visible={showPhotoModal}
+          onClose={() => setShowPhotoModal(false)}
+          photoUrl={member.profile_photo}
+          memberName={member.full_name || 'Member'}
+          memberId={member.member_id}
+        />
+      )}
     </View>
   );
 }
@@ -1817,13 +1845,29 @@ const getMemberDetailStyles = (colors: ThemeColors, isDark: boolean) =>
       alignItems: 'center',
       marginBottom: 14,
     },
+    avatarTouchable: {
+      position: 'relative',
+      marginRight: 14,
+    },
     avatar: {
       width: 60,
       height: 60,
       borderRadius: 30,
       borderWidth: 2,
       borderColor: colors.gold,
-      marginRight: 14,
+    },
+    avatarZoomBadge: {
+      position: 'absolute',
+      bottom: 0,
+      right: 0,
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      backgroundColor: colors.gold,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1.5,
+      borderColor: '#050505',
     },
     fallbackAvatar: {
       width: 60,

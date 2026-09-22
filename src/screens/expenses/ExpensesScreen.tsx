@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -24,20 +25,24 @@ import {
   Calendar,
   ChevronLeft,
   ChevronRight,
+  Download,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEInput } from '@/components/common/FVEInput';
 import { ExpenseFormModal } from '@/components/features/ExpenseFormModal';
+import { FVEMonthPickerModal } from '@/components/common/FVEMonthPickerModal';
 import { FVEEmptyState } from '@/components/common/FVEEmptyState';
 import { FVELogoLoader } from '@/components/common/FVELogoLoader';
 import { Expense, EXPENSE_CATEGORIES } from '@/types';
 import { supabase } from '@/api/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { formatCurrency } from '@/utils/format';
-import { formatDate, getLocalMonthStr } from '@/utils/date';
+import { formatDate, getLocalDateStr, getLocalMonthStr } from '@/utils/date';
 import { haptics } from '@/utils/haptics';
+import { shareMonthlyExpensePdf, shareMonthlyExpenseSheet } from '@/utils/expensePdf';
 
 export function ExpensesScreen() {
   const navigation = useNavigation();
@@ -45,13 +50,18 @@ export function ExpensesScreen() {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getExpensesStyles(colors, isDark), [colors, isDark]);
 
+  const { user } = useAuth();
+  const isOwnerOrAdmin = ['OWNER', 'ADMIN'].includes(user?.role || '');
+
   const currentMonthStr = getLocalMonthStr();
   const [selectedMonth, setSelectedMonth] = useState(currentMonthStr);
   const [categoryFilter, setCategoryFilter] = useState('');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   // Debounce search 400ms
   React.useEffect(() => {
@@ -143,6 +153,23 @@ export function ExpensesScreen() {
     },
   });
 
+  // 4. Query all month expenses unfiltered by category for complete P&L reports
+  const { data: allMonthExpenses } = useQuery({
+    queryKey: ['mobile-all-month-expenses', selectedMonth],
+    queryFn: async () => {
+      const [year, month] = selectedMonth.split('-');
+      const lastDay = new Date(parseInt(year, 10), parseInt(month, 10), 0).getDate();
+      const { data, error } = await supabase
+        .from('expenses')
+        .select('*')
+        .gte('expense_date', `${selectedMonth}-01`)
+        .lte('expense_date', `${selectedMonth}-${String(lastDay).padStart(2, '0')}`)
+        .order('expense_date', { ascending: true });
+      if (error) throw error;
+      return (data || []) as Expense[];
+    },
+  });
+
   const netProfit = monthRevenue - monthTotalExpenses;
 
   const filteredExpenses = useMemo(() => {
@@ -159,7 +186,76 @@ export function ExpensesScreen() {
     qc.invalidateQueries({ queryKey: ['mobile-expenses'] });
     qc.invalidateQueries({ queryKey: ['mobile-expenses-revenue'] });
     qc.invalidateQueries({ queryKey: ['mobile-expenses-total-pnl'] });
+    qc.invalidateQueries({ queryKey: ['mobile-all-month-expenses'] });
   }, [qc]);
+
+  const handleExportPdf = async () => {
+    haptics.medium();
+    setExporting(true);
+    try {
+      const dataToExport = allMonthExpenses || expenses || [];
+      await shareMonthlyExpensePdf({
+        monthStr: selectedMonth,
+        monthLabel: formattedMonthLabel,
+        revenue: monthRevenue,
+        totalExpenses: monthTotalExpenses,
+        profit: netProfit,
+        expenses: dataToExport,
+        generatedDate: formatDate(getLocalDateStr()),
+      });
+      haptics.success();
+    } catch (err: unknown) {
+      haptics.error();
+      Alert.alert('Export Error', (err as Error).message || 'Failed to export PDF');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleExportSheet = async () => {
+    haptics.medium();
+    setExporting(true);
+    try {
+      const dataToExport = allMonthExpenses || expenses || [];
+      await shareMonthlyExpenseSheet({
+        monthStr: selectedMonth,
+        monthLabel: formattedMonthLabel,
+        revenue: monthRevenue,
+        totalExpenses: monthTotalExpenses,
+        profit: netProfit,
+        expenses: dataToExport,
+        generatedDate: formatDate(getLocalDateStr()),
+      });
+      haptics.success();
+    } catch (err: unknown) {
+      haptics.error();
+      Alert.alert('Export Error', (err as Error).message || 'Failed to export sheet');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleExportPress = () => {
+    haptics.light();
+    Alert.alert(
+      'Download Expense Report',
+      `Select format for ${formattedMonthLabel}:`,
+      [
+        {
+          text: 'PDF Statement (P&L)',
+          onPress: handleExportPdf,
+        },
+        {
+          text: 'Excel / CSV Sheet',
+          onPress: handleExportSheet,
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+      ]
+    );
+  };
 
   const handleDelete = (expense: Expense) => {
     Alert.alert(
@@ -194,17 +290,36 @@ export function ExpensesScreen() {
         showBack
         onBack={() => navigation.goBack()}
         rightAction={
-          <TouchableOpacity
-            onPress={() => {
-              haptics.light();
-              setSelectedExpense(null);
-              setShowModal(true);
-            }}
-            style={styles.addBtn}
-          >
-            <Plus size={16} color={colors.gold} />
-            <Text style={styles.addBtnText}>Add</Text>
-          </TouchableOpacity>
+          <View style={styles.headerRightRow}>
+            {isOwnerOrAdmin && (
+              <TouchableOpacity
+                onPress={handleExportPress}
+                disabled={exporting}
+                style={styles.exportHeaderBtn}
+                hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+              >
+                {exporting ? (
+                  <ActivityIndicator size="small" color={colors.gold} />
+                ) : (
+                  <>
+                    <Download size={14} color={colors.gold} />
+                    <Text style={styles.exportHeaderBtnText}>Export</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              onPress={() => {
+                haptics.light();
+                setSelectedExpense(null);
+                setShowModal(true);
+              }}
+              style={styles.addBtn}
+            >
+              <Plus size={16} color={colors.gold} />
+              <Text style={styles.addBtnText}>Add</Text>
+            </TouchableOpacity>
+          </View>
         }
       />
 
@@ -218,10 +333,17 @@ export function ExpensesScreen() {
           <ChevronLeft size={18} color={colors.gold} />
         </TouchableOpacity>
 
-        <View style={styles.monthInfoBox}>
+        <TouchableOpacity
+          onPress={() => {
+            haptics.light();
+            setShowMonthPicker(true);
+          }}
+          style={styles.monthInfoBox}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
           <Calendar size={14} color={colors.gold} style={{ marginRight: 6 }} />
           <Text style={styles.monthInfoText}>{formattedMonthLabel}</Text>
-        </View>
+        </TouchableOpacity>
 
         <View style={styles.monthNavRight}>
           {selectedMonth !== currentMonthStr && (
@@ -421,6 +543,17 @@ export function ExpensesScreen() {
         onSaved={onRefresh}
         expense={selectedExpense}
       />
+
+      <FVEMonthPickerModal
+        visible={showMonthPicker}
+        onClose={() => setShowMonthPicker(false)}
+        initialMonth={selectedMonth}
+        onSelectMonth={m => {
+          setSelectedMonth(m);
+          setShowMonthPicker(false);
+        }}
+        title="SELECT EXPENSE MONTH"
+      />
     </View>
   );
 }
@@ -430,6 +563,28 @@ const getExpensesStyles = (colors: ThemeColors, isDark: boolean) =>
     container: {
       flex: 1,
       backgroundColor: colors.background,
+    },
+    headerRightRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    exportHeaderBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : 'rgba(239, 161, 0, 0.08)',
+      borderWidth: 1,
+      borderColor: colors.goldBorder,
+      borderRadius: 8,
+      paddingHorizontal: 9,
+      paddingVertical: 6,
+    },
+    exportHeaderBtnText: {
+      color: colors.gold,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
     },
     addBtn: {
       flexDirection: 'row',
