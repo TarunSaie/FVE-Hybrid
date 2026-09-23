@@ -12,16 +12,17 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, CreditCard, Filter, X, QrCode } from 'lucide-react-native';
+import { Plus, Search, CreditCard, Filter, X, QrCode, Ticket, CheckCircle2, Clock, XCircle } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEInput } from '@/components/common/FVEInput';
 import { PaymentItem } from '@/components/features/PaymentItem';
 import { PaymentFormModal } from '@/components/features/PaymentFormModal';
+import { DailyPassFormModal } from '@/components/features/DailyPassFormModal';
 import { UPIQRCodeModal } from '@/components/features/UPIQRCodeModal';
 import { FVEEmptyState } from '@/components/common/FVEEmptyState';
 import { FVELogoLoader } from '@/components/common/FVELogoLoader';
-import { Payment, PAYMENT_METHODS } from '@/types';
+import { Payment, DailyPass, PAYMENT_METHODS } from '@/types';
 import { supabase } from '@/api/supabase';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ThemeColors } from '@/constants/colors';
@@ -42,6 +43,9 @@ export function PaymentsScreen() {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getPaymentsStyles(colors, isDark), [colors, isDark]);
 
+  const [activeTab, setActiveTab] = useState<'memberships' | 'daily_passes'>('memberships');
+  const [includeDailyPasses, setIncludeDailyPasses] = useState(false);
+
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [methodFilter, setMethodFilter] = useState('');
@@ -51,11 +55,13 @@ export function PaymentsScreen() {
     const t = setTimeout(() => setDebouncedSearch(search), 400);
     return () => clearTimeout(t);
   }, [search]);
+
   const [showPayModal, setShowPayModal] = useState(false);
+  const [showDailyPassModal, setShowDailyPassModal] = useState(false);
   const [showUPIModal, setShowUPIModal] = useState(false);
 
-  // Query Payments with Joined Members
-  const { data: payments, isLoading, refetch } = useQuery({
+  // 1. Query Membership Payments with Joined Members
+  const { data: payments = [], isLoading: isPaymentsLoading } = useQuery({
     queryKey: ['mobile-payments', debouncedSearch, methodFilter],
     queryFn: async () => {
       const term = debouncedSearch.trim();
@@ -99,15 +105,66 @@ export function PaymentsScreen() {
     },
   });
 
-  // Calculate filtered revenue
-  const totalRevenue = (payments || []).reduce(
+  // 2. Query Daily Pass Transactions
+  const { data: dailyPasses = [], isLoading: isDailyPassesLoading } = useQuery({
+    queryKey: ['mobile-payments-daily-passes', debouncedSearch, methodFilter],
+    queryFn: async () => {
+      const term = debouncedSearch.trim();
+      let q = supabase
+        .from('daily_passes')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (methodFilter) {
+        q = q.eq('payment_method', methodFilter);
+      }
+
+      if (term) {
+        q = q.or(
+          `visitor_name.ilike.%${term}%,mobile.ilike.%${term}%,purpose.ilike.%${term}%,notes.ilike.%${term}%`
+        );
+      }
+
+      const { data, error } = await q;
+      if (error) throw error;
+      return (data || []) as DailyPass[];
+    },
+  });
+
+  // Calculate filtered revenues
+  const membershipRevenue = payments.reduce(
     (sum, p) => sum + Number(p.amount || 0),
     0
   );
 
+  const dailyPassRevenue = dailyPasses
+    .filter((p) => p.payment_status === 'PAID')
+    .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+  const membershipCount = payments.length;
+  const dailyPassCount = dailyPasses.length;
+
+  // Compute displayed summary totals based on toggle and active tab:
+  // When toggle is ON: Combined (Memberships + Daily Passes)
+  // When toggle is OFF: Individual data for whichever tab is active
+  const displayTotalRevenue = includeDailyPasses
+    ? membershipRevenue + dailyPassRevenue
+    : activeTab === 'memberships'
+      ? membershipRevenue
+      : dailyPassRevenue;
+
+  const displayTotalRecords = includeDailyPasses
+    ? membershipCount + dailyPassCount
+    : activeTab === 'memberships'
+      ? membershipCount
+      : dailyPassCount;
+
+  const isLoading = activeTab === 'memberships' ? isPaymentsLoading : isDailyPassesLoading;
+
   const onRefresh = useCallback(() => {
     haptics.light();
     qc.invalidateQueries({ queryKey: ['mobile-payments'] });
+    qc.invalidateQueries({ queryKey: ['mobile-payments-daily-passes'] });
   }, [qc]);
 
   const handleMethodSelect = (method: string) => {
@@ -175,11 +232,82 @@ export function PaymentsScreen() {
     );
   };
 
+  // Render Daily Pass transaction card
+  const renderDailyPassItem = ({ item }: { item: DailyPass }) => {
+    const isPaid = item.payment_status === 'PAID';
+    const isPending = item.payment_status === 'PENDING';
+
+    return (
+      <View style={styles.dpCard}>
+        <View style={styles.dpTopRow}>
+          <View style={styles.dpVisitorWrap}>
+            <View style={styles.dpAvatar}>
+              <Text style={styles.dpAvatarText}>
+                {item.visitor_name.charAt(0).toUpperCase()}
+              </Text>
+            </View>
+            <View style={{ flex: 1, marginLeft: 10 }}>
+              <Text numberOfLines={1} style={styles.dpVisitorName}>
+                {item.visitor_name}
+              </Text>
+              <Text style={styles.dpMetaText}>
+                {item.mobile || 'No Mobile'} {item.purpose ? `• ${item.purpose}` : ''}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.dpAmountWrap}>
+            <Text style={styles.dpAmountText}>
+              {formatCurrency(Number(item.amount || 0))}
+            </Text>
+            <View
+              style={[
+                styles.dpStatusBadge,
+                isPaid ? styles.dpStatusPaid : isPending ? styles.dpStatusPending : styles.dpStatusWaived,
+              ]}
+            >
+              {isPaid && <CheckCircle2 size={11} color={colors.success} style={{ marginRight: 3 }} />}
+              {isPending && <Clock size={11} color="#F59E0B" style={{ marginRight: 3 }} />}
+              {item.payment_status === 'WAIVED' && <XCircle size={11} color={colors.textMuted} style={{ marginRight: 3 }} />}
+              <Text
+                style={[
+                  styles.dpStatusText,
+                  isPaid ? styles.dpStatusTextPaid : isPending ? styles.dpStatusTextPending : styles.dpStatusTextWaived,
+                ]}
+              >
+                {item.payment_status}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.dpBottomRow}>
+          <Text style={styles.dpDateText}>Pass Date: {formatDate(item.pass_date)}</Text>
+          <View style={styles.dpMethodPill}>
+            <Text style={styles.dpMethodText}>{item.payment_method}</Text>
+          </View>
+        </View>
+
+        {item.notes ? (
+          <Text numberOfLines={1} style={styles.dpNotesText}>
+            Note: {item.notes}
+          </Text>
+        ) : null}
+      </View>
+    );
+  };
+
   return (
     <View style={styles.container}>
       <FVEHeader
         title="PAYMENTS"
-        subtitle={`${payments?.length || 0} transactions`}
+        subtitle={
+          includeDailyPasses
+            ? `${membershipCount + dailyPassCount} combined transactions`
+            : activeTab === 'memberships'
+              ? `${membershipCount} membership transactions`
+              : `${dailyPassCount} daily pass transactions`
+        }
         showLogo={false}
         rightAction={
           <TouchableOpacity
@@ -196,31 +324,104 @@ export function PaymentsScreen() {
         }
       />
 
-      {/* Revenue Header Card */}
+      {/* Revenue Header Summary Card */}
       <View style={styles.summaryCard}>
-        <View style={styles.summaryLeft}>
-          <Text style={styles.summaryLabel}>TOTAL REVENUE</Text>
-          <Text numberOfLines={1} adjustsFontSizeToFit style={styles.summaryValue}>
-            {formatCurrency(totalRevenue)}
-          </Text>
+        <View style={styles.summaryTopRow}>
+          <View style={styles.summaryLeft}>
+            <Text style={styles.summaryLabel}>
+              {includeDailyPasses
+                ? 'TOTAL COMBINED REVENUE'
+                : activeTab === 'memberships'
+                  ? 'MEMBERSHIP REVENUE'
+                  : 'DAILY PASS REVENUE'}
+            </Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit style={styles.summaryValue}>
+              {formatCurrency(displayTotalRevenue)}
+            </Text>
+          </View>
+          <View style={styles.recordCountBox}>
+            <Text style={styles.recordCountText}>
+              {displayTotalRecords} Records
+            </Text>
+          </View>
         </View>
-        <View style={styles.recordCountBox}>
-          <Text style={styles.recordCountText}>
-            {payments?.length || 0} Records
-          </Text>
+
+        {/* Daily Pass Combine Toggle Switch */}
+        <View style={styles.toggleRow}>
+          <TouchableOpacity
+            onPress={() => {
+              haptics.selection();
+              setIncludeDailyPasses(!includeDailyPasses);
+            }}
+            style={[styles.toggleBtn, includeDailyPasses && styles.toggleBtnActive]}
+            activeOpacity={0.8}
+          >
+            <Ticket size={13} color={includeDailyPasses ? colors.gold : colors.textMuted} />
+            <Text style={[styles.toggleBtnText, includeDailyPasses && styles.toggleBtnTextActive]}>
+              {includeDailyPasses
+                ? `Combined (+₹${formatCurrency(dailyPassRevenue)} Daily Pass)`
+                : '+ Include Daily Pass Revenue'}
+            </Text>
+            <View style={[styles.switchTrack, includeDailyPasses && styles.switchTrackActive]}>
+              <View style={[styles.switchThumb, includeDailyPasses && styles.switchThumbActive]} />
+            </View>
+          </TouchableOpacity>
         </View>
       </View>
 
-      {/* Search and Filters */}
+      {/* Segmented Tab Switcher */}
+      <View style={styles.tabContainer}>
+        <TouchableOpacity
+          onPress={() => {
+            haptics.light();
+            setActiveTab('memberships');
+          }}
+          style={[styles.tabButton, activeTab === 'memberships' && styles.tabButtonActive]}
+          activeOpacity={0.8}
+        >
+          <CreditCard size={14} color={activeTab === 'memberships' ? colors.gold : colors.textMuted} />
+          <Text style={[styles.tabText, activeTab === 'memberships' && styles.tabTextActive]}>
+            Membership
+          </Text>
+          <View style={[styles.tabBadge, activeTab === 'memberships' && styles.tabBadgeActive]}>
+            <Text style={[styles.tabBadgeText, activeTab === 'memberships' && styles.tabBadgeTextActive]}>
+              {membershipCount}
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => {
+            haptics.light();
+            setActiveTab('daily_passes');
+          }}
+          style={[styles.tabButton, activeTab === 'daily_passes' && styles.tabButtonActive]}
+          activeOpacity={0.8}
+        >
+          <Ticket size={14} color={activeTab === 'daily_passes' ? colors.gold : colors.textMuted} />
+          <Text style={[styles.tabText, activeTab === 'daily_passes' && styles.tabTextActive]}>
+            Daily Pass
+          </Text>
+          <View style={[styles.tabBadge, activeTab === 'daily_passes' && styles.tabBadgeActive]}>
+            <Text style={[styles.tabBadgeText, activeTab === 'daily_passes' && styles.tabBadgeTextActive]}>
+              {dailyPassCount}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      {/* Search and Filters Section */}
       <View style={styles.filterSection}>
         <FVEInput
           value={search}
           onChangeText={setSearch}
-          placeholder="Search by member, ID, receipt no..."
-          leftIcon={<Search size={16} color={colors.gold} />}
-          rightIcon={
-            search ? <X size={16} color={colors.textSecondary} /> : undefined
+          placeholder={
+            activeTab === 'memberships'
+              ? 'Search member, ID, receipt no...'
+              : 'Search visitor name, mobile, purpose...'
           }
+          leftIcon={<Search size={16} color={colors.gold} />}
+          rightIcon={search ? <X size={16} color={colors.textSecondary} /> : undefined}
           onRightIconPress={() => setSearch('')}
           containerStyle={{ marginBottom: 10 }}
         />
@@ -235,7 +436,7 @@ export function PaymentsScreen() {
             </Text>
           </TouchableOpacity>
 
-          {PAYMENT_METHODS.map(m => {
+          {PAYMENT_METHODS.map((m) => {
             const isSelected = methodFilter === m;
             return (
               <TouchableOpacity
@@ -252,78 +453,135 @@ export function PaymentsScreen() {
         </ScrollView>
       </View>
 
-      {/* Payments List */}
+      {/* Payments or Daily Pass List */}
       {isLoading ? (
-        <FVELogoLoader message="Syncing Payments..." fullScreen />
+        <FVELogoLoader message={activeTab === 'memberships' ? 'Syncing Payments...' : 'Syncing Daily Passes...'} fullScreen />
+      ) : activeTab === 'memberships' ? (
+        <FlatList
+          data={payments}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <PaymentItem
+              payment={item}
+              onPress={() => navigation.navigate('PaymentReceipt', { payment: item })}
+              onShareWhatsApp={() => handleShareWhatsApp(item)}
+            />
+          )}
+          contentContainerStyle={styles.listContent}
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
+          initialNumToRender={12}
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          removeClippedSubviews={true}
+          refreshControl={
+            <RefreshControl
+              refreshing={isLoading}
+              onRefresh={onRefresh}
+              tintColor={colors.gold}
+              colors={[colors.gold]}
+            />
+          }
+          ListEmptyComponent={
+            !isLoading ? (
+              <FVEEmptyState
+                icon={<CreditCard size={40} color={colors.gold} />}
+                title="No Payments Found"
+                description="Membership payments will show up here once processed."
+                actionTitle="+ Record Payment"
+                onAction={() => setShowPayModal(true)}
+              />
+            ) : null
+          }
+        />
       ) : (
         <FlatList
-          data={payments || []}
-        keyExtractor={item => item.id}
-        renderItem={({ item }) => (
-          <PaymentItem
-            payment={item}
-            onPress={() => navigation.navigate('PaymentReceipt', { payment: item })}
-            onShareWhatsApp={() => handleShareWhatsApp(item)}
-          />
-        )}
-        contentContainerStyle={styles.listContent}
-        keyboardDismissMode="on-drag"
-        keyboardShouldPersistTaps="handled"
-        initialNumToRender={12}
-        maxToRenderPerBatch={10}
-        windowSize={5}
-        removeClippedSubviews={true}
-        refreshControl={
-          <RefreshControl
-            refreshing={isLoading}
-            onRefresh={onRefresh}
-            tintColor={colors.gold}
-            colors={[colors.gold]}
-          />
-        }
-        ListEmptyComponent={
-          !isLoading ? (
-            <FVEEmptyState
-              icon={<CreditCard size={40} color={colors.gold} />}
-              title="No Payments Found"
-              description="Payments will show up here once processed."
-              actionTitle="+ Record Payment"
-              onAction={() => setShowPayModal(true)}
+          data={dailyPasses}
+          keyExtractor={(item) => item.id}
+          renderItem={renderDailyPassItem}
+          contentContainerStyle={styles.listContent}
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
+          initialNumToRender={12}
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          removeClippedSubviews={true}
+          refreshControl={
+            <RefreshControl
+              refreshing={isLoading}
+              onRefresh={onRefresh}
+              tintColor={colors.gold}
+              colors={[colors.gold]}
             />
-          ) : null
-        }
-      />
+          }
+          ListEmptyComponent={
+            !isLoading ? (
+              <FVEEmptyState
+                icon={<Ticket size={40} color={colors.gold} />}
+                title="No Daily Passes Found"
+                description="Daily passes will appear here once visitors register."
+                actionTitle="+ Issue Daily Pass"
+                onAction={() => setShowDailyPassModal(true)}
+              />
+            ) : null
+          }
+        />
       )}
 
       {/* Native Floating Action Button (FAB) */}
       <TouchableOpacity
         onPress={() => {
-          haptics.medium();
-          setShowPayModal(true);
+          haptics.light();
+          if (activeTab === 'memberships') {
+            setShowPayModal(true);
+          } else {
+            setShowDailyPassModal(true);
+          }
         }}
-        activeOpacity={0.85}
         style={styles.fab}
+        activeOpacity={0.85}
       >
         <LinearGradient
           colors={[colors.goldBright, colors.gold, colors.goldDark]}
           style={styles.fabGradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
         >
-          <Plus size={24} color="#050505" strokeWidth={3} />
+          <Plus size={24} color={colors.bgPrimary} strokeWidth={2.5} />
         </LinearGradient>
       </TouchableOpacity>
 
-      {/* New Payment Modal */}
-      <PaymentFormModal
-        visible={showPayModal}
-        onClose={() => setShowPayModal(false)}
-        onSaved={onRefresh}
-      />
+      {/* Membership Payment Form Modal */}
+      {showPayModal && (
+        <PaymentFormModal
+          visible={showPayModal}
+          onClose={() => setShowPayModal(false)}
+          onSaved={() => {
+            setShowPayModal(false);
+            onRefresh();
+          }}
+        />
+      )}
 
-      {/* UPI QR Code Quick Modal */}
-      <UPIQRCodeModal
-        visible={showUPIModal}
-        onClose={() => setShowUPIModal(false)}
-      />
+      {/* Daily Pass Form Modal */}
+      {showDailyPassModal && (
+        <DailyPassFormModal
+          visible={showDailyPassModal}
+          onClose={() => setShowDailyPassModal(false)}
+          onSaved={() => {
+            setShowDailyPassModal(false);
+            onRefresh();
+          }}
+        />
+      )}
+
+      {/* UPI QR Code Modal */}
+      {showUPIModal && (
+        <UPIQRCodeModal
+          visible={showUPIModal}
+          onClose={() => setShowUPIModal(false)}
+        />
+      )}
     </View>
   );
 }
@@ -333,11 +591,6 @@ const getPaymentsStyles = (colors: ThemeColors, isDark: boolean) =>
     container: {
       flex: 1,
       backgroundColor: colors.background,
-    },
-    headerRightActions: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
     },
     qrHeaderBtn: {
       flexDirection: 'row',
@@ -357,40 +610,25 @@ const getPaymentsStyles = (colors: ThemeColors, isDark: boolean) =>
       fontWeight: '700',
       letterSpacing: 0.5,
     },
-
-    addHeaderBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-      backgroundColor: colors.goldMuted,
-      borderWidth: 1,
-      borderColor: colors.goldBorder,
-      borderRadius: 8,
-      paddingHorizontal: 10,
-      paddingVertical: 6,
-    },
-    addHeaderBtnText: {
-      color: colors.gold,
-      fontSize: typography.sizes.xs,
-      fontFamily: typography.fonts.rajdhani,
-      fontWeight: '700',
-    },
     summaryCard: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
       backgroundColor: colors.cardBackground,
       borderWidth: 1,
       borderColor: colors.borderDark,
       borderRadius: 18,
-      margin: 16,
+      marginHorizontal: 16,
+      marginTop: 12,
       marginBottom: 10,
-      padding: 18,
+      padding: 16,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 4 },
       shadowOpacity: isDark ? 0.3 : 0.08,
       shadowRadius: 8,
       elevation: 4,
+    },
+    summaryTopRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
     },
     summaryLeft: {
       flex: 1,
@@ -425,6 +663,115 @@ const getPaymentsStyles = (colors: ThemeColors, isDark: boolean) =>
       fontFamily: typography.fonts.rajdhani,
       fontWeight: '700',
     },
+    toggleRow: {
+      marginTop: 12,
+      paddingTop: 10,
+      borderTopWidth: 1,
+      borderTopColor: colors.borderDark,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'flex-start',
+    },
+    toggleBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 7,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.03)',
+      borderWidth: 1,
+      borderColor: colors.borderDark,
+      borderRadius: 20,
+      paddingHorizontal: 12,
+      paddingVertical: 5,
+    },
+    toggleBtnActive: {
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : 'rgba(217, 130, 0, 0.12)',
+      borderColor: colors.goldBorder,
+    },
+    toggleBtnText: {
+      color: colors.textMuted,
+      fontSize: 11,
+      fontFamily: typography.fonts.inter,
+      fontWeight: '600',
+    },
+    toggleBtnTextActive: {
+      color: colors.gold,
+    },
+    switchTrack: {
+      width: 28,
+      height: 16,
+      borderRadius: 8,
+      backgroundColor: isDark ? '#333' : '#ccc',
+      padding: 2,
+      justifyContent: 'center',
+      marginLeft: 4,
+    },
+    switchTrackActive: {
+      backgroundColor: colors.gold,
+    },
+    switchThumb: {
+      width: 12,
+      height: 12,
+      borderRadius: 6,
+      backgroundColor: '#fff',
+      transform: [{ translateX: 0 }],
+    },
+    switchThumbActive: {
+      transform: [{ translateX: 12 }],
+    },
+
+    // Segmented Tabs
+    tabContainer: {
+      flexDirection: 'row',
+      marginHorizontal: 16,
+      marginBottom: 12,
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+      padding: 3,
+      borderWidth: 1,
+      borderColor: colors.borderDark,
+    },
+    tabButton: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      paddingVertical: 8,
+      borderRadius: 9,
+    },
+    tabButtonActive: {
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.15)' : 'rgba(217, 130, 0, 0.15)',
+      borderWidth: 1,
+      borderColor: colors.goldBorder,
+    },
+    tabText: {
+      color: colors.textMuted,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    tabTextActive: {
+      color: colors.gold,
+    },
+    tabBadge: {
+      backgroundColor: isDark ? '#222' : '#e5e5e5',
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+      borderRadius: 10,
+    },
+    tabBadgeActive: {
+      backgroundColor: colors.goldMuted,
+    },
+    tabBadgeText: {
+      color: colors.textMuted,
+      fontSize: 10,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    tabBadgeTextActive: {
+      color: colors.gold,
+    },
+
     filterSection: {
       paddingHorizontal: 16,
       paddingBottom: 10,
@@ -455,6 +802,129 @@ const getPaymentsStyles = (colors: ThemeColors, isDark: boolean) =>
       padding: 16,
       paddingBottom: 130,
     },
+
+    // Daily Pass Card Styles
+    dpCard: {
+      backgroundColor: colors.cardBackground,
+      borderRadius: 14,
+      padding: 14,
+      marginBottom: 10,
+      borderWidth: 1,
+      borderColor: colors.borderDark,
+    },
+    dpTopRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    dpVisitorWrap: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1,
+      marginRight: 8,
+    },
+    dpAvatar: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: colors.goldMuted,
+      borderWidth: 1,
+      borderColor: colors.goldBorder,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    dpAvatarText: {
+      color: colors.gold,
+      fontSize: typography.sizes.sm,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '800',
+    },
+    dpVisitorName: {
+      color: colors.textPrimary,
+      fontSize: typography.sizes.sm,
+      fontFamily: typography.fonts.inter,
+      fontWeight: '700',
+    },
+    dpMetaText: {
+      color: colors.textMuted,
+      fontSize: 11,
+      fontFamily: typography.fonts.inter,
+      marginTop: 2,
+    },
+    dpAmountWrap: {
+      alignItems: 'flex-end',
+    },
+    dpAmountText: {
+      color: colors.gold,
+      fontSize: typography.sizes.base,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '800',
+      marginBottom: 3,
+    },
+    dpStatusBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+      borderRadius: 6,
+    },
+    dpStatusPaid: {
+      backgroundColor: isDark ? 'rgba(34, 197, 94, 0.12)' : 'rgba(34, 197, 94, 0.15)',
+    },
+    dpStatusPending: {
+      backgroundColor: isDark ? 'rgba(245, 158, 11, 0.12)' : 'rgba(245, 158, 11, 0.15)',
+    },
+    dpStatusWaived: {
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
+    },
+    dpStatusText: {
+      fontSize: 10,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    dpStatusTextPaid: {
+      color: colors.success,
+    },
+    dpStatusTextPending: {
+      color: '#F59E0B',
+    },
+    dpStatusTextWaived: {
+      color: colors.textMuted,
+    },
+    dpBottomRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginTop: 10,
+      paddingTop: 8,
+      borderTopWidth: 1,
+      borderTopColor: colors.borderDark,
+    },
+    dpDateText: {
+      color: colors.textMuted,
+      fontSize: 11,
+      fontFamily: typography.fonts.inter,
+    },
+    dpMethodPill: {
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.1)' : 'rgba(217, 130, 0, 0.1)',
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: 10,
+    },
+    dpMethodText: {
+      color: colors.gold,
+      fontSize: 10,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    dpNotesText: {
+      color: colors.textSecondary,
+      fontSize: 11,
+      fontFamily: typography.fonts.inter,
+      fontStyle: 'italic',
+      marginTop: 6,
+    },
+
     fab: {
       position: 'absolute',
       bottom: 96,
