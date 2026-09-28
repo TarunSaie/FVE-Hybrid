@@ -103,15 +103,27 @@ export function buildExpiryReminderMessage(
   memberName: string,
   planName: string | null | undefined,
   expiryDate: string | null | undefined,
-  daysLeft: number
+  daysLeft: number,
+  gymName?: string
 ): string {
-  const planInfo = planName ? `*${planName}*` : 'gym';
-  const dateInfo = expiryDate ? ` on *${formatDate(expiryDate)}*` : '';
+  const gym = gymName || 'FitVerse Elite';
+  const cleanPlan = (planName || 'Gym Membership').trim();
+  const planPhrase = /membership|plan/i.test(cleanPlan)
+    ? `your *${cleanPlan}*`
+    : `your *${cleanPlan}* membership`;
+
+  const urgencyText =
+    daysLeft <= 0
+      ? 'expires *today*'
+      : daysLeft === 1
+      ? 'expires *tomorrow*'
+      : `is expiring on *${formatDate(expiryDate)}* (${daysLeft} day${daysLeft === 1 ? '' : 's'} left)`;
+
   return (
     `Hi *${memberName}*,\n\n` +
-    `This is a reminder from *FitVerse Elite Gym* that your ${planInfo} membership is expiring${dateInfo} (${daysLeft} day${daysLeft === 1 ? '' : 's'} left).\n\n` +
+    `This is a reminder from *${gym}* that ${planPhrase} ${urgencyText}.\n\n` +
     `Please renew soon to continue your training without interruption.\n\n` +
-    `— Team FitVerse Elite`
+    `— Team ${gym}`
   );
 }
 

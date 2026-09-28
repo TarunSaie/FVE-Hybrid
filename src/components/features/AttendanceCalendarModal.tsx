@@ -7,16 +7,17 @@ import {
   ActivityIndicator,
   ScrollView,
 } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, UserCheck } from 'lucide-react-native';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, UserCheck, Dumbbell } from 'lucide-react-native';
 import { FVEModal } from '@/components/common/FVEModal';
-import { Member } from '@/types';
+import { Member, Attendance } from '@/types';
 import { supabase } from '@/api/supabase';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { getLocalDateStr, formatDate } from '@/utils/date';
 import { haptics } from '@/utils/haptics';
+import { WorkoutActivityModal } from './WorkoutActivityModal';
 
 interface AttendanceCalendarModalProps {
   visible: boolean;
@@ -24,6 +25,8 @@ interface AttendanceCalendarModalProps {
   member: Member | { id: string; full_name: string; member_id?: string | null };
   membershipStartDate?: string;
   membershipExpiryDate?: string;
+  isPTMember?: boolean;
+  trainerName?: string | null;
 }
 
 const DAY_HEADERS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
@@ -41,7 +44,10 @@ export function AttendanceCalendarModal({
   member,
   membershipStartDate,
   membershipExpiryDate,
+  isPTMember = false,
+  trainerName,
 }: AttendanceCalendarModalProps) {
+  const qc = useQueryClient();
   const { colors, isDark } = useTheme();
   const styles = React.useMemo(() => getCalendarStyles(colors, isDark), [colors, isDark]);
   const today = new Date();
@@ -49,26 +55,30 @@ export function AttendanceCalendarModal({
 
   const [viewYear, setViewYear] = useState(() => today.getFullYear());
   const [viewMonth, setViewMonth] = useState(() => today.getMonth() + 1);
+  const [selectedWorkoutDate, setSelectedWorkoutDate] = useState<{
+    date: string;
+    record: Attendance | null;
+  } | null>(null);
 
   // Fetch all attendance for this member
-  const { data: attendanceRecords, isLoading } = useQuery({
+  const { data: attendanceRecords, isLoading } = useQuery<Attendance[]>({
     queryKey: ['member-attendance-calendar', member.id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('attendance')
-        .select('id, date, check_in_time, check_in_method')
+        .select('*')
         .eq('member_id', member.id)
         .order('date', { ascending: false });
       if (error) throw error;
-      return data || [];
+      return (data || []) as Attendance[];
     },
     enabled: visible && !!member.id,
   });
 
   const attendanceMap = useMemo(() => {
-    const map = new Map<string, { check_in_time?: string; check_in_method?: string }>();
+    const map = new Map<string, Attendance>();
     (attendanceRecords || []).forEach(r => {
-      map.set(r.date, { check_in_time: r.check_in_time, check_in_method: r.check_in_method });
+      if (r.date) map.set(r.date, r);
     });
     return map;
   }, [attendanceRecords]);
@@ -100,7 +110,7 @@ export function AttendanceCalendarModal({
   // Month-specific attendance counts
   const monthKeyPrefix = `${viewYear}-${String(viewMonth).padStart(2, '0')}`;
   const thisMonthVisits = useMemo(() => {
-    return (attendanceRecords || []).filter(r => r.date.startsWith(monthKeyPrefix)).length;
+    return (attendanceRecords || []).filter(r => r.date?.startsWith(monthKeyPrefix)).length;
   }, [attendanceRecords, monthKeyPrefix]);
 
   const totalVisits = (attendanceRecords || []).length;
@@ -189,13 +199,53 @@ export function AttendanceCalendarModal({
               const isToday = dateStr === todayStr;
               const isFuture = dateStr > todayStr;
               const details = attendanceMap.get(dateStr);
+              const hasWorkout = Boolean(details?.workout_activity);
+
+              if (isAttended) {
+                return (
+                  <TouchableOpacity
+                    key={`day-${dayNum}`}
+                    onPress={() => {
+                      haptics.light();
+                      setSelectedWorkoutDate({
+                        date: dateStr,
+                        record: details || null,
+                      });
+                    }}
+                    activeOpacity={0.7}
+                    style={[
+                      styles.calendarCell,
+                      styles.cellAttended,
+                      isToday && styles.cellToday,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.cellDayText,
+                        styles.cellDayTextAttended,
+                        isToday && styles.cellDayTextToday,
+                      ]}
+                    >
+                      {dayNum}
+                    </Text>
+                    {hasWorkout ? (
+                      <View style={styles.workoutDot}>
+                        <Dumbbell size={9} color={colors.gold} />
+                      </View>
+                    ) : (
+                      <View style={styles.checkDot}>
+                        <UserCheck size={9} color="#FFFFFF" strokeWidth={3} />
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              }
 
               return (
                 <View
                   key={`day-${dayNum}`}
                   style={[
                     styles.calendarCell,
-                    isAttended && styles.cellAttended,
                     isToday && styles.cellToday,
                     isFuture && styles.cellFuture,
                   ]}
@@ -203,18 +253,12 @@ export function AttendanceCalendarModal({
                   <Text
                     style={[
                       styles.cellDayText,
-                      isAttended && styles.cellDayTextAttended,
                       isToday && styles.cellDayTextToday,
                       isFuture && styles.cellDayTextFuture,
                     ]}
                   >
                     {dayNum}
                   </Text>
-                  {isAttended && (
-                    <View style={styles.checkDot}>
-                      <UserCheck size={9} color="#FFFFFF" strokeWidth={3} />
-                    </View>
-                  )}
                 </View>
               );
             })}
@@ -228,14 +272,33 @@ export function AttendanceCalendarModal({
             <Text style={styles.legendText}>Attended</Text>
           </View>
           <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: colors.goldMuted, borderWidth: 1, borderColor: colors.goldBorder, alignItems: 'center', justifyContent: 'center' }]}>
+              <Dumbbell size={7} color={colors.gold} />
+            </View>
+            <Text style={styles.legendText}>Workout Logged</Text>
+          </View>
+          <View style={styles.legendItem}>
             <View style={[styles.legendDot, { borderColor: colors.gold, borderWidth: 1 }]} />
             <Text style={styles.legendText}>Today</Text>
           </View>
-          <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: '#1A1E24' }]} />
-            <Text style={styles.legendText}>Absent / Rest</Text>
-          </View>
         </View>
+
+        {/* Embedded Workout Activity Modal */}
+        {selectedWorkoutDate && (
+          <WorkoutActivityModal
+            visible={!!selectedWorkoutDate}
+            onClose={() => setSelectedWorkoutDate(null)}
+            onSaved={() => {
+              qc.invalidateQueries({ queryKey: ['member-attendance-calendar', member.id] });
+              qc.invalidateQueries({ queryKey: ['member-attendance', member.id] });
+            }}
+            member={member}
+            attendanceDate={selectedWorkoutDate.date}
+            attendanceRecord={selectedWorkoutDate.record}
+            isPTMember={isPTMember}
+            trainerName={trainerName}
+          />
+        )}
       </View>
     </FVEModal>
   );
@@ -258,68 +321,66 @@ const getCalendarStyles = (colors: ThemeColors, isDark: boolean) =>
       borderRadius: 12,
       alignItems: 'center',
       justifyContent: 'center',
+      borderWidth: 1,
     },
     statBoxGreen: {
-      backgroundColor: isDark ? 'rgba(34, 197, 94, 0.1)' : 'rgba(34, 197, 94, 0.12)',
-      borderWidth: 1,
+      backgroundColor: isDark ? 'rgba(34, 197, 94, 0.08)' : 'rgba(34, 197, 94, 0.1)',
       borderColor: isDark ? 'rgba(34, 197, 94, 0.25)' : 'rgba(34, 197, 94, 0.35)',
     },
     statBoxGold: {
-      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.1)' : 'rgba(239, 161, 0, 0.12)',
-      borderWidth: 1,
-      borderColor: isDark ? 'rgba(239, 161, 0, 0.25)' : 'rgba(239, 161, 0, 0.35)',
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.08)' : 'rgba(217, 130, 0, 0.1)',
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.25)' : 'rgba(217, 130, 0, 0.35)',
     },
     statNumber: {
-      fontSize: 22,
       fontFamily: typography.fonts.rajdhani,
-      fontWeight: '700',
-      color: colors.success,
+      fontSize: 26,
+      fontWeight: '800',
+      color: isDark ? '#4ADE80' : '#15803D',
+      lineHeight: 30,
     },
     statLabel: {
+      fontFamily: typography.fonts.rajdhani,
       fontSize: 10,
-      fontFamily: typography.fonts.inter,
-      fontWeight: '600',
+      fontWeight: '700',
       color: colors.textSecondary,
-      letterSpacing: 0.5,
+      letterSpacing: 0.8,
       marginTop: 2,
     },
     monthNav: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      backgroundColor: colors.bgSecondary,
-      borderRadius: 12,
-      paddingVertical: 8,
-      paddingHorizontal: 12,
-      borderWidth: 1,
-      borderColor: colors.borderDefault,
-      marginBottom: 14,
+      paddingVertical: 10,
+      paddingHorizontal: 4,
+      marginBottom: 8,
     },
     navArrowBtn: {
       padding: 6,
       borderRadius: 8,
-      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.1)' : 'rgba(239, 161, 0, 0.12)',
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
     },
     monthTitleWrap: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 8,
+      gap: 6,
     },
     monthTitleText: {
       fontFamily: typography.fonts.rajdhani,
-      fontSize: typography.sizes.base,
+      fontSize: 16,
       fontWeight: '700',
       color: colors.textPrimary,
+      letterSpacing: 0.5,
     },
     dayHeadersRow: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
-      marginBottom: 8,
-      paddingHorizontal: 4,
+      marginBottom: 6,
     },
     dayHeaderCell: {
-      width: `${100 / 7}%`,
+      flex: 1,
       alignItems: 'center',
+      paddingVertical: 4,
     },
     dayHeaderText: {
       fontFamily: typography.fonts.inter,
@@ -328,30 +389,26 @@ const getCalendarStyles = (colors: ThemeColors, isDark: boolean) =>
       color: colors.textSecondary,
     },
     weekendHeader: {
-      color: colors.goldMuted,
+      color: colors.gold,
+      fontWeight: '700',
     },
     calendarGrid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      backgroundColor: colors.bgSecondary,
-      borderRadius: 14,
-      padding: 6,
-      borderWidth: 1,
-      borderColor: colors.borderDefault,
     },
     calendarCell: {
-      width: `${100 / 7}%`,
+      width: '14.28%',
       aspectRatio: 1,
       alignItems: 'center',
       justifyContent: 'center',
+      padding: 2,
       borderRadius: 8,
       marginVertical: 2,
-      position: 'relative',
     },
     cellAttended: {
-      backgroundColor: isDark ? 'rgba(34, 197, 94, 0.22)' : 'rgba(34, 197, 94, 0.18)',
+      backgroundColor: isDark ? 'rgba(34, 197, 94, 0.15)' : 'rgba(34, 197, 94, 0.2)',
       borderWidth: 1,
-      borderColor: colors.success,
+      borderColor: isDark ? 'rgba(34, 197, 94, 0.4)' : 'rgba(34, 197, 94, 0.5)',
     },
     cellToday: {
       borderWidth: 1.5,
@@ -379,10 +436,19 @@ const getCalendarStyles = (colors: ThemeColors, isDark: boolean) =>
     },
     checkDot: {
       position: 'absolute',
-      bottom: 3,
+      bottom: 2,
       backgroundColor: colors.success,
       borderRadius: 6,
       padding: 1,
+    },
+    workoutDot: {
+      position: 'absolute',
+      bottom: 2,
+      backgroundColor: colors.goldMuted,
+      borderRadius: 6,
+      padding: 1,
+      borderWidth: 0.5,
+      borderColor: colors.goldBorder,
     },
     loadingBox: {
       paddingVertical: 36,
@@ -396,8 +462,9 @@ const getCalendarStyles = (colors: ThemeColors, isDark: boolean) =>
     },
     legendRow: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
       justifyContent: 'center',
-      gap: 16,
+      gap: 14,
       marginTop: 14,
       paddingTop: 10,
       borderTopWidth: 1,
@@ -409,9 +476,9 @@ const getCalendarStyles = (colors: ThemeColors, isDark: boolean) =>
       gap: 6,
     },
     legendDot: {
-      width: 10,
-      height: 10,
-      borderRadius: 5,
+      width: 12,
+      height: 12,
+      borderRadius: 6,
     },
     legendText: {
       fontFamily: typography.fonts.inter,

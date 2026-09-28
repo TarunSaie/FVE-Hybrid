@@ -49,6 +49,7 @@ import { FVEModal } from '@/components/common/FVEModal';
 import { MemberFormModal } from '@/components/features/MemberFormModal';
 import { PaymentFormModal } from '@/components/features/PaymentFormModal';
 import { AttendanceCalendarModal } from '@/components/features/AttendanceCalendarModal';
+import { WorkoutActivityModal } from '@/components/features/WorkoutActivityModal';
 import { WorkoutPlanModal } from '@/components/features/WorkoutPlanModal';
 import { PTRequestModal } from '@/components/features/PTRequestModal';
 import { PTAssignmentModal } from '@/components/features/PTAssignmentModal';
@@ -126,6 +127,10 @@ export function MemberDetailScreen() {
   const [ptSessionModalMode, setPtSessionModalMode] = useState<'schedule' | 'complete'>('schedule');
   const [activePTSession, setActivePTSession] = useState<PTSession | null>(null);
   const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [selectedAttendanceForWorkout, setSelectedAttendanceForWorkout] = useState<{
+    date: string;
+    record: Attendance | null;
+  } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   // Fetch Member Details
@@ -1494,7 +1499,15 @@ export function MemberDetailScreen() {
         {/* Attendance History */}
         <View style={styles.sectionCard}>
           <View style={styles.sectionHeaderRow}>
-            <Text style={styles.cardHeaderTitle}>RECENT ATTENDANCE</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={styles.cardHeaderTitle}>RECENT ATTENDANCE</Text>
+              {personalTraining?.status === 'ACTIVE' && (
+                <View style={styles.ptAttHint}>
+                  <Dumbbell size={10} color={colors.gold} />
+                  <Text style={styles.ptAttHintText}>PT Member</Text>
+                </View>
+              )}
+            </View>
             <TouchableOpacity
               onPress={() => {
                 haptics.light();
@@ -1509,21 +1522,43 @@ export function MemberDetailScreen() {
           {(!attendanceLogs || attendanceLogs.length === 0) ? (
             <Text style={styles.emptyText}>No check-ins recorded yet.</Text>
           ) : (
-            attendanceLogs.map(a => (
-              <View key={a.id} style={styles.attendanceRow}>
-                <View style={styles.attLeft}>
-                  <Calendar size={13} color={colors.gold} />
-                  <Text style={styles.attDate}>{formatDate(a.date)}</Text>
-                </View>
-                <View style={styles.attRight}>
-                  <Clock size={12} color={colors.textMuted} />
-                  <Text style={styles.attTime}>{formatTime(a.check_in_time)}</Text>
-                  <View style={styles.attMethodBadge}>
-                    <Text style={styles.attMethodText}>{a.check_in_method || 'QR'}</Text>
+            attendanceLogs.map(a => {
+              const hasWorkout = Boolean(a.workout_activity);
+              return (
+                <TouchableOpacity
+                  key={a.id}
+                  onPress={() => {
+                    haptics.light();
+                    setSelectedAttendanceForWorkout({
+                      date: a.date || '',
+                      record: a,
+                    });
+                  }}
+                  activeOpacity={0.7}
+                  style={styles.attendanceRow}
+                >
+                  <View style={styles.attLeft}>
+                    <Calendar size={13} color={hasWorkout ? colors.gold : colors.textMuted} />
+                    <Text style={styles.attDate}>{formatDate(a.date)}</Text>
+                    {hasWorkout && (
+                      <View style={styles.attWorkoutBadge}>
+                        <Dumbbell size={9} color={colors.gold} />
+                        <Text numberOfLines={1} style={styles.attWorkoutBadgeText}>
+                          {a.workout_activity?.split('\n')[0] || 'Workout Logged'}
+                        </Text>
+                      </View>
+                    )}
                   </View>
-                </View>
-              </View>
-            ))
+                  <View style={styles.attRight}>
+                    <Clock size={12} color={colors.textMuted} />
+                    <Text style={styles.attTime}>{formatTime(a.check_in_time)}</Text>
+                    <View style={styles.attMethodBadge}>
+                      <Text style={styles.attMethodText}>{a.check_in_method || 'QR'}</Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })
           )}
         </View>
 
@@ -1638,6 +1673,25 @@ export function MemberDetailScreen() {
           member={member}
           membershipStartDate={activeMembership?.start_date}
           membershipExpiryDate={activeMembership?.expiry_date}
+          isPTMember={personalTraining?.status === 'ACTIVE'}
+          trainerName={personalTraining?.trainer?.full_name}
+        />
+      )}
+
+      {/* Workout Activity Modal */}
+      {selectedAttendanceForWorkout && member && (
+        <WorkoutActivityModal
+          visible={!!selectedAttendanceForWorkout}
+          onClose={() => setSelectedAttendanceForWorkout(null)}
+          onSaved={() => {
+            qc.invalidateQueries({ queryKey: ['member-attendance', memberId] });
+            qc.invalidateQueries({ queryKey: ['member-attendance-calendar', memberId] });
+          }}
+          member={member}
+          attendanceDate={selectedAttendanceForWorkout.date}
+          attendanceRecord={selectedAttendanceForWorkout.record}
+          isPTMember={personalTraining?.status === 'ACTIVE'}
+          trainerName={personalTraining?.trainer?.full_name}
         />
       )}
 
@@ -2267,6 +2321,41 @@ const getMemberDetailStyles = (colors: ThemeColors, isDark: boolean) =>
       fontSize: 9,
       fontFamily: typography.fonts.rajdhani,
       fontWeight: '700',
+    },
+    ptAttHint: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : 'rgba(217, 130, 0, 0.12)',
+      borderWidth: 1,
+      borderColor: colors.goldBorder,
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+      borderRadius: 4,
+    },
+    ptAttHintText: {
+      color: colors.gold,
+      fontSize: 9,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    attWorkoutBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : 'rgba(217, 130, 0, 0.12)',
+      borderWidth: 1,
+      borderColor: colors.goldBorder,
+      paddingHorizontal: 5,
+      paddingVertical: 1,
+      borderRadius: 4,
+      maxWidth: 130,
+    },
+    attWorkoutBadgeText: {
+      color: colors.gold,
+      fontSize: 9,
+      fontFamily: typography.fonts.inter,
+      fontWeight: '600',
     },
     deleteButton: {
       marginTop: 10,

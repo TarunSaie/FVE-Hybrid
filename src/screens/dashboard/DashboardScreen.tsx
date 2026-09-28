@@ -57,11 +57,13 @@ import { supabase } from '@/api/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useBranding } from '@/contexts/BrandingContext';
-import { formatCurrency, openWhatsAppLink } from '@/utils/format';
+import { formatCurrency, openWhatsAppLink, buildExpiryReminderMessage } from '@/utils/format';
 import { getLocalDateStr, getLocalMonthStr, formatDate } from '@/utils/date';
 import { useRenewalAlerts } from '@/hooks/useRenewalAlerts';
 import { useMembershipSync } from '@/hooks/useMembershipSync';
 import { useBirthdayAlerts } from '@/hooks/useBirthdayAlerts';
+import { useRenewalMessagingStatus } from '@/utils/renewalMessaging';
+import { RenewalBatchSize } from '@/types';
 import { haptics } from '@/utils/haptics';
 import { RootStackParamList } from '@/navigation/types';
 
@@ -85,6 +87,10 @@ export function DashboardScreen() {
   const [showWhatsAppQueueModal, setShowWhatsAppQueueModal] = useState(false);
   const [whatsAppQueue, setWhatsAppQueue] = useState<ExpiringQueueItem[]>([]);
   const [preselectedMemberId, setPreselectedMemberId] = useState<string | undefined>(undefined);
+
+  const { isSent, markSent, clearAll: clearRenewalSentRecords, version: renewalMapVersion } = useRenewalMessagingStatus();
+  const [renewalBatchSize, setRenewalBatchSize] = useState<RenewalBatchSize>(30);
+  const [expiringFilterTab, setExpiringFilterTab] = useState<'pending' | 'sent' | 'all'>('pending');
 
   const todayStr = getLocalDateStr();
   const currentMonthStr = getLocalMonthStr();
@@ -194,7 +200,7 @@ export function DashboardScreen() {
     },
   });
 
-  // Fetch expiring memberships
+  // Fetch expiring memberships (all eligible up to 500)
   const { data: expiringList } = useQuery({
     queryKey: ['mobile-expiring-memberships', todayStr],
     queryFn: async () => {
@@ -204,16 +210,71 @@ export function DashboardScreen() {
 
       const { data } = await supabase
         .from('memberships')
-        .select('*, members(id, full_name, mobile, member_id, profile_photo), membership_plans(name)')
+        .select('*, members(id, full_name, mobile, member_id, profile_photo), membership_plans(id, name)')
         .gte('expiry_date', todayStr)
         .lte('expiry_date', futureStr)
         .neq('status', 'HOLD')
         .order('expiry_date', { ascending: true })
-        .limit(10);
+        .limit(500);
 
       return data || [];
     },
   });
+
+  const { data: plansLookup } = useQuery({
+    queryKey: ['mobile-membership-plans-lookup-map'],
+    queryFn: async () => {
+      const { data } = await supabase.from('membership_plans').select('id, name');
+      const map: Record<string, string> = {};
+      (data || []).forEach((p: any) => {
+        if (p.id && p.name) map[p.id] = p.name;
+      });
+      return map;
+    },
+    staleTime: 1000 * 60 * 30,
+  });
+
+  const getMemberPlanName = (m: any): string => {
+    if (m?.plan_name && typeof m.plan_name === 'string' && m.plan_name.trim()) {
+      return m.plan_name.trim();
+    }
+    const rel = m?.membership_plans;
+    if (rel) {
+      if (Array.isArray(rel) && rel.length > 0 && rel[0]?.name) {
+        return rel[0].name.trim();
+      }
+      if (typeof rel === 'object' && rel.name) {
+        return rel.name.trim();
+      }
+    }
+    if (m?.plan_id && plansLookup && plansLookup[m.plan_id]) {
+      return plansLookup[m.plan_id].trim();
+    }
+    return 'Gym Membership';
+  };
+
+  // Partition into pending (unsent) and sent (processed), preserving earliest expiry date sort
+  const pendingExpiringList = useMemo(() => {
+    if (!expiringList) return [];
+    return expiringList.filter((m: any) => !isSent(m.id, m.expiry_date));
+  }, [expiringList, isSent, renewalMapVersion]);
+
+  const sentExpiringList = useMemo(() => {
+    if (!expiringList) return [];
+    return expiringList.filter((m: any) => isSent(m.id, m.expiry_date));
+  }, [expiringList, isSent, renewalMapVersion]);
+
+  // Displayed members: Unsent members always remain at the top of the list!
+  const displayedExpiringList = useMemo(() => {
+    if (expiringFilterTab === 'pending') {
+      return pendingExpiringList;
+    }
+    if (expiringFilterTab === 'sent') {
+      return sentExpiringList;
+    }
+    // 'all': unsent members first (sorted by earliest expiry), followed by sent members
+    return [...pendingExpiringList, ...sentExpiringList];
+  }, [expiringFilterTab, pendingExpiringList, sentExpiringList]);
 
   // Fetch On-Hold Members
   const { data: holdMembers = [] } = useQuery({
@@ -386,8 +447,9 @@ export function DashboardScreen() {
   }, [qc]);
 
   const handleWhatsAppReminder = (
-    member: { full_name?: string; mobile?: string | null },
+    member: { full_name?: string; mobile?: string | null; id?: string },
     expiryDate: string,
+    membershipId: string,
     planName?: string
   ) => {
     if (!member.mobile) {
@@ -401,30 +463,43 @@ export function DashboardScreen() {
     );
     const msg = `Hi ${member.full_name || 'Member'}, your ${planName || 'gym'} membership at FitVerse Elite expires on ${formatDate(expiryDate)} (${daysLeft <= 0 ? 'today' : `in ${daysLeft} days`}). Please renew to continue your training uninterrupted. - FitVerse Elite`;
     openWhatsAppLink(member.mobile, msg);
+    markSent(membershipId, expiryDate, member.id);
   };
 
-  const handleNotifyAll = () => {
-    if (!expiringList?.length) return;
-    const withMobile = expiringList.filter((m: any) => {
+  const handleNotifyBatch = (customSize?: RenewalBatchSize) => {
+    const sizeToUse = customSize || renewalBatchSize;
+    if (!pendingExpiringList?.length) {
+      Alert.alert('All Messaged', 'All eligible expiring members have already been messaged!');
+      return;
+    }
+    const withMobile = pendingExpiringList.filter((m: any) => {
       const mob = m.members?.mobile;
       return Boolean(mob?.trim());
     });
 
     if (withMobile.length === 0) {
-      Alert.alert('No Mobile Numbers', 'No expiring members have a mobile phone number recorded.');
+      Alert.alert('No Mobile Numbers', 'No pending expiring members have a valid mobile phone number recorded.');
       return;
     }
 
+    const batchCount = sizeToUse === 'all' ? withMobile.length : Math.min(Number(sizeToUse) || 30, withMobile.length);
+    const targetBatch = withMobile.slice(0, batchCount);
+
     const gymName = brandConfig.gym_name || 'FitVerse Elite';
-    const queueItems: ExpiringQueueItem[] = withMobile.map((m: any) => {
+    const queueItems: ExpiringQueueItem[] = targetBatch.map((m: any) => {
       const member = m.members || {};
-      const plan = m.membership_plans || {};
       const memberName = member.full_name || 'Member';
-      const planName = plan.name || 'gym';
+      const planName = getMemberPlanName(m);
       const daysLeft = Math.ceil(
         (new Date(m.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
       );
-      const msg = `Hi *${memberName}*,\n\nYour *${planName}* membership at *${gymName}* expires on *${formatDate(m.expiry_date)}* (${daysLeft <= 0 ? 'today' : `in ${daysLeft} days`}).\n\nPlease renew to continue your training uninterrupted.\n\n— Team ${gymName}`;
+      const msg = buildExpiryReminderMessage(
+        memberName,
+        planName,
+        m.expiry_date,
+        daysLeft,
+        gymName
+      );
 
       return {
         id: m.id,
@@ -441,6 +516,8 @@ export function DashboardScreen() {
     setWhatsAppQueue(queueItems);
     setShowWhatsAppQueueModal(true);
   };
+
+  const handleNotifyAll = () => handleNotifyBatch('all');
 
   const isOwnerOrAdmin = user?.role === 'OWNER' || user?.role === 'ADMIN';
   const isFinancialVisible = isOwnerOrAdmin;
@@ -884,27 +961,178 @@ export function DashboardScreen() {
               <AlertTriangle size={16} color={colors.warning} />
               <Text style={styles.sectionTitle}>EXPIRING THIS WEEK</Text>
             </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              {expiringList && expiringList.length > 0 && (
-                <TouchableOpacity
-                  onPress={handleNotifyAll}
-                  style={styles.notifyAllBtn}
-                  activeOpacity={0.8}
-                >
-                  <MessageCircle size={12} color="#050505" />
-                  <Text style={styles.notifyAllBtnText}>Notify All</Text>
-                </TouchableOpacity>
-              )}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <Text style={[styles.sectionBadge, { color: colors.warning, borderColor: 'rgba(239, 161, 0, 0.35)' }]}>
+                {pendingExpiringList.length} Pending
+              </Text>
+              <Text style={[styles.sectionBadge, { color: '#25D366', borderColor: 'rgba(37, 211, 102, 0.35)' }]}>
+                {sentExpiringList.length} Sent
+              </Text>
               <Text style={styles.sectionBadge}>
-                {expiringList?.length || 0} Members
+                {expiringList?.length || 0} Total
               </Text>
             </View>
           </View>
+
+          {/* Batch Selector & Action Row */}
+          {expiringList && expiringList.length > 0 && (
+            <View style={styles.batchRow}>
+              {pendingExpiringList.length > 0 ? (
+                <>
+                  {/* Batch Pills */}
+                  <View style={styles.batchSelectorPills}>
+                    <Text style={{ fontSize: 10, fontFamily: typography.fonts.rajdhani, color: colors.textMuted, marginRight: 2 }}>
+                      Batch:
+                    </Text>
+                    {([10, 30, 50, 'all'] as const).map((size) => (
+                      <TouchableOpacity
+                        key={String(size)}
+                        onPress={() => {
+                          haptics.selection();
+                          setRenewalBatchSize(size);
+                        }}
+                        style={[
+                          styles.batchPill,
+                          renewalBatchSize === size && styles.batchPillActive,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.batchPillText,
+                            renewalBatchSize === size && styles.batchPillTextActive,
+                          ]}
+                        >
+                          {size === 'all' ? 'All' : size}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  {/* Notify Batch Button */}
+                  <TouchableOpacity
+                    onPress={() => handleNotifyBatch()}
+                    style={styles.notifyAllBtn}
+                    activeOpacity={0.8}
+                  >
+                    <MessageCircle size={12} color="#050505" />
+                    <Text style={styles.notifyAllBtnText}>
+                      Notify Batch ({Math.min(renewalBatchSize === 'all' ? pendingExpiringList.length : Number(renewalBatchSize), pendingExpiringList.length)})
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                  <View style={styles.allMessagedBadge}>
+                    <CheckCircle2 size={12} color="#25D366" />
+                    <Text style={styles.allMessagedBadgeText}>All Eligible Members Messaged</Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => {
+                      Alert.alert(
+                        'Reset Messaged Status',
+                        'Reset messaged status for all expiring members? This will move them back to Pending.',
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Reset',
+                            style: 'destructive',
+                            onPress: () => {
+                              clearRenewalSentRecords();
+                              haptics.success();
+                            },
+                          },
+                        ]
+                      );
+                    }}
+                    style={styles.resetSentBtn}
+                    activeOpacity={0.7}
+                  >
+                    <RotateCcw size={11} color={colors.textSecondary} />
+                    <Text style={styles.resetSentBtnText}>Reset</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Filter Tabs Bar */}
+          {expiringList && expiringList.length > 0 && (
+            <View style={styles.expiringFilterRow}>
+              <TouchableOpacity
+                onPress={() => {
+                  haptics.selection();
+                  setExpiringFilterTab('pending');
+                }}
+                style={[
+                  styles.expiringFilterTab,
+                  expiringFilterTab === 'pending' && styles.expiringFilterTabActive,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.expiringFilterTabText,
+                    expiringFilterTab === 'pending' && styles.expiringFilterTabTextActive,
+                  ]}
+                >
+                  Pending ({pendingExpiringList.length})
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => {
+                  haptics.selection();
+                  setExpiringFilterTab('sent');
+                }}
+                style={[
+                  styles.expiringFilterTab,
+                  expiringFilterTab === 'sent' && styles.expiringFilterTabActive,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.expiringFilterTabText,
+                    expiringFilterTab === 'sent' && styles.expiringFilterTabTextActive,
+                  ]}
+                >
+                  Messaged ({sentExpiringList.length})
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => {
+                  haptics.selection();
+                  setExpiringFilterTab('all');
+                }}
+                style={[
+                  styles.expiringFilterTab,
+                  expiringFilterTab === 'all' && styles.expiringFilterTabActive,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.expiringFilterTabText,
+                    expiringFilterTab === 'all' && styles.expiringFilterTabTextActive,
+                  ]}
+                >
+                  All (Unsent First) ({expiringList?.length || 0})
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           {(!expiringList || expiringList.length === 0) ? (
             <View style={styles.emptyCard}>
               <CheckCircle2 size={24} color={colors.success} style={{ marginBottom: 6 }} />
               <Text style={styles.emptyText}>All memberships healthy for the next 7 days.</Text>
+            </View>
+          ) : displayedExpiringList.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <CheckCircle2 size={24} color={colors.success} style={{ marginBottom: 6 }} />
+              <Text style={styles.emptyText}>
+                {expiringFilterTab === 'pending'
+                  ? 'All eligible members have been messaged!'
+                  : 'No members in this tab.'}
+              </Text>
             </View>
           ) : (
             <ScrollView
@@ -912,7 +1140,7 @@ export function DashboardScreen() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.expiringCarousel}
             >
-              {expiringList.map((item) => {
+              {displayedExpiringList.map((item: any) => {
                 const member = item.members as {
                   id?: string;
                   full_name?: string;
@@ -920,10 +1148,11 @@ export function DashboardScreen() {
                   member_id?: string | null;
                   profile_photo?: string | null;
                 } | null;
-                const plan = item.membership_plans as { name?: string } | null;
+                const planName = getMemberPlanName(item);
                 const daysLeft = Math.ceil(
                   (new Date(item.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
                 );
+                const alreadySent = isSent(item.id, item.expiry_date);
 
                 return (
                   <View key={item.id} style={styles.expiringCard}>
@@ -949,11 +1178,31 @@ export function DashboardScreen() {
                       {member?.full_name || 'Member'}
                     </Text>
                     <Text numberOfLines={1} style={styles.expiringCardPlan}>
-                      {plan?.name || 'Membership'}
+                      {planName}
                     </Text>
                     <Text style={styles.expiringCardDate}>
                       Expires {formatDate(item.expiry_date)}
                     </Text>
+
+                    {/* Processed Status Badge */}
+                    <View
+                      style={[
+                        styles.statusBadgePill,
+                        alreadySent ? styles.statusBadgePillSent : styles.statusBadgePillPending,
+                      ]}
+                    >
+                      {alreadySent ? (
+                        <>
+                          <CheckCircle2 size={9} color="#25D366" />
+                          <Text style={styles.statusBadgeTextSent}>Messaged</Text>
+                        </>
+                      ) : (
+                        <>
+                          <Clock size={9} color={colors.warning} />
+                          <Text style={styles.statusBadgeTextPending}>Pending</Text>
+                        </>
+                      )}
+                    </View>
 
                     <View style={styles.expiringCardActions}>
                       <TouchableOpacity
@@ -971,11 +1220,19 @@ export function DashboardScreen() {
 
                       <TouchableOpacity
                         onPress={() =>
-                          handleWhatsAppReminder(member || {}, item.expiry_date, plan?.name)
+                          handleWhatsAppReminder(member || {}, item.expiry_date, item.id, planName)
                         }
-                        style={styles.cardWaBtn}
+                        style={[
+                          styles.cardWaBtn,
+                          alreadySent && { backgroundColor: isDark ? '#143823' : '#DCFCE7', borderColor: '#25D366', borderWidth: 1 },
+                        ]}
+                        activeOpacity={0.7}
                       >
-                        <Share2 size={14} color="#050505" />
+                        {alreadySent ? (
+                          <RotateCcw size={13} color="#25D366" />
+                        ) : (
+                          <Share2 size={13} color="#050505" />
+                        )}
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -1230,6 +1487,20 @@ export function DashboardScreen() {
         visible={showWhatsAppQueueModal}
         onClose={() => setShowWhatsAppQueueModal(false)}
         queue={whatsAppQueue}
+        onMemberSent={(item) => {
+          markSent(item.id, item.expiryDate, item.memberId);
+        }}
+        batchInfo={{
+          batchSize: renewalBatchSize,
+          totalPending: pendingExpiringList.length,
+          remainingAfterBatch: Math.max(0, pendingExpiringList.length - whatsAppQueue.length),
+        }}
+        onProceedNextBatch={() => {
+          setShowWhatsAppQueueModal(false);
+          setTimeout(() => {
+            handleNotifyBatch();
+          }, 200);
+        }}
       />
     </View>
   );
@@ -2104,16 +2375,151 @@ const getDashboardStyles = (colors: ThemeColors, isDark: boolean) =>
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: colors.gold,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    backgroundColor: '#25D366',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    shadowColor: '#25D366',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
   },
   notifyAllBtnText: {
     color: '#050505',
+    fontSize: 11,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  batchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+    marginBottom: 8,
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  batchSelectorPills: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)',
+    padding: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderDark,
+  },
+  batchPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  batchPillActive: {
+    backgroundColor: colors.gold,
+  },
+  batchPillText: {
+    fontSize: 10.5,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '800',
+    color: colors.textSecondary,
+  },
+  batchPillTextActive: {
+    color: '#050505',
+  },
+  expiringFilterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+  },
+  expiringFilterTab: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderDark,
+    backgroundColor: colors.cardBackground,
+  },
+  expiringFilterTabActive: {
+    borderColor: colors.gold,
+    backgroundColor: isDark ? 'rgba(239, 161, 0, 0.15)' : 'rgba(239, 161, 0, 0.1)',
+  },
+  expiringFilterTabText: {
+    fontSize: 10.5,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  expiringFilterTabTextActive: {
+    color: colors.gold,
+    fontWeight: '800',
+  },
+  statusBadgePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginTop: 4,
+    alignSelf: 'flex-start',
+  },
+  statusBadgePillSent: {
+    backgroundColor: 'rgba(37, 211, 102, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(37, 211, 102, 0.35)',
+  },
+  statusBadgePillPending: {
+    backgroundColor: 'rgba(239, 161, 0, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 161, 0, 0.35)',
+  },
+  statusBadgeTextSent: {
+    color: '#25D366',
+    fontSize: 9,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '800',
+  },
+  statusBadgeTextPending: {
+    color: colors.warning,
+    fontSize: 9,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '800',
+  },
+  allMessagedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(37, 211, 102, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(37, 211, 102, 0.35)',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  allMessagedBadgeText: {
+    color: '#25D366',
     fontSize: 10,
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '800',
+  },
+  resetSentBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.borderDark,
+    backgroundColor: colors.surfaceLight,
+  },
+  resetSentBtnText: {
+    color: colors.textSecondary,
+    fontSize: 10,
+    fontFamily: typography.fonts.interMedium,
   },
   holdCard: {
     width: 170,

@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ScrollView,
   SafeAreaView,
+  TextInput,
 } from 'react-native';
 import {
   MessageCircle,
@@ -22,6 +23,7 @@ import {
   Copy,
   Check,
   RotateCcw,
+  Edit3,
 } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -47,18 +49,29 @@ interface WhatsAppQueueModalProps {
   visible: boolean;
   onClose: () => void;
   queue: ExpiringQueueItem[];
+  onMemberSent?: (item: ExpiringQueueItem) => void;
+  batchInfo?: {
+    batchSize: number | string;
+    totalPending: number;
+    remainingAfterBatch?: number;
+  };
+  onProceedNextBatch?: () => void;
 }
 
 export function WhatsAppQueueModal({
   visible,
   onClose,
   queue,
+  onMemberSent,
+  batchInfo,
+  onProceedNextBatch,
 }: WhatsAppQueueModalProps) {
   const { colors, isDark } = useTheme();
   const { brandConfig } = useBranding();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [sentMap, setSentMap] = useState<Record<string, boolean>>({});
   const [skippedMap, setSkippedMap] = useState<Record<string, boolean>>({});
+  const [editedMessages, setEditedMessages] = useState<Record<string, string>>({});
   const [copied, setCopied] = useState(false);
 
   const primaryAccent = brandConfig.primary_color || colors.gold;
@@ -69,19 +82,50 @@ export function WhatsAppQueueModal({
   const isCompleted = currentIndex >= total;
   const currentMember = !isCompleted ? queue[currentIndex] : null;
 
+  const currentMessage = currentMember
+    ? (editedMessages[currentMember.id] ?? currentMember.message)
+    : '';
+
+  const isCustomized = Boolean(
+    currentMember &&
+      editedMessages[currentMember.id] !== undefined &&
+      editedMessages[currentMember.id] !== currentMember.message
+  );
+
   const sentCount = Object.values(sentMap).filter(Boolean).length;
   const skippedCount = Object.values(skippedMap).filter(Boolean).length;
   const progressPercent = Math.round(((sentCount + skippedCount) / total) * 100);
+
+  const handleMessageChange = (newText: string) => {
+    if (!currentMember) return;
+    setEditedMessages((prev) => ({ ...prev, [currentMember.id]: newText }));
+  };
+
+  const handleResetMessage = () => {
+    if (!currentMember) return;
+    haptics.light();
+    setEditedMessages((prev) => {
+      const next = { ...prev };
+      delete next[currentMember.id];
+      return next;
+    });
+  };
 
   const handleSendCurrent = async () => {
     if (!currentMember) return;
     haptics.medium();
 
-    // Mark current as sent
+    // Mark current as sent in modal state
     setSentMap((prev) => ({ ...prev, [currentMember.id]: true }));
 
-    // Open native WhatsApp app
-    await openWhatsAppLink(currentMember.memberMobile, currentMember.message);
+    // Notify parent to record member as processed in persistent store with current message
+    onMemberSent?.({
+      ...currentMember,
+      message: currentMessage,
+    });
+
+    // Open native WhatsApp app with active (possibly edited) message
+    await openWhatsAppLink(currentMember.memberMobile, currentMessage);
 
     // Auto-advance to next member in queue
     setCurrentIndex((prev) => prev + 1);
@@ -103,7 +147,7 @@ export function WhatsAppQueueModal({
 
   const handleCopyMessage = async () => {
     if (!currentMember) return;
-    await Clipboard.setStringAsync(currentMember.message);
+    await Clipboard.setStringAsync(currentMessage);
     haptics.success();
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -330,7 +374,7 @@ export function WhatsAppQueueModal({
                     </View>
                   </View>
 
-                  {/* Message Bubble Preview */}
+                  {/* Message Bubble Preview & Editor */}
                   <View style={styles.messagePreviewSection}>
                     <View style={styles.messageHeaderRow}>
                       <View style={styles.previewTitleRow}>
@@ -341,34 +385,57 @@ export function WhatsAppQueueModal({
                             { color: colors.textSecondary },
                           ]}
                         >
-                          Live WhatsApp Message
+                          WhatsApp Message
                         </Text>
+                        {isCustomized ? (
+                          <View style={styles.customizedBadge}>
+                            <Edit3 size={9} color={colors.warning} />
+                            <Text style={styles.customizedBadgeText}>Customized</Text>
+                          </View>
+                        ) : (
+                          <View style={styles.editableBadge}>
+                            <Text style={styles.editableBadgeText}>Editable</Text>
+                          </View>
+                        )}
                       </View>
 
-                      <TouchableOpacity
-                        onPress={handleCopyMessage}
-                        style={styles.copyButton}
-                        activeOpacity={0.7}
-                      >
-                        {copied ? (
-                          <>
-                            <Check size={12} color="#25D366" />
-                            <Text style={styles.copiedText}>Copied</Text>
-                          </>
-                        ) : (
-                          <>
-                            <Copy size={12} color={colors.textMuted} />
-                            <Text
-                              style={[
-                                styles.copyButtonText,
-                                { color: colors.textMuted },
-                              ]}
-                            >
-                              Copy
-                            </Text>
-                          </>
+                      <View style={styles.headerRightControls}>
+                        {isCustomized && (
+                          <TouchableOpacity
+                            onPress={handleResetMessage}
+                            style={styles.resetButton}
+                            activeOpacity={0.7}
+                          >
+                            <RotateCcw size={11} color={colors.warning} />
+                            <Text style={styles.resetButtonText}>Reset</Text>
+                          </TouchableOpacity>
                         )}
-                      </TouchableOpacity>
+
+                        <TouchableOpacity
+                          onPress={handleCopyMessage}
+                          style={styles.copyButton}
+                          activeOpacity={0.7}
+                        >
+                          {copied ? (
+                            <>
+                              <Check size={12} color="#25D366" />
+                              <Text style={styles.copiedText}>Copied</Text>
+                            </>
+                          ) : (
+                            <>
+                              <Copy size={12} color={colors.textMuted} />
+                              <Text
+                                style={[
+                                  styles.copyButtonText,
+                                  { color: colors.textMuted },
+                                ]}
+                              >
+                                Copy
+                              </Text>
+                            </>
+                          )}
+                        </TouchableOpacity>
+                      </View>
                     </View>
 
                     <View
@@ -378,18 +445,31 @@ export function WhatsAppQueueModal({
                           backgroundColor: isDark
                             ? 'rgba(37, 211, 102, 0.08)'
                             : 'rgba(37, 211, 102, 0.1)',
-                          borderColor: 'rgba(37, 211, 102, 0.25)',
+                          borderColor: isCustomized
+                            ? 'rgba(239, 161, 0, 0.4)'
+                            : 'rgba(37, 211, 102, 0.3)',
                         },
                       ]}
                     >
-                      <Text
+                      <TextInput
+                        multiline
+                        value={currentMessage}
+                        onChangeText={handleMessageChange}
                         style={[
-                          styles.messageText,
+                          styles.messageInput,
                           { color: isDark ? '#D1FAE5' : '#065F46' },
                         ]}
-                      >
-                        {currentMember.message}
-                      </Text>
+                        placeholder="Enter message..."
+                        placeholderTextColor={isDark ? '#065F46' : '#A7F3D0'}
+                      />
+                      <View style={styles.messageFooterRow}>
+                        <Text style={styles.messageFooterText}>
+                          ✏️ Tap inside to edit before sending
+                        </Text>
+                        <Text style={styles.charCountText}>
+                          {currentMessage.length} chars
+                        </Text>
+                      </View>
                     </View>
                   </View>
 
@@ -538,6 +618,38 @@ export function WhatsAppQueueModal({
                     </View>
                   </View>
 
+                  {batchInfo && typeof batchInfo.remainingAfterBatch === 'number' && batchInfo.remainingAfterBatch > 0 ? (
+                    <View
+                      style={[
+                        styles.batchRemainingBanner,
+                        {
+                          backgroundColor: 'rgba(239, 161, 0, 0.1)',
+                          borderColor: 'rgba(239, 161, 0, 0.3)',
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.batchRemainingTitle, { color: primaryAccent }]}>
+                        {batchInfo.remainingAfterBatch} more unsent member{batchInfo.remainingAfterBatch > 1 ? 's' : ''} in queue
+                      </Text>
+                      <Text style={[styles.batchRemainingSub, { color: colors.textSecondary }]}>
+                        Remaining unsent members are now prioritized at the top.
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {onProceedNextBatch && batchInfo && typeof batchInfo.remainingAfterBatch === 'number' && batchInfo.remainingAfterBatch > 0 ? (
+                    <TouchableOpacity
+                      onPress={onProceedNextBatch}
+                      style={[styles.nextBatchBtn, { backgroundColor: primaryAccent }]}
+                      activeOpacity={0.8}
+                    >
+                      <MessageCircle size={16} color="#050505" />
+                      <Text style={styles.nextBatchBtnText}>
+                        Send Next Batch ({Math.min(Number(batchInfo.batchSize) || 30, batchInfo.remainingAfterBatch)})
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+
                   <View style={styles.completionButtonsRow}>
                     <TouchableOpacity
                       onPress={handleResetQueue}
@@ -557,7 +669,7 @@ export function WhatsAppQueueModal({
                           { color: colors.textSecondary },
                         ]}
                       >
-                        Restart
+                        Replay
                       </Text>
                     </TouchableOpacity>
 
@@ -565,11 +677,11 @@ export function WhatsAppQueueModal({
                       onPress={onClose}
                       style={[
                         styles.doneButton,
-                        { backgroundColor: primaryAccent },
+                        { backgroundColor: colors.surfaceLight },
                       ]}
                       activeOpacity={0.8}
                     >
-                      <Text style={styles.doneButtonText}>Done</Text>
+                      <Text style={[styles.doneButtonText, { color: colors.textPrimary }]}>Done</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -804,6 +916,79 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 12,
   },
+  headerRightControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  messageInput: {
+    fontFamily: typography.fonts.inter,
+    fontSize: 12,
+    lineHeight: 18,
+    minHeight: 100,
+    textAlignVertical: 'top',
+    padding: 0,
+  },
+  messageFooterRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(37, 211, 102, 0.15)',
+  },
+  messageFooterText: {
+    fontFamily: typography.fonts.inter,
+    fontSize: 10,
+    color: 'rgba(37, 211, 102, 0.8)',
+  },
+  charCountText: {
+    fontFamily: typography.fonts.interMedium,
+    fontSize: 10,
+    color: 'rgba(37, 211, 102, 0.8)',
+  },
+  customizedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: 'rgba(239, 161, 0, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 161, 0, 0.35)',
+  },
+  customizedBadgeText: {
+    fontSize: 9.5,
+    fontFamily: typography.fonts.interSemiBold,
+    color: '#EFA100',
+  },
+  editableBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: 'rgba(37, 211, 102, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(37, 211, 102, 0.25)',
+  },
+  editableBadgeText: {
+    fontSize: 9.5,
+    fontFamily: typography.fonts.interMedium,
+    color: '#25D366',
+  },
+  resetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  resetButtonText: {
+    fontSize: 11,
+    fontFamily: typography.fonts.interMedium,
+    color: '#EFA100',
+  },
   messageText: {
     fontFamily: typography.fonts.inter,
     fontSize: 12,
@@ -934,6 +1119,42 @@ const styles = StyleSheet.create({
     color: '#050505',
     fontFamily: typography.fonts.interBold,
     fontSize: 12,
+  },
+  batchRemainingBanner: {
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    marginBottom: 12,
+    width: '100%',
+  },
+  batchRemainingTitle: {
+    fontFamily: typography.fonts.interBold,
+    fontSize: 13,
+    marginBottom: 3,
+  },
+  batchRemainingSub: {
+    fontFamily: typography.fonts.inter,
+    fontSize: 11,
+    textAlign: 'center',
+  },
+  nextBatchBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginBottom: 10,
+    width: '100%',
+  },
+  nextBatchBtnText: {
+    color: '#050505',
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '800',
+    fontSize: 14,
+    letterSpacing: 0.5,
   },
   footer: {
     flexDirection: 'row',

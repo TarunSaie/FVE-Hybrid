@@ -34,6 +34,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Plus } from 'lucide-react-native';
 import { buildExpiredAlertMessage, buildExpiryReminderMessage, openWhatsAppLink } from '@/utils/format';
 import { getLocalDateStr } from '@/utils/date';
+import { markRenewalMessageSent } from '@/utils/renewalMessaging';
 import {
   buildMemberPdfData,
   shareMemberPassPdfToWhatsApp,
@@ -275,6 +276,9 @@ export function MembersScreen() {
         member.membership_expiry_date,
         Math.max(0, daysLeft)
       );
+      if (member.membership_id) {
+        markRenewalMessageSent(member.membership_id, member.membership_expiry_date, member.id);
+      }
     } else {
       message = buildExpiredAlertMessage(
         member.full_name,

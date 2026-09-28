@@ -96,6 +96,9 @@ export interface Attendance {
   marked_by: string | null;
   check_in_method: 'QR' | 'MANUAL' | string | null;
   manual_note: string | null;
+  workout_activity?: string | null;
+  workout_recorded_at?: string | null;
+  workout_recorded_by?: string | null;
   created_at: string;
   members?: Member;
 }
@@ -304,5 +307,16 @@ export interface DietPlan {
   members?: Member;
   personal_training?: PersonalTraining;
   trainer?: UserProfile;
+}
+
+export type RenewalBatchSize = 10 | 30 | 50 | 'all';
+
+export interface RenewalMessageRecord {
+  membershipId: string;
+  memberId?: string;
+  expiryDate: string;
+  sentAt: string;
+  sentDate: string;
+  channel?: 'whatsapp' | 'sms' | 'email';
 }
 
