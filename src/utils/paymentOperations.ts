@@ -128,6 +128,56 @@ export async function revertOrDeletePayment(
       .eq('id', targetPlanChange.id);
   }
 
+  // 2b. If NO plan upgrade was involved but the payment has a linked membership,
+  //     keep membership status in sync with the payment deletion.
+  //     Scenario A: Only payment for this membership → EXPIRE the membership.
+  //     Scenario B: Other payments remain (renewal chain) → restore previous dates.
+  if (!planReverted && payment.membership_id) {
+    const { data: remainingPayments } = await supabase
+      .from('payments')
+      .select('id, created_at, memberships(start_date, expiry_date, plan_id, membership_plans(duration_days, visit_day_limit))')
+      .eq('membership_id', payment.membership_id)
+      .neq('id', paymentId)
+      .order('created_at', { ascending: false });
+
+    if (!remainingPayments || remainingPayments.length === 0) {
+      await supabase
+        .from('memberships')
+        .update({
+          status: 'EXPIRED',
+          notes: `[Payment #${resolvedReceiptNo} deleted on ${getLocalDateStr()} — membership deactivated, no valid payment remains]`,
+        })
+        .eq('id', payment.membership_id);
+    } else {
+      const prevPayment = remainingPayments[0] as typeof remainingPayments[0] & {
+        memberships?: {
+          start_date?: string;
+          expiry_date?: string;
+          plan_id?: string;
+          membership_plans?: { duration_days?: number; visit_day_limit?: number | null };
+        };
+      };
+      const prevMembership = prevPayment?.memberships;
+      if (prevMembership?.start_date && prevMembership?.membership_plans?.duration_days) {
+        const restoredExpiry = calculateExpiryDate(
+          prevMembership.start_date,
+          prevMembership.membership_plans.duration_days
+        );
+        const restoredStatus = normalizeMembershipStatus('ACTIVE', restoredExpiry) || 'ACTIVE';
+        await supabase
+          .from('memberships')
+          .update({
+            expiry_date: restoredExpiry,
+            status: restoredStatus,
+            plan_id: prevMembership.plan_id ?? undefined,
+            visit_day_limit: prevMembership.membership_plans.visit_day_limit ?? null,
+            notes: `[Payment #${resolvedReceiptNo} deleted on ${getLocalDateStr()} — dates restored to previous payment]`,
+          })
+          .eq('id', payment.membership_id);
+      }
+    }
+  }
+
   // 3. Check and unlink from Personal Training if applicable
   const { data: linkedPT } = await supabase
     .from('personal_training')

@@ -56,6 +56,11 @@ export function PaymentFormModal({
     isActive: boolean;
   } | null>(null);
 
+  // Manual date overrides — null means use auto-computed renewalInfo
+  const [manualStartDate, setManualStartDate] = useState<string | null>(null);
+  const [manualExpiryDate, setManualExpiryDate] = useState<string | null>(null);
+  const [editingDateField, setEditingDateField] = useState<'start' | 'expiry' | null>(null);
+
   // Detect active plan whenever selected member changes
   useEffect(() => {
     if (!selectedMemberId) {
@@ -162,10 +167,35 @@ export function PaymentFormModal({
 
   const handlePlanSelect = (plan: MembershipPlan) => {
     setSelectedPlanId(plan.id);
+    // Reset manual date overrides when plan changes
+    setManualStartDate(null);
+    setManualExpiryDate(null);
+    setEditingDateField(null);
     const priceStr = String(plan.price);
     amountRef.current = priceStr;
     setAmountValue(priceStr);
   };
+
+  // Derive effective dates — manual overrides take precedence over auto-computed
+  const effectiveStartDate = manualStartDate ?? renewalInfo?.startDate ?? getLocalDateStr();
+  const effectiveExpiryDate = manualExpiryDate ?? renewalInfo?.expiryDate ?? '';
+
+  // Handle manual start date change: recalculate expiry unless expiry is also manually set
+  const handleManualStartChange = (text: string) => {
+    setManualStartDate(text);
+    // Auto-recalculate expiry from new start if plan is selected and expiry not manually overridden
+    if (!manualExpiryDate && selectedPlan && text.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      setManualExpiryDate(calculateExpiryDate(text, selectedPlan.duration_days));
+    }
+  };
+
+  const handleResetDates = () => {
+    setManualStartDate(null);
+    setManualExpiryDate(null);
+    setEditingDateField(null);
+  };
+
+  const isDateOverridden = manualStartDate !== null || manualExpiryDate !== null;
 
   const handleSubmit = async () => {
     if (loading) return;
@@ -225,13 +255,14 @@ export function PaymentFormModal({
         );
 
         // Consecutive renewal: starts the day after current expiry (0 days lost)
-        subStartDate = calculateRenewalStartDate(
+        // Use manual override if set, otherwise compute
+        subStartDate = manualStartDate ?? calculateRenewalStartDate(
           unexpiredMs?.expiry_date,
           memberObj?.joining_date,
           hasAnyMembership
         );
 
-        const expiryStr = calculateExpiryDate(subStartDate, selectedPlan.duration_days);
+        const expiryStr = manualExpiryDate ?? calculateExpiryDate(subStartDate, selectedPlan.duration_days);
 
         // Expire all previous active/expiring memberships so old ones don't conflict
         await supabase
@@ -470,55 +501,137 @@ export function PaymentFormModal({
           </ScrollView>
         </View>
 
-        {/* Consecutive Renewal / Plan Validity Preview Card */}
+        {/* Consecutive Renewal / Plan Validity Preview Card — editable by owner */}
         {renewalInfo && selectedPlan && (
           <View style={[
             styles.renewalInfoCard,
             renewalInfo.isConsecutiveRenewal ? styles.consecutiveRenewalCard : styles.standardRenewalCard,
+            isDateOverridden && styles.overriddenRenewalCard,
           ]}>
+            {/* Header */}
             <View style={styles.renewalHeaderRow}>
               <View style={styles.renewalTitleWithIcon}>
-                {renewalInfo.isConsecutiveRenewal ? (
+                {renewalInfo.isConsecutiveRenewal && !isDateOverridden ? (
                   <Sparkles size={14} color={colors.gold} />
                 ) : (
-                  <Calendar size={14} color={colors.textSecondary} />
+                  <Calendar size={14} color={isDateOverridden ? '#F59E0B' : colors.textSecondary} />
                 )}
                 <Text style={[
                   styles.renewalCardTitle,
-                  renewalInfo.isConsecutiveRenewal && { color: colors.gold }
+                  renewalInfo.isConsecutiveRenewal && !isDateOverridden && { color: colors.gold },
+                  isDateOverridden && { color: '#F59E0B' },
                 ]}>
-                  {renewalInfo.isConsecutiveRenewal
+                  {isDateOverridden
+                    ? 'CUSTOM DATES (MANUAL OVERRIDE)'
+                    : renewalInfo.isConsecutiveRenewal
                     ? 'CONSECUTIVE RENEWAL APPLIED'
                     : 'MEMBERSHIP VALIDITY'}
                 </Text>
               </View>
-              {renewalInfo.isConsecutiveRenewal && (
-                <View style={styles.zeroDaysBadge}>
-                  <Text style={styles.zeroDaysBadgeText}>0 Days Lost</Text>
-                </View>
-              )}
+              <View style={styles.renewalHeaderRight}>
+                {!isDateOverridden && renewalInfo.isConsecutiveRenewal && (
+                  <View style={styles.zeroDaysBadge}>
+                    <Text style={styles.zeroDaysBadgeText}>0 Days Lost</Text>
+                  </View>
+                )}
+                {isDateOverridden && (
+                  <TouchableOpacity onPress={handleResetDates} style={styles.resetDatesBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Text style={styles.resetDatesBtnText}>↺ Reset</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
 
-            {renewalInfo.isConsecutiveRenewal && (
+            {renewalInfo.isConsecutiveRenewal && !isDateOverridden && (
               <Text style={styles.renewalSubtitle}>
                 Current plan valid until {formatDate(renewalInfo.currentExpiry)}. Starts seamlessly the next day.
               </Text>
             )}
+            {isDateOverridden && (
+              <Text style={styles.renewalSubtitle}>
+                Auto-dates overridden. Tap ↺ Reset to restore computed dates.
+              </Text>
+            )}
 
+            {/* Date fields — tappable labels toggle inline editing */}
             <View style={styles.renewalPeriodRow}>
+              {/* START DATE */}
               <View style={styles.periodCol}>
                 <Text style={styles.periodLabel}>STARTS</Text>
-                <Text style={styles.periodValue}>{formatDate(renewalInfo.startDate)}</Text>
+                {editingDateField === 'start' ? (
+                  <FVEInput
+                    value={manualStartDate ?? renewalInfo.startDate}
+                    onChangeText={handleManualStartChange}
+                    placeholder="YYYY-MM-DD"
+                    keyboardType="numeric"
+                    containerStyle={styles.inlineDateInput}
+                    onBlur={() => setEditingDateField(null)}
+                    autoFocus
+                  />
+                ) : (
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (manualStartDate === null) setManualStartDate(renewalInfo.startDate);
+                      setEditingDateField('start');
+                    }}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    style={styles.editableDatePill}
+                  >
+                    <Text style={[
+                      styles.periodValue,
+                      (manualStartDate !== null) && { color: '#F59E0B' },
+                    ]}>
+                      {formatDate(effectiveStartDate)}
+                    </Text>
+                    <Text style={styles.editDateHint}>✎</Text>
+                  </TouchableOpacity>
+                )}
               </View>
+
               <Text style={styles.periodArrow}>→</Text>
+
+              {/* EXPIRY DATE */}
               <View style={styles.periodCol}>
                 <Text style={styles.periodLabel}>EXPIRES</Text>
-                <Text style={styles.periodValue}>{formatDate(renewalInfo.expiryDate)}</Text>
+                {editingDateField === 'expiry' ? (
+                  <FVEInput
+                    value={manualExpiryDate ?? renewalInfo.expiryDate}
+                    onChangeText={(t) => setManualExpiryDate(t)}
+                    placeholder="YYYY-MM-DD"
+                    keyboardType="numeric"
+                    containerStyle={styles.inlineDateInput}
+                    onBlur={() => setEditingDateField(null)}
+                    autoFocus
+                  />
+                ) : (
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (manualExpiryDate === null) setManualExpiryDate(renewalInfo.expiryDate);
+                      setEditingDateField('expiry');
+                    }}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    style={styles.editableDatePill}
+                  >
+                    <Text style={[
+                      styles.periodValue,
+                      (manualExpiryDate !== null) && { color: '#F59E0B' },
+                    ]}>
+                      {formatDate(effectiveExpiryDate)}
+                    </Text>
+                    <Text style={styles.editDateHint}>✎</Text>
+                  </TouchableOpacity>
+                )}
               </View>
+
               <View style={styles.durationBadge}>
                 <Text style={styles.durationBadgeText}>{selectedPlan.duration_days}d</Text>
               </View>
             </View>
+
+            {/* Hint strip */}
+            {!isDateOverridden && (
+              <Text style={styles.editDateHintStrip}>Tap a date to override it manually</Text>
+            )}
           </View>
         )}
 
@@ -846,6 +959,51 @@ const getPaymentFormStyles = (colors: ThemeColors, isDark: boolean) =>
     standardRenewalCard: {
       backgroundColor: colors.bgSecondary,
       borderColor: colors.borderDefault,
+    },
+    overriddenRenewalCard: {
+      backgroundColor: isDark ? 'rgba(245, 158, 11, 0.07)' : 'rgba(245, 158, 11, 0.09)',
+      borderColor: 'rgba(245, 158, 11, 0.45)',
+    },
+    renewalHeaderRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    resetDatesBtn: {
+      backgroundColor: isDark ? 'rgba(245, 158, 11, 0.15)' : 'rgba(245, 158, 11, 0.12)',
+      borderWidth: 1,
+      borderColor: 'rgba(245, 158, 11, 0.4)',
+      borderRadius: 6,
+      paddingHorizontal: 7,
+      paddingVertical: 3,
+    },
+    resetDatesBtnText: {
+      color: '#F59E0B',
+      fontSize: 11,
+      fontFamily: typography.fonts.rajdhaniMedium,
+      fontWeight: '700',
+    },
+    editableDatePill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    editDateHint: {
+      color: colors.textMuted,
+      fontSize: 11,
+      opacity: 0.6,
+    },
+    editDateHintStrip: {
+      marginTop: 8,
+      fontSize: 10,
+      color: colors.textMuted,
+      fontFamily: typography.fonts.inter,
+      fontStyle: 'italic',
+      opacity: 0.7,
+    },
+    inlineDateInput: {
+      marginBottom: 0,
+      marginTop: 2,
     },
     renewalHeaderRow: {
       flexDirection: 'row',
