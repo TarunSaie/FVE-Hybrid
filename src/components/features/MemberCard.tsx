@@ -10,7 +10,7 @@ import {
   ActivityIndicator,
   Linking,
 } from 'react-native';
-import { ChevronRight, Phone, Calendar, MessageCircle } from 'lucide-react-native';
+import { ChevronRight, Phone, Calendar, MessageCircle, FileText } from 'lucide-react-native';
 import { MemberWithMembership } from '@/types';
 import { FVEBadge } from '@/components/common/FVEBadge';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -21,13 +21,22 @@ import { haptics } from '@/utils/haptics';
 interface MemberCardProps {
   member: MemberWithMembership;
   onPress: () => void;
+  onChat?: (member: MemberWithMembership) => void;
   onShare?: (member: MemberWithMembership) => void;
   isSharing?: boolean;
   onWhatsAppAlert?: (member: MemberWithMembership) => void;
   onAvatarPress?: (member: MemberWithMembership) => void;
 }
 
-export function MemberCard({ member, onPress, onShare, isSharing, onWhatsAppAlert, onAvatarPress }: MemberCardProps) {
+export function MemberCard({
+  member,
+  onPress,
+  onChat,
+  onShare,
+  isSharing,
+  onWhatsAppAlert,
+  onAvatarPress,
+}: MemberCardProps) {
   const { colors, isDark } = useTheme();
   const initial = member.full_name?.charAt(0)?.toUpperCase() || '?';
   const scale = useRef(new Animated.Value(1)).current;
@@ -180,6 +189,46 @@ export function MemberCard({ member, onPress, onShare, isSharing, onWhatsAppAler
 
           {/* Actions & Chevron */}
           <View style={styles.rightActions}>
+            {/* Direct WhatsApp Chat for EVERY member */}
+            {onChat ? (
+              <TouchableOpacity
+                onPress={(e) => {
+                  e.stopPropagation();
+                  haptics.medium();
+                  onChat(member);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={`Chat with ${member.full_name} on WhatsApp`}
+                activeOpacity={0.75}
+                hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                style={styles.whatsappChatBtn}
+              >
+                <MessageCircle size={13} color="#25D366" />
+                <Text style={styles.whatsappChatText}>Chat</Text>
+              </TouchableOpacity>
+            ) : null}
+
+            {/* Proactive Renewal Reminder / Expiry Alert Button */}
+            {(isExpired || isExpiringSoon) && onWhatsAppAlert ? (
+              <TouchableOpacity
+                onPress={(e) => {
+                  e.stopPropagation();
+                  haptics.medium();
+                  onWhatsAppAlert(member);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={isExpiringSoon ? `Send renewal reminder to ${member.full_name}` : `Send expiration alert to ${member.full_name}`}
+                activeOpacity={0.8}
+                hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                style={styles.whatsappAlertBtn}
+              >
+                <Text style={styles.whatsappAlertText}>
+                  {isExpiringSoon ? 'Remind' : 'Alert'}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+
+            {/* Member Pass PDF Share Button */}
             {onShare ? (
               <TouchableOpacity
                 onPress={(e) => {
@@ -188,8 +237,8 @@ export function MemberCard({ member, onPress, onShare, isSharing, onWhatsAppAler
                   onShare(member);
                 }}
                 disabled={isSharing}
-                accessibilityLabel={`Share ${member.full_name}'s member pass on WhatsApp`}
-                accessibilityHint="Opens the registered member's WhatsApp chat with their PDF pass attached"
+                accessibilityLabel={`Share ${member.full_name}'s member pass PDF`}
+                accessibilityHint="Generates athlete pass PDF and opens share sheet"
                 activeOpacity={0.7}
                 hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
                 style={[styles.shareCardBtn, { backgroundColor: colors.goldMuted, borderColor: colors.goldBorder }]}
@@ -197,27 +246,11 @@ export function MemberCard({ member, onPress, onShare, isSharing, onWhatsAppAler
                 {isSharing ? (
                   <ActivityIndicator size={12} color={colors.gold} />
                 ) : (
-                  <MessageCircle size={15} color="#25D366" />
+                  <FileText size={13} color={colors.gold} />
                 )}
               </TouchableOpacity>
             ) : null}
 
-            {(isExpired || isExpiringSoon) && onWhatsAppAlert ? (
-              <TouchableOpacity
-                onPress={() => {
-                  haptics.medium();
-                  onWhatsAppAlert(member);
-                }}
-                activeOpacity={0.8}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                style={styles.whatsappAlertBtn}
-              >
-                <MessageCircle size={13} color="#25D366" />
-                <Text style={styles.whatsappAlertText}>
-                  {isExpiringSoon ? 'Remind' : 'Alert'}
-                </Text>
-              </TouchableOpacity>
-            ) : null}
             <ChevronRight size={18} color={isExpired ? colors.error : colors.gold} style={styles.chevron} />
           </View>
         </View>
@@ -340,15 +373,33 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  whatsappAlertBtn: {
+  whatsappChatBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(37, 211, 102, 0.14)',
+    backgroundColor: 'rgba(37, 211, 102, 0.12)',
     borderWidth: 1,
     borderColor: 'rgba(37, 211, 102, 0.4)',
     borderRadius: 8,
     paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  whatsappChatText: {
+    color: '#25D366',
+    fontSize: 11,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  whatsappAlertBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(37, 211, 102, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(37, 211, 102, 0.3)',
+    borderRadius: 8,
+    paddingHorizontal: 7,
     paddingVertical: 6,
   },
   whatsappAlertText: {

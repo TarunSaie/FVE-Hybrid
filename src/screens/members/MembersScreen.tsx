@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   FlatList,
+  Linking,
   RefreshControl,
   TouchableOpacity,
   ScrollView,
@@ -289,6 +290,24 @@ export function MembersScreen() {
     openWhatsAppLink(member.mobile, message);
   };
 
+  const handleChat = useCallback((member: MemberWithMembership) => {
+    if (!member.mobile) {
+      haptics.error();
+      Alert.alert(
+        'No Mobile Number',
+        `No mobile number is recorded for ${member.full_name || 'this member'}. Please update their profile first.`
+      );
+      return;
+    }
+    haptics.light();
+    const cleanPhone = member.mobile.replace(/\D/g, '');
+    const phone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+    const url = `https://wa.me/${phone}`;
+    Linking.openURL(url).catch(() => {
+      Alert.alert('Unable to Open WhatsApp', 'WhatsApp is not installed or could not be opened on this device.');
+    });
+  }, []);
+
   const handleShareMember = async (member: MemberWithMembership) => {
     if (sharingMemberId) return;
     if (!member.mobile) {
@@ -565,6 +584,7 @@ export function MembersScreen() {
               onShare={handleShareMember}
               isSharing={sharingMemberId === item.id}
               onWhatsAppAlert={handleSendWhatsAppAlert}
+              onChat={handleChat}
               onAvatarPress={(m) => setPreviewMember(m)}
             />
           )}
