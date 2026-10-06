@@ -229,7 +229,7 @@ export interface PTSession {
   personal_training?: PersonalTraining;
 }
 
-export type PlanChangeStatus = 'PENDING' | 'APPROVED' | 'COMPLETED' | 'REJECTED' | 'CANCELLED';
+export type PlanChangeStatus = 'PENDING' | 'APPROVED' | 'COMPLETED' | 'REJECTED' | 'CANCELLED' | 'REVERTED';
 export type PlanChangeValidityMode = 'FROM_START_DATE' | 'FROM_EXPIRY' | 'FROM_TODAY' | 'CUSTOM';
 
 export interface PlanChangeRequest {

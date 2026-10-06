@@ -29,17 +29,19 @@ import {
   ChevronRight,
   Share2,
   FileSpreadsheet,
-  Clock,
   AlertTriangle,
   UserX,
+  MessageCircle,
+  Clock,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEInput } from '@/components/common/FVEInput';
+import { FVEModal } from '@/components/common/FVEModal';
 import { AttendanceItem } from '@/components/features/AttendanceItem';
 import { FVEEmptyState } from '@/components/common/FVEEmptyState';
 import { FVELogoLoader } from '@/components/common/FVELogoLoader';
-import { FVEModal } from '@/components/common/FVEModal';
 import { AttendanceCalendarModal } from '@/components/features/AttendanceCalendarModal';
+import { AttendanceFollowUpModal } from '@/components/features/AttendanceFollowUpModal';
 import { Attendance, Member, Membership } from '@/types';
 import { supabase } from '@/api/supabase';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -67,6 +69,9 @@ interface MonitoringMember {
   checkedInToday: boolean;
   checkInTime?: string | null;
   checkInMethod?: string | null;
+  lastCheckInDate?: string | null;
+  consecutiveAbsentDays: number;
+  isContinuousAbsent: boolean;
   activeMembership?: Membership | null;
 }
 
@@ -84,8 +89,10 @@ export function AttendanceScreen() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [methodFilter, setMethodFilter] = useState<CheckInMethod>('ALL');
 
-  // Member Monitoring Search
+  // Member Monitoring Search & Filters
   const [monitorSearch, setMonitorSearch] = useState('');
+  const [monitoringFilter, setMonitoringFilter] = useState<'ALL' | 'PRESENT' | 'ABSENT' | 'CONTINUOUS_ABSENT'>('ALL');
+  const [followUpMember, setFollowUpMember] = useState<MonitoringMember | null>(null);
 
   // Modals
   const [showManualModal, setShowManualModal] = useState(false);
@@ -162,15 +169,19 @@ export function AttendanceScreen() {
   const { data: monitoringMembers = [], isLoading: monitoringLoading, refetch: refetchMonitoring } = useQuery({
     queryKey: ['monitoring-attendance-members', todayStr],
     queryFn: async () => {
-      const [membersRes, attendanceTodayRes] = await Promise.all([
+      const [membersRes, attendanceTodayRes, allAttendanceRes] = await Promise.all([
         supabase
           .from('members')
-          .select('id, full_name, member_id, mobile, profile_photo, qr_code, memberships(id, start_date, expiry_date, status, visit_day_limit, visit_days_used, membership_plans(name))')
+          .select('id, full_name, member_id, mobile, profile_photo, qr_code, created_at, memberships(id, start_date, expiry_date, status, visit_day_limit, visit_days_used, membership_plans(name))')
           .order('full_name', { ascending: true }),
         supabase
           .from('attendance')
           .select('id, member_id, check_in_time, check_in_method')
           .eq('date', todayStr),
+        supabase
+          .from('attendance')
+          .select('member_id, date, check_in_time')
+          .order('date', { ascending: false }),
       ]);
 
       if (membersRes.error) throw membersRes.error;
@@ -183,6 +194,16 @@ export function AttendanceScreen() {
         });
       });
 
+      const latestAttendanceMap = new Map<string, { date: string; check_in_time: string }>();
+      (allAttendanceRes.data || []).forEach(a => {
+        if (!latestAttendanceMap.has(a.member_id)) {
+          latestAttendanceMap.set(a.member_id, {
+            date: a.date,
+            check_in_time: a.check_in_time,
+          });
+        }
+      });
+
       const list: MonitoringMember[] = (membersRes.data || []).map(m => {
         const msList = (m.memberships || []).sort((a: { expiry_date?: string }, b: { expiry_date?: string }) =>
           (b.expiry_date || '').localeCompare(a.expiry_date || '')
@@ -192,6 +213,26 @@ export function AttendanceScreen() {
         ) || msList[0] || null;
 
         const att = attendanceMap.get(m.id);
+        const isPresentToday = Boolean(att);
+        const latestAtt = latestAttendanceMap.get(m.id);
+
+        let consecutiveAbsentDays = 0;
+        if (!isPresentToday) {
+          if (latestAtt?.date) {
+            const diffMs = new Date(todayStr).getTime() - new Date(latestAtt.date).getTime();
+            consecutiveAbsentDays = Math.max(1, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+          } else if (activeMs?.start_date) {
+            const diffMs = new Date(todayStr).getTime() - new Date(activeMs.start_date).getTime();
+            consecutiveAbsentDays = Math.max(1, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+          } else if (m.created_at) {
+            const diffMs = new Date(todayStr).getTime() - new Date(m.created_at).getTime();
+            consecutiveAbsentDays = Math.max(1, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+          } else {
+            consecutiveAbsentDays = 3;
+          }
+        }
+
+        const isContinuousAbsent = !isPresentToday && consecutiveAbsentDays >= 3;
 
         return {
           id: m.id,
@@ -201,9 +242,12 @@ export function AttendanceScreen() {
           profile_photo: m.profile_photo,
           qr_code: m.qr_code,
           plan_name: (activeMs?.membership_plans as { name?: string } | null)?.name || null,
-          checkedInToday: Boolean(att),
+          checkedInToday: isPresentToday,
           checkInTime: att?.check_in_time || null,
           checkInMethod: att?.check_in_method || null,
+          lastCheckInDate: latestAtt?.date || null,
+          consecutiveAbsentDays,
+          isContinuousAbsent,
           activeMembership: (activeMs as unknown as Membership) || null,
         };
       });
@@ -216,17 +260,41 @@ export function AttendanceScreen() {
 
   // Filtered monitoring members
   const filteredMonitoring = useMemo(() => {
+    let list = monitoringMembers;
+    if (monitoringFilter === 'PRESENT') {
+      list = list.filter(m => m.checkedInToday);
+    } else if (monitoringFilter === 'ABSENT') {
+      list = list.filter(m => !m.checkedInToday);
+    } else if (monitoringFilter === 'CONTINUOUS_ABSENT') {
+      list = list.filter(m => m.isContinuousAbsent);
+    }
+
     const term = monitorSearch.trim().toLowerCase();
-    if (!term) return monitoringMembers;
-    return monitoringMembers.filter(m =>
+    if (!term) return list;
+    return list.filter(m =>
       m.full_name.toLowerCase().includes(term) ||
       (m.member_id || '').toLowerCase().includes(term) ||
       (m.mobile || '').includes(term)
     );
-  }, [monitoringMembers, monitorSearch]);
+  }, [monitoringMembers, monitorSearch, monitoringFilter]);
 
   const presentCount = monitoringMembers.filter(m => m.checkedInToday).length;
-  const absentCount = monitoringMembers.length - presentCount;
+  const absentCount = monitoringMembers.filter(m => !m.checkedInToday).length;
+  const continuousAbsentCount = monitoringMembers.filter(m => m.isContinuousAbsent).length;
+  const totalCount = monitoringMembers.length;
+
+  const presentPreview = useMemo(
+    () => monitoringMembers.filter(m => m.checkedInToday).slice(0, 2).map(m => m.full_name),
+    [monitoringMembers]
+  );
+  const absentPreview = useMemo(
+    () => monitoringMembers.filter(m => !m.checkedInToday).slice(0, 2).map(m => m.full_name),
+    [monitoringMembers]
+  );
+  const continuousPreview = useMemo(
+    () => monitoringMembers.filter(m => m.isContinuousAbsent).slice(0, 2).map(m => m.full_name),
+    [monitoringMembers]
+  );
 
   // Fetch all active members for manual check-in modal
   const { data: allMembers } = useQuery({
@@ -645,36 +713,130 @@ export function AttendanceScreen() {
          ───────────────────────────────────────────────────────────── */}
       {mode === 'MONITORING' && (
         <View style={{ flex: 1 }}>
-          {/* Summary Strip */}
-          <View style={styles.monitorSummaryStrip}>
-            <View style={styles.summaryBadgeBox}>
-              <View style={styles.summaryBadgeTopRow}>
-                <Users size={13} color={colors.gold} />
-                <Text style={styles.summaryBadgeVal}>{monitoringMembers.length}</Text>
+          {/* 4 Attendance Status Tiles */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.monitorTilesContainer}
+          >
+            {/* Tile 1: Total Attendance */}
+            <TouchableOpacity
+              onPress={() => {
+                haptics.selection();
+                setMonitoringFilter('ALL');
+              }}
+              style={[
+                styles.monitorTile,
+                monitoringFilter === 'ALL' && styles.monitorTileActiveGold,
+              ]}
+              activeOpacity={0.8}
+            >
+              <View style={styles.monitorTileHeader}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                  <Users size={13} color={colors.gold} />
+                  <Text style={styles.monitorTileTitle}>TOTAL</Text>
+                </View>
+                {monitoringFilter === 'ALL' && (
+                  <View style={styles.activePillGold}>
+                    <Text style={styles.activePillGoldText}>Active</Text>
+                  </View>
+                )}
               </View>
-              <Text style={styles.summaryBadgeLabel} numberOfLines={1}>Total</Text>
-            </View>
-
-            <View style={[styles.summaryBadgeBox, styles.summaryBadgeBoxPresent]}>
-              <View style={styles.summaryBadgeTopRow}>
-                <CheckCircle size={13} color={colors.success} />
-                <Text style={[styles.summaryBadgeVal, { color: colors.success }]}>{presentCount}</Text>
-              </View>
-              <Text style={[styles.summaryBadgeLabel, { color: isDark ? '#86EFAC' : '#15803D' }]} numberOfLines={1}>
-                Present Today
+              <Text style={styles.monitorTileCount}>{totalCount}</Text>
+              <Text style={styles.monitorTileSubtitle}>All enrolled athletes</Text>
+              <Text numberOfLines={1} style={styles.monitorTilePreview}>
+                Present & absent
               </Text>
-            </View>
+            </TouchableOpacity>
 
-            <View style={[styles.summaryBadgeBox, styles.summaryBadgeBoxAbsent]}>
-              <View style={styles.summaryBadgeTopRow}>
-                <UserX size={13} color="#F87171" />
-                <Text style={[styles.summaryBadgeVal, { color: '#F87171' }]}>{absentCount}</Text>
+            {/* Tile 2: Present Today */}
+            <TouchableOpacity
+              onPress={() => {
+                haptics.selection();
+                setMonitoringFilter('PRESENT');
+              }}
+              style={[
+                styles.monitorTile,
+                monitoringFilter === 'PRESENT' && styles.monitorTileActiveGreen,
+              ]}
+              activeOpacity={0.8}
+            >
+              <View style={styles.monitorTileHeader}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                  <CheckCircle size={13} color={colors.success} />
+                  <Text style={[styles.monitorTileTitle, { color: colors.success }]}>PRESENT</Text>
+                </View>
+                {monitoringFilter === 'PRESENT' && (
+                  <View style={styles.activePillGreen}>
+                    <Text style={styles.activePillGreenText}>Active</Text>
+                  </View>
+                )}
               </View>
-              <Text style={[styles.summaryBadgeLabel, { color: isDark ? '#FCA5A5' : '#DC2626' }]} numberOfLines={1}>
-                Absent Today
+              <Text style={[styles.monitorTileCount, { color: colors.success }]}>{presentCount}</Text>
+              <Text style={styles.monitorTileSubtitle}>Marked present today</Text>
+              <Text numberOfLines={1} style={styles.monitorTilePreview}>
+                {presentPreview.length > 0 ? presentPreview.join(', ') : 'No check-ins yet'}
               </Text>
-            </View>
-          </View>
+            </TouchableOpacity>
+
+            {/* Tile 3: Absent Today */}
+            <TouchableOpacity
+              onPress={() => {
+                haptics.selection();
+                setMonitoringFilter('ABSENT');
+              }}
+              style={[
+                styles.monitorTile,
+                monitoringFilter === 'ABSENT' && styles.monitorTileActiveAmber,
+              ]}
+              activeOpacity={0.8}
+            >
+              <View style={styles.monitorTileHeader}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                  <UserX size={13} color="#F59E0B" />
+                  <Text style={[styles.monitorTileTitle, { color: '#F59E0B' }]}>ABSENT</Text>
+                </View>
+                {monitoringFilter === 'ABSENT' && (
+                  <View style={styles.activePillAmber}>
+                    <Text style={styles.activePillAmberText}>Active</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={[styles.monitorTileCount, { color: '#F59E0B' }]}>{absentCount}</Text>
+              <Text style={styles.monitorTileSubtitle}>Not checked in today</Text>
+              <Text numberOfLines={1} style={styles.monitorTilePreview}>
+                {absentPreview.length > 0 ? absentPreview.join(', ') : 'Everyone present'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Tile 4: Continuous Absence (3+ Days) */}
+            <TouchableOpacity
+              onPress={() => {
+                haptics.selection();
+                setMonitoringFilter('CONTINUOUS_ABSENT');
+              }}
+              style={[
+                styles.monitorTile,
+                monitoringFilter === 'CONTINUOUS_ABSENT' && styles.monitorTileActiveRed,
+              ]}
+              activeOpacity={0.8}
+            >
+              <View style={styles.monitorTileHeader}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                  <AlertTriangle size={13} color="#EF4444" />
+                  <Text style={[styles.monitorTileTitle, { color: '#EF4444' }]}>3+ DAYS ABSENT</Text>
+                </View>
+                <View style={styles.badge3D}>
+                  <Text style={styles.badge3DText}>Alert</Text>
+                </View>
+              </View>
+              <Text style={[styles.monitorTileCount, { color: '#EF4444' }]}>{continuousAbsentCount}</Text>
+              <Text style={styles.monitorTileSubtitle}>Continuous absentees</Text>
+              <Text numberOfLines={1} style={[styles.monitorTilePreview, { color: '#FCA5A5' }]}>
+                {continuousPreview.length > 0 ? continuousPreview.join(', ') : 'No 3+ day absentees'}
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
 
           {/* Search Member Roster */}
           <View style={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6 }}>
@@ -742,15 +904,30 @@ export function AttendanceScreen() {
                       </View>
 
                       {/* Status Indicator */}
-                      <View style={item.checkedInToday ? styles.presentPill : styles.absentPill}>
+                      <View
+                        style={
+                          item.checkedInToday
+                            ? styles.presentPill
+                            : item.isContinuousAbsent
+                            ? styles.continuousAbsentPill
+                            : styles.absentPill
+                        }
+                      >
                         {item.checkedInToday ? (
                           <>
                             <CheckCircle size={11} color={colors.success} />
                             <Text style={styles.presentPillText}>PRESENT</Text>
                           </>
+                        ) : item.isContinuousAbsent ? (
+                          <>
+                            <AlertTriangle size={11} color="#EF4444" />
+                            <Text style={styles.continuousAbsentPillText}>
+                              {item.consecutiveAbsentDays}D ABSENT
+                            </Text>
+                          </>
                         ) : (
                           <>
-                            <UserX size={11} color="#EF4444" />
+                            <UserX size={11} color="#F59E0B" />
                             <Text style={styles.absentPillText}>ABSENT</Text>
                           </>
                         )}
@@ -760,15 +937,29 @@ export function AttendanceScreen() {
                     {/* Action Buttons Row */}
                     <View style={styles.monitorActionsRow}>
                       {!item.checkedInToday ? (
-                        <TouchableOpacity
-                          onPress={() => handleManualCheckIn(item, todayStr)}
-                          disabled={manualLoading}
-                          style={styles.monitorCheckInBtn}
-                          activeOpacity={0.85}
-                        >
-                          <UserCheck size={14} color="#050505" />
-                          <Text style={styles.monitorCheckInBtnText}>Check In</Text>
-                        </TouchableOpacity>
+                        <>
+                          <TouchableOpacity
+                            onPress={() => handleManualCheckIn(item, todayStr)}
+                            disabled={manualLoading}
+                            style={styles.monitorCheckInBtn}
+                            activeOpacity={0.85}
+                          >
+                            <UserCheck size={14} color="#050505" />
+                            <Text style={styles.monitorCheckInBtnText}>Check In</Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            onPress={() => {
+                              haptics.medium();
+                              setFollowUpMember(item);
+                            }}
+                            style={styles.monitorFollowUpBtn}
+                            activeOpacity={0.85}
+                          >
+                            <MessageCircle size={13} color="#FFFFFF" />
+                            <Text style={styles.monitorFollowUpBtnText}>Follow Up</Text>
+                          </TouchableOpacity>
+                        </>
                       ) : (
                         <View style={styles.checkedInTimeBadge}>
                           <Clock size={12} color={colors.success} />
@@ -925,6 +1116,22 @@ export function AttendanceScreen() {
           member={selectedMemberForCalendar}
         />
       )}
+
+      {/* Attendance Follow-up Modal */}
+      <AttendanceFollowUpModal
+        visible={Boolean(followUpMember)}
+        onClose={() => setFollowUpMember(null)}
+        member={followUpMember}
+        attendanceInfo={
+          followUpMember
+            ? {
+                checkedInToday: followUpMember.checkedInToday,
+                consecutiveAbsentDays: followUpMember.consecutiveAbsentDays,
+                lastCheckInDate: followUpMember.lastCheckInDate,
+              }
+            : null
+        }
+      />
     </View>
   );
 }
@@ -1431,5 +1638,154 @@ const getAttendanceStyles = (colors: ThemeColors, isDark: boolean) =>
       fontSize: typography.sizes.sm,
       fontFamily: typography.fonts.rajdhani,
       fontWeight: '800',
+    },
+    monitorTilesContainer: {
+      paddingHorizontal: 16,
+      paddingTop: 12,
+      paddingBottom: 4,
+      gap: 10,
+    },
+    monitorTile: {
+      width: 155,
+      backgroundColor: colors.cardBackground,
+      borderWidth: 1,
+      borderColor: colors.borderDark,
+      borderRadius: 14,
+      padding: 12,
+      justifyContent: 'space-between',
+    },
+    monitorTileActiveGold: {
+      borderColor: colors.gold,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : 'rgba(217, 130, 0, 0.12)',
+    },
+    monitorTileActiveGreen: {
+      borderColor: colors.success,
+      backgroundColor: 'rgba(34, 197, 94, 0.12)',
+    },
+    monitorTileActiveAmber: {
+      borderColor: '#F59E0B',
+      backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    },
+    monitorTileActiveRed: {
+      borderColor: '#EF4444',
+      backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    },
+    monitorTileHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 4,
+    },
+    monitorTileTitle: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.gold,
+      letterSpacing: 0.5,
+    },
+    activePillGold: {
+      backgroundColor: colors.gold,
+      paddingHorizontal: 5,
+      paddingVertical: 1,
+      borderRadius: 4,
+    },
+    activePillGoldText: {
+      color: '#050505',
+      fontSize: 9,
+      fontWeight: '800',
+      fontFamily: typography.fonts.rajdhani,
+    },
+    activePillGreen: {
+      backgroundColor: colors.success,
+      paddingHorizontal: 5,
+      paddingVertical: 1,
+      borderRadius: 4,
+    },
+    activePillGreenText: {
+      color: '#050505',
+      fontSize: 9,
+      fontWeight: '800',
+      fontFamily: typography.fonts.rajdhani,
+    },
+    activePillAmber: {
+      backgroundColor: '#F59E0B',
+      paddingHorizontal: 5,
+      paddingVertical: 1,
+      borderRadius: 4,
+    },
+    activePillAmberText: {
+      color: '#050505',
+      fontSize: 9,
+      fontWeight: '800',
+      fontFamily: typography.fonts.rajdhani,
+    },
+    badge3D: {
+      backgroundColor: 'rgba(239, 68, 68, 0.25)',
+      borderWidth: 1,
+      borderColor: '#EF4444',
+      paddingHorizontal: 5,
+      paddingVertical: 1,
+      borderRadius: 4,
+    },
+    badge3DText: {
+      color: '#EF4444',
+      fontSize: 9,
+      fontWeight: '800',
+      fontFamily: typography.fonts.rajdhani,
+    },
+    monitorTileCount: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 26,
+      fontWeight: '800',
+      color: colors.gold,
+    },
+    monitorTileSubtitle: {
+      fontSize: 10,
+      color: colors.textMuted,
+      fontFamily: typography.fonts.inter,
+      marginTop: 1,
+    },
+    monitorTilePreview: {
+      fontSize: 10,
+      color: colors.textSecondary,
+      fontFamily: typography.fonts.inter,
+      marginTop: 6,
+      paddingTop: 6,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.borderDark,
+    },
+    monitorFollowUpBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 4,
+      backgroundColor: '#25D366',
+      borderRadius: 10,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+    },
+    monitorFollowUpBtnText: {
+      color: '#FFFFFF',
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '800',
+    },
+    continuousAbsentPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: 'rgba(239, 68, 68, 0.18)',
+      borderWidth: 1,
+      borderColor: '#EF4444',
+      borderRadius: 20,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+    },
+    continuousAbsentPillText: {
+      color: '#EF4444',
+      fontSize: 9.5,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '800',
+      letterSpacing: 0.5,
     },
   });

@@ -1,12 +1,18 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, Alert, TouchableOpacity, ScrollView } from 'react-native';
-import { Search, X, Check, User } from 'lucide-react-native';
+import { Search, X, Check, User, Calendar, Sparkles } from 'lucide-react-native';
 import { FVEModal } from '@/components/common/FVEModal';
 import { FVEInput } from '@/components/common/FVEInput';
 import { FVEButton } from '@/components/common/FVEButton';
 import { Member, MembershipPlan, PAYMENT_METHODS } from '@/types';
 import { supabase } from '@/api/supabase';
-import { getLocalDateStr, calculateExpiryDate, formatDate } from '@/utils/date';
+import {
+  getLocalDateStr,
+  calculateExpiryDate,
+  formatDate,
+  getNextDayStr,
+  calculateRenewalStartDate,
+} from '@/utils/date';
 import { formatCurrency, generateReceiptNumber, getFriendlyErrorMessage } from '@/utils/format';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQueryClient } from '@tanstack/react-query';
@@ -127,6 +133,33 @@ export function PaymentFormModal({
     );
   }, [members, memberSearch]);
 
+  const selectedPlan = useMemo(
+    () => plans.find(p => p.id === selectedPlanId),
+    [plans, selectedPlanId]
+  );
+
+  const renewalInfo = useMemo(() => {
+    if (!selectedPlan) return null;
+    const today = getLocalDateStr();
+    const hasUnexpiredPlan = !!(
+      activePlanInfo?.isActive &&
+      activePlanInfo.expiryDate &&
+      activePlanInfo.expiryDate >= today
+    );
+    const startDate = hasUnexpiredPlan
+      ? getNextDayStr(activePlanInfo.expiryDate)
+      : selectedMember?.joining_date && !activePlanInfo
+      ? selectedMember.joining_date
+      : today;
+    const expiryDate = calculateExpiryDate(startDate, selectedPlan.duration_days);
+    return {
+      isConsecutiveRenewal: hasUnexpiredPlan,
+      startDate,
+      expiryDate,
+      currentExpiry: activePlanInfo?.expiryDate,
+    };
+  }, [selectedPlan, activePlanInfo, selectedMember]);
+
   const handlePlanSelect = (plan: MembershipPlan) => {
     setSelectedPlanId(plan.id);
     const priceStr = String(plan.price);
@@ -145,15 +178,15 @@ export function PaymentFormModal({
       return;
     }
 
-    // If member already has an active membership into the future, warn owner
-    if (activePlanInfo?.isActive && selectedPlanId) {
+    // If member already has an active membership into the future, inform owner about consecutive renewal
+    if (renewalInfo?.isConsecutiveRenewal && selectedPlan) {
       Alert.alert(
-        'Active Membership Exists',
-        `${selectedMember?.full_name || 'This member'} already has an active membership (${activePlanInfo.name}) valid until ${formatDate(activePlanInfo.expiryDate)}.\n\nDo you want to proceed with recording this renewal payment?`,
+        'Consecutive Renewal',
+        `${selectedMember?.full_name || 'This member'} has an active membership (${activePlanInfo?.name}) valid until ${formatDate(activePlanInfo?.expiryDate)}.\n\nRenewal will seamlessly start the next day (${formatDate(renewalInfo.startDate)}) and run until ${formatDate(renewalInfo.expiryDate)} (${selectedPlan.duration_days} days).\n\nNo membership days will be lost. Proceed?`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
-            text: 'Yes, Record Payment',
+            text: 'Yes, Record Renewal',
             onPress: () => processPaymentSubmission(),
           },
         ]
@@ -187,14 +220,16 @@ export function PaymentFormModal({
           .order('expiry_date', { ascending: false });
 
         const hasAnyMembership = (existingMs || []).length > 0;
+        const unexpiredMs = (existingMs || []).find(
+          m => (m.status === 'ACTIVE' || m.status === 'EXPIRING_SOON') && m.expiry_date && m.expiry_date >= today
+        );
 
-        // ONLY default to joining date if this is brand new member with NO membership history at all
-        if (!hasAnyMembership && memberObj?.joining_date) {
-          subStartDate = memberObj.joining_date;
-        } else {
-          // For renewals: start from today
-          subStartDate = today;
-        }
+        // Consecutive renewal: starts the day after current expiry (0 days lost)
+        subStartDate = calculateRenewalStartDate(
+          unexpiredMs?.expiry_date,
+          memberObj?.joining_date,
+          hasAnyMembership
+        );
 
         const expiryStr = calculateExpiryDate(subStartDate, selectedPlan.duration_days);
 
@@ -434,6 +469,58 @@ export function PaymentFormModal({
             })}
           </ScrollView>
         </View>
+
+        {/* Consecutive Renewal / Plan Validity Preview Card */}
+        {renewalInfo && selectedPlan && (
+          <View style={[
+            styles.renewalInfoCard,
+            renewalInfo.isConsecutiveRenewal ? styles.consecutiveRenewalCard : styles.standardRenewalCard,
+          ]}>
+            <View style={styles.renewalHeaderRow}>
+              <View style={styles.renewalTitleWithIcon}>
+                {renewalInfo.isConsecutiveRenewal ? (
+                  <Sparkles size={14} color={colors.gold} />
+                ) : (
+                  <Calendar size={14} color={colors.textSecondary} />
+                )}
+                <Text style={[
+                  styles.renewalCardTitle,
+                  renewalInfo.isConsecutiveRenewal && { color: colors.gold }
+                ]}>
+                  {renewalInfo.isConsecutiveRenewal
+                    ? 'CONSECUTIVE RENEWAL APPLIED'
+                    : 'MEMBERSHIP VALIDITY'}
+                </Text>
+              </View>
+              {renewalInfo.isConsecutiveRenewal && (
+                <View style={styles.zeroDaysBadge}>
+                  <Text style={styles.zeroDaysBadgeText}>0 Days Lost</Text>
+                </View>
+              )}
+            </View>
+
+            {renewalInfo.isConsecutiveRenewal && (
+              <Text style={styles.renewalSubtitle}>
+                Current plan valid until {formatDate(renewalInfo.currentExpiry)}. Starts seamlessly the next day.
+              </Text>
+            )}
+
+            <View style={styles.renewalPeriodRow}>
+              <View style={styles.periodCol}>
+                <Text style={styles.periodLabel}>STARTS</Text>
+                <Text style={styles.periodValue}>{formatDate(renewalInfo.startDate)}</Text>
+              </View>
+              <Text style={styles.periodArrow}>→</Text>
+              <View style={styles.periodCol}>
+                <Text style={styles.periodLabel}>EXPIRES</Text>
+                <Text style={styles.periodValue}>{formatDate(renewalInfo.expiryDate)}</Text>
+              </View>
+              <View style={styles.durationBadge}>
+                <Text style={styles.durationBadgeText}>{selectedPlan.duration_days}d</Text>
+              </View>
+            </View>
+          </View>
+        )}
 
         {/* Amount */}
         <FVEInput
@@ -745,5 +832,95 @@ const getPaymentFormStyles = (colors: ThemeColors, isDark: boolean) =>
       color: colors.textMuted,
       fontSize: typography.sizes.xs,
       fontFamily: typography.fonts.inter,
+    },
+    renewalInfoCard: {
+      borderRadius: 10,
+      padding: 12,
+      marginBottom: 16,
+      borderWidth: 1,
+    },
+    consecutiveRenewalCard: {
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.08)' : 'rgba(239, 161, 0, 0.1)',
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.3)' : colors.goldBorder,
+    },
+    standardRenewalCard: {
+      backgroundColor: colors.bgSecondary,
+      borderColor: colors.borderDefault,
+    },
+    renewalHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 6,
+    },
+    renewalTitleWithIcon: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    renewalCardTitle: {
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhaniMedium,
+      fontWeight: '700',
+      letterSpacing: 0.8,
+      color: colors.textPrimary,
+    },
+    zeroDaysBadge: {
+      backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : 'rgba(16, 185, 129, 0.15)',
+      borderColor: '#10B981',
+      borderWidth: 1,
+      borderRadius: 6,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+    },
+    zeroDaysBadgeText: {
+      color: '#10B981',
+      fontSize: 10,
+      fontWeight: '700',
+      fontFamily: typography.fonts.rajdhaniMedium,
+    },
+    renewalSubtitle: {
+      fontSize: 11,
+      color: colors.textSecondary,
+      fontFamily: typography.fonts.inter,
+      marginBottom: 8,
+    },
+    renewalPeriodRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    periodCol: {
+      flex: 1,
+    },
+    periodLabel: {
+      fontSize: 9,
+      color: colors.textSecondary,
+      fontFamily: typography.fonts.inter,
+      letterSpacing: 0.5,
+      marginBottom: 2,
+    },
+    periodValue: {
+      fontSize: typography.sizes.xs,
+      color: colors.textPrimary,
+      fontFamily: typography.fonts.rajdhaniMedium,
+      fontWeight: '600',
+    },
+    periodArrow: {
+      color: colors.gold,
+      fontSize: 14,
+      fontWeight: 'bold',
+    },
+    durationBadge: {
+      backgroundColor: colors.bgTertiary,
+      paddingHorizontal: 6,
+      paddingVertical: 3,
+      borderRadius: 4,
+    },
+    durationBadgeText: {
+      color: colors.gold,
+      fontSize: 11,
+      fontWeight: '700',
+      fontFamily: typography.fonts.rajdhaniMedium,
     },
   });

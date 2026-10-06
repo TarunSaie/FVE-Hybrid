@@ -23,6 +23,7 @@ import {
   Check,
   MessageCircle,
   FileText,
+  RotateCcw,
 } from 'lucide-react-native';
 import { FVEModal } from '@/components/common/FVEModal';
 import { FVEInput } from '@/components/common/FVEInput';
@@ -53,6 +54,7 @@ import {
   getLocalDateStr,
   formatDate,
   calculateExpiryDate,
+  getNextDayStr,
   normalizeMembershipStatus,
 } from '@/utils/date';
 import { RootStackParamList } from '@/navigation/types';
@@ -114,6 +116,29 @@ export function PlanChangeModal({
         return [];
       }
       return (data || []) as Payment[];
+    },
+    enabled: visible && !!activeMembership.id,
+  });
+
+  // 3. Query latest completed plan change request to enable quick revert
+  const { data: latestCompletedRequest } = useQuery<
+    (PlanChangeRequest & { previous_plan?: MembershipPlan }) | null
+  >({
+    queryKey: ['mobile-latest-completed-plan-change', activeMembership.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('plan_change_requests')
+        .select('*, previous_plan:membership_plans!plan_change_requests_current_plan_id_fkey(*)')
+        .eq('membership_id', activeMembership.id)
+        .eq('status', 'COMPLETED')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) {
+        console.warn('Latest plan change query note:', error.message);
+        return null;
+      }
+      return data as PlanChangeRequest & { previous_plan?: MembershipPlan };
     },
     enabled: visible && !!activeMembership.id,
   });
@@ -191,8 +216,12 @@ export function PlanChangeModal({
 
   // Financial calculations
   const newPlanPrice = Number(selectedPlan?.price || 0);
+  const currentPlanPrice = Number(currentPlan?.price || 0);
+  const isDowngrade = selectedPlan ? newPlanPrice < currentPlanPrice : false;
+  const isSamePlan = selectedPlan ? selectedPlan.id === activeMembership.plan_id : false;
   const discountNum = Math.max(0, Number(discountAdjustment) || 0);
-  const calculatedDifference = Math.max(0, newPlanPrice - alreadyPaidAmount);
+  const priceDifference = newPlanPrice - alreadyPaidAmount;
+  const calculatedDifference = Math.max(0, priceDifference);
   const finalBalanceDue = Math.max(0, calculatedDifference - discountNum);
 
   // Calculated new expiry date
@@ -203,7 +232,7 @@ export function PlanChangeModal({
       case 'FROM_START_DATE':
         return calculateExpiryDate(activeMembership.start_date, duration);
       case 'FROM_EXPIRY':
-        return calculateExpiryDate(activeMembership.expiry_date, duration);
+        return calculateExpiryDate(getNextDayStr(activeMembership.expiry_date), duration);
       case 'FROM_TODAY':
         return calculateExpiryDate(today, duration);
       case 'CUSTOM':
@@ -219,6 +248,70 @@ export function PlanChangeModal({
     today,
     customExpiryDate,
   ]);
+
+  // ── REVERT TO PREVIOUS PLAN ──────────────────────────────────────────
+  const handleRevertPreviousPlan = async () => {
+    if (!latestCompletedRequest) return;
+    Alert.alert(
+      'Revert to Previous Plan',
+      `Revert membership back to "${latestCompletedRequest.previous_plan?.name || 'Previous Plan'}"? This will restore the plan ID and calculate expiry date based on original validity.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Revert Plan',
+          style: 'destructive',
+          onPress: async () => {
+            setLoading(true);
+            try {
+              const prevPlanId = latestCompletedRequest.current_plan_id;
+              const prevPlan = allPlans.find((p) => p.id === prevPlanId) || latestCompletedRequest.previous_plan;
+              const restoredExpiry = prevPlan?.duration_days
+                ? calculateExpiryDate(activeMembership.start_date, prevPlan.duration_days)
+                : activeMembership.expiry_date;
+
+              const { error: memErr } = await supabase
+                .from('memberships')
+                .update({
+                  plan_id: prevPlanId,
+                  expiry_date: restoredExpiry,
+                  status: normalizeMembershipStatus('ACTIVE', restoredExpiry) || 'ACTIVE',
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', activeMembership.id);
+
+              if (memErr) throw memErr;
+
+              await supabase
+                .from('plan_change_requests')
+                .update({ status: 'REVERTED', notes: `Reverted back to previous plan on ${today}` })
+                .eq('id', latestCompletedRequest.id);
+
+              await supabase.from('notifications').insert({
+                title: 'Plan Change Reverted',
+                message: `Plan for ${member.full_name} reverted back to ${prevPlan?.name || 'original plan'}.`,
+                type: 'SYSTEM',
+                target_role: 'ADMIN',
+              });
+
+              haptics.success();
+              qc.invalidateQueries({ queryKey: ['member-detail', member.id] });
+              qc.invalidateQueries({ queryKey: ['member-membership', member.id] });
+              qc.invalidateQueries({ queryKey: ['members'] });
+              qc.invalidateQueries({ queryKey: ['mobile-payments'] });
+              Alert.alert('Reverted Successfully', `Membership restored to ${prevPlan?.name || 'previous plan'}.`);
+              onSuccess();
+              onClose();
+            } catch (err: unknown) {
+              const msg = err instanceof Error ? err.message : 'Failed to revert plan';
+              Alert.alert('Error', msg);
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   // ── 1. OWNER / ADMIN APPROVE & COLLECT PAYMENT NOW ───────────────────
   const handleApproveAndCollect = async () => {
@@ -254,7 +347,7 @@ export function PlanChangeModal({
             receipt_number: receiptNumber,
             notes:
               notes.trim() ||
-              `Plan Upgrade: ${currentPlan?.name || 'Previous Plan'} → ${selectedPlan.name}. Balance payment collected.`,
+              `Plan ${isDowngrade ? 'Downgrade' : 'Upgrade'}: ${currentPlan?.name || 'Previous Plan'} → ${selectedPlan.name}. Balance payment collected.`,
           })
           .select('*, members(*), memberships(*, membership_plans(*))')
           .single();
@@ -546,14 +639,36 @@ export function PlanChangeModal({
     <FVEModal
       visible={visible}
       onClose={onClose}
-      title="PLAN UPGRADE / CHANGE"
-      subtitle="Upgrade membership with automatic balance deduction"
+      title={existingRequest ? 'REVIEW PLAN CHANGE' : 'UPGRADE OR DOWNGRADE PLAN'}
+      subtitle="Adjust membership tier, collect balance, or revert plan"
     >
       <ScrollView
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.scrollContent}
       >
+        {/* ── REVERT PREVIOUS PLAN BANNER ── */}
+        {latestCompletedRequest && (
+          <View style={styles.revertBanner}>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <RotateCcw size={14} color="#60A5FA" />
+                <Text style={styles.revertBannerTitle}>PREVIOUS PLAN RECORD FOUND</Text>
+              </View>
+              <Text style={styles.revertBannerSubtitle}>
+                Previously changed from "{latestCompletedRequest.previous_plan?.name || 'Previous Plan'}". You can safely revert back if needed.
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={handleRevertPreviousPlan}
+              disabled={loading}
+              style={styles.revertBannerButton}
+            >
+              <Text style={styles.revertBannerButtonText}>Revert Plan</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* ── CURRENT MEMBERSHIP HEADER CARD ── */}
         <View style={styles.memberCard}>
           <View style={styles.memberHeaderRow}>
@@ -636,14 +751,30 @@ export function PlanChangeModal({
 
                     {/* Difference Pill */}
                     <View style={styles.diffRow}>
-                      <Text style={styles.diffLabel}>Difference to pay:</Text>
+                      <Text style={styles.diffLabel}>
+                        {Number(plan.price) < Number(currentPlan?.price || 0)
+                          ? 'Tier change:'
+                          : 'Difference to pay:'}
+                      </Text>
                       <Text
                         style={[
                           styles.diffAmount,
-                          isHigher ? { color: colors.gold } : { color: colors.success },
+                          isCurrent
+                            ? { color: colors.textMuted }
+                            : Number(plan.price) < Number(currentPlan?.price || 0)
+                            ? { color: '#60A5FA' }
+                            : diff > 0
+                            ? { color: colors.gold }
+                            : { color: colors.success },
                         ]}
                       >
-                        {isHigher ? `+ ${formatCurrency(diff)}` : 'No extra charge'}
+                        {isCurrent
+                          ? 'Current Active Plan'
+                          : Number(plan.price) < Number(currentPlan?.price || 0)
+                          ? `Downgrade (-${formatCurrency(Math.max(0, Number(currentPlan?.price || 0) - Number(plan.price)))})`
+                          : diff > 0
+                          ? `+ ${formatCurrency(diff)}`
+                          : 'No extra charge'}
                       </Text>
                     </View>
                   </TouchableOpacity>
@@ -692,10 +823,22 @@ export function PlanChangeModal({
               </View>
             )}
 
-            <View style={styles.balanceLine}>
-              <Text style={styles.balanceLabel}>REMAINING BALANCE PAYABLE:</Text>
-              <Text style={styles.balanceAmount}>{formatCurrency(finalBalanceDue)}</Text>
-            </View>
+            {isDowngrade ? (
+              <View style={[styles.balanceLine, { borderColor: 'rgba(59, 130, 246, 0.3)', backgroundColor: 'rgba(59, 130, 246, 0.08)' }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.balanceLabel, { color: '#93C5FD' }]}>PLAN DOWNGRADE SELECTED:</Text>
+                  <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>
+                    Member previously paid higher tier. No additional balance collection required.
+                  </Text>
+                </View>
+                <Text style={[styles.balanceAmount, { color: '#60A5FA' }]}>₹0</Text>
+              </View>
+            ) : (
+              <View style={styles.balanceLine}>
+                <Text style={styles.balanceLabel}>REMAINING BALANCE PAYABLE:</Text>
+                <Text style={styles.balanceAmount}>{formatCurrency(finalBalanceDue)}</Text>
+              </View>
+            )}
           </View>
         )}
 
@@ -959,19 +1102,27 @@ export function PlanChangeModal({
             <FVEButton
               title={
                 loading
-                  ? 'Processing Upgrade...'
+                  ? 'Processing Plan Change...'
+                  : isDowngrade
+                  ? 'Confirm Plan Downgrade'
                   : finalBalanceDue > 0
                   ? `Collect ${formatCurrency(finalBalanceDue)} & Upgrade`
-                  : 'Approve & Upgrade Plan'
+                  : 'Approve & Update Plan'
               }
               onPress={handleApproveAndCollect}
-              variant="gold"
+              variant={isDowngrade ? 'blue' : 'gold'}
               loading={loading}
               disabled={loading || !selectedPlan}
             />
           ) : (
             <FVEButton
-              title={loading ? 'Submitting Request...' : 'Submit Plan Change Request'}
+              title={
+                loading
+                  ? 'Submitting Request...'
+                  : isDowngrade
+                  ? 'Submit Downgrade Request'
+                  : 'Submit Plan Upgrade Request'
+              }
               onPress={handleSubmitRequest}
               variant="blue"
               loading={loading}
@@ -1373,5 +1524,44 @@ const styles = StyleSheet.create({
   },
   footerActions: {
     marginTop: 8,
+  },
+  revertBanner: {
+    backgroundColor: 'rgba(59, 130, 246, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(59, 130, 246, 0.3)',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  revertBannerTitle: {
+    fontFamily: typography.fonts.rajdhani,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#93C5FD',
+    letterSpacing: 0.5,
+  },
+  revertBannerSubtitle: {
+    fontSize: 11,
+    color: colors.textMuted,
+    lineHeight: 15,
+    marginTop: 2,
+  },
+  revertBannerButton: {
+    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+    borderWidth: 1,
+    borderColor: '#3B82F6',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  revertBannerButtonText: {
+    color: '#93C5FD',
+    fontFamily: typography.fonts.rajdhani,
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

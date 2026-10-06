@@ -106,6 +106,48 @@ export function calculateExpiryDate(startDateStr: string, durationDays: number):
 }
 
 /**
+ * Returns the date string (YYYY-MM-DD) for the day immediately following the given date string.
+ * Uses local calendar arithmetic to avoid timezone shifts.
+ */
+export function getNextDayStr(dateStr?: string | null): string {
+  if (!dateStr) return getLocalDateStr();
+  const cleanStr = dateStr.split('T')[0];
+  const parts = cleanStr.split('-').map(Number);
+  if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+    const d = new Date(parts[0], parts[1] - 1, parts[2] + 1);
+    return getLocalDateStr(d);
+  }
+  const d = new Date(cleanStr);
+  d.setDate(d.getDate() + 1);
+  return getLocalDateStr(d);
+}
+
+/**
+ * Calculates the appropriate start date for a membership (new or renewal).
+ * - When renewing before current membership expires (currentExpiryDate >= today),
+ *   the renewal starts on the day after the current expiry date (consecutive, 0 days lost).
+ * - For a brand new member with no prior memberships, defaults to joining date (if available).
+ * - Otherwise (already expired or no history), defaults to today.
+ */
+export function calculateRenewalStartDate(
+  currentExpiryDate?: string | null,
+  joiningDate?: string | null,
+  hasAnyMembership: boolean = false
+): string {
+  const today = getLocalDateStr();
+  if (currentExpiryDate) {
+    const cleanExpiry = currentExpiryDate.split('T')[0];
+    if (cleanExpiry >= today) {
+      return getNextDayStr(cleanExpiry);
+    }
+  }
+  if (!hasAnyMembership && joiningDate) {
+    return joiningDate.split('T')[0];
+  }
+  return today;
+}
+
+/**
  * Normalizes membership status against today's date (local IST).
  * Guarantees that past expiry dates are always computed as EXPIRED
  * regardless of static DB values, and respects HOLD status.

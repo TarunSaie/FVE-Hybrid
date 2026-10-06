@@ -88,6 +88,7 @@ import {
 } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
 import { cleanupPTNotifications } from '@/utils/personalTraining';
+import { revertOrDeletePayment } from '@/utils/paymentOperations';
 import * as Clipboard from 'expo-clipboard';
 import { RootStackParamList } from '@/navigation/types';
 import {
@@ -503,6 +504,41 @@ export function MemberDetailScreen() {
       haptics.light();
       Linking.openURL(`tel:${member.mobile}`);
     }
+  };
+
+  const handleDeletePayment = (paymentToDelete: Payment) => {
+    Alert.alert(
+      'Revert / Delete Payment',
+      `Delete payment #${paymentToDelete.receipt_number || paymentToDelete.id} (${formatCurrency(paymentToDelete.amount)})? This will safely revert any linked plan upgrade, restore previous expiry dates, and unlink PT addons.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete & Revert',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const res = await revertOrDeletePayment(paymentToDelete);
+              if (res.success) {
+                haptics.success();
+                qc.invalidateQueries({ queryKey: ['member-payments', memberId] });
+                qc.invalidateQueries({ queryKey: ['member-detail', memberId] });
+                qc.invalidateQueries({ queryKey: ['member-membership', memberId] });
+                qc.invalidateQueries({ queryKey: ['mobile-payments'] });
+                qc.invalidateQueries({ queryKey: ['payments'] });
+                qc.invalidateQueries({ queryKey: ['dashboard-metrics'] });
+                Alert.alert('Payment Reverted', 'Payment record deleted and status restored.');
+              } else {
+                haptics.error();
+                Alert.alert('Error', res.error || 'Failed to revert payment');
+              }
+            } catch (err: unknown) {
+              const msg = err instanceof Error ? err.message : 'Unknown error occurred';
+              Alert.alert('Error', msg);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const todayStr = getLocalDateStr();
@@ -1487,8 +1523,18 @@ export function MemberDetailScreen() {
                     {formatDate(p.payment_date || p.created_at)}
                   </Text>
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                   <Text style={styles.payAmount}>{formatCurrency(p.amount)}</Text>
+                  <TouchableOpacity
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      handleDeletePayment(p);
+                    }}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    style={{ padding: 4 }}
+                  >
+                    <Trash2 size={15} color="#EF4444" />
+                  </TouchableOpacity>
                   <ChevronRight size={14} color={colors.textMuted} />
                 </View>
               </TouchableOpacity>

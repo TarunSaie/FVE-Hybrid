@@ -9,9 +9,9 @@ import {
   Alert,
 } from 'react-native';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import QRCode from 'react-native-qrcode-svg';
-import { Share2, ArrowLeft, CheckCircle2, Printer, Dumbbell, UserCheck, FileText } from 'lucide-react-native';
+import { Share2, ArrowLeft, CheckCircle2, Printer, Dumbbell, UserCheck, FileText, Trash2 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEButton } from '@/components/common/FVEButton';
 import { FVEModal } from '@/components/common/FVEModal';
@@ -30,6 +30,7 @@ import {
   directShareReceiptToWhatsApp,
   shareReceiptPdfToWhatsApp,
 } from '@/utils/receiptPdf';
+import { revertOrDeletePayment } from '@/utils/paymentOperations';
 import { RootStackParamList } from '@/navigation/types';
 
 type RouteProps = RouteProp<RootStackParamList, 'PaymentReceipt'>;
@@ -41,6 +42,8 @@ export function PaymentReceiptScreen() {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getReceiptStyles(colors, isDark), [colors, isDark]);
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const queryClient = useQueryClient();
 
   if (!payment) {
     return (
@@ -585,6 +588,54 @@ export function PaymentReceiptScreen() {
             size="md"
             icon={<Printer size={16} color={colors.gold} />}
             style={{ marginTop: 8 }}
+          />
+
+          <FVEButton
+            title="REVERT / DELETE THIS PAYMENT"
+            onPress={() => {
+              Alert.alert(
+                'Revert / Delete Payment',
+                `Are you sure you want to revert or delete payment receipt #${activePayment.receipt_number || activePayment.id}? This will safely roll back any linked plan upgrade, restore previous membership expiry dates, and unlink personal training packages.`,
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Delete & Revert',
+                    style: 'destructive',
+                    onPress: async () => {
+                      try {
+                        setIsDeleting(true);
+                        const result = await revertOrDeletePayment(activePayment);
+                        if (result.success) {
+                          haptics.success();
+                          queryClient.invalidateQueries({ queryKey: ['payments'] });
+                          queryClient.invalidateQueries({ queryKey: ['members'] });
+                          queryClient.invalidateQueries({ queryKey: ['member-detail'] });
+                          queryClient.invalidateQueries({ queryKey: ['dashboard-metrics'] });
+                          Alert.alert(
+                            'Payment Reverted',
+                            'The payment record has been deleted and member plan status has been safely restored.',
+                            [{ text: 'OK', onPress: () => navigation.goBack() }]
+                          );
+                        } else {
+                          haptics.error();
+                          Alert.alert('Error', result.error || 'Failed to revert payment');
+                        }
+                      } catch (err: unknown) {
+                        const msg = err instanceof Error ? err.message : 'Unknown error occurred';
+                        Alert.alert('Error', msg);
+                      } finally {
+                        setIsDeleting(false);
+                      }
+                    },
+                  },
+                ]
+              );
+            }}
+            loading={isDeleting}
+            variant="danger"
+            size="md"
+            icon={<Trash2 size={16} color="#EF4444" />}
+            style={{ marginTop: 8, borderColor: 'rgba(239, 68, 68, 0.4)', borderWidth: 1 }}
           />
         </View>
       </ScrollView>

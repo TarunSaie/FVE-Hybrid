@@ -34,6 +34,7 @@ import { buildReceiptDataFromPayment, sharePdfReceipt, directShareReceiptToWhats
 
 import { haptics } from '@/utils/haptics';
 import { LinearGradient } from 'expo-linear-gradient';
+import { revertOrDeletePayment } from '@/utils/paymentOperations';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -228,6 +229,48 @@ export function PaymentsScreen() {
           },
         },
         { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  };
+
+  const handleDeletePayment = async (p: Payment) => {
+    haptics.warning();
+    const isUpgrade = p.notes?.includes('Plan Upgrade:');
+    const memberName = p.members?.full_name || 'Member';
+    const amountStr = formatCurrency(p.amount);
+    const receiptNo = p.receipt_number || 'N/A';
+
+    const confirmMsg = isUpgrade
+      ? `Are you sure you want to revert receipt #${receiptNo} of ${amountStr} for ${memberName}?\n\nThis payment was collected for a Plan Upgrade. Reverting it will delete this payment transaction and restore ${memberName}'s previous membership plan.`
+      : `Are you sure you want to delete payment receipt #${receiptNo} of ${amountStr} for ${memberName}?\n\nThis will permanently remove the payment transaction from gym financial records and member history.`;
+
+    Alert.alert(
+      isUpgrade ? 'Revert Plan Upgrade & Payment' : 'Delete Payment Transaction',
+      confirmMsg,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: isUpgrade ? 'Yes, Revert & Delete' : 'Yes, Delete Payment',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              haptics.medium();
+              const result = await revertOrDeletePayment({
+                paymentId: p.id,
+                receiptNumber: p.receipt_number,
+                amount: p.amount,
+                memberName: p.members?.full_name,
+              });
+
+              Alert.alert('Success', result.message || 'Payment successfully removed');
+              qc.invalidateQueries({ queryKey: ['mobile-payments'] });
+              qc.invalidateQueries({ queryKey: ['member-payments'] });
+              qc.invalidateQueries({ queryKey: ['members'] });
+            } catch (err) {
+              Alert.alert('Error', (err as Error).message || 'Failed to delete payment');
+            }
+          },
+        },
       ]
     );
   };
@@ -465,6 +508,7 @@ export function PaymentsScreen() {
               payment={item}
               onPress={() => navigation.navigate('PaymentReceipt', { payment: item })}
               onShareWhatsApp={() => handleShareWhatsApp(item)}
+              onDelete={() => handleDeletePayment(item)}
             />
           )}
           contentContainerStyle={styles.listContent}

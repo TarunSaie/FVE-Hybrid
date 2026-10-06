@@ -8,7 +8,7 @@ import {
   Animated,
   Image,
 } from 'react-native';
-import { ChevronRight, Share2 } from 'lucide-react-native';
+import { ChevronRight, Share2, Trash2 } from 'lucide-react-native';
 import { Payment } from '@/types';
 import { useTheme } from '@/contexts/ThemeContext';
 import { typography } from '@/constants/typography';
@@ -20,6 +20,7 @@ interface PaymentItemProps {
   payment: Payment;
   onPress: () => void;
   onShareWhatsApp?: () => void;
+  onDelete?: () => void;
 }
 
 function MemberAvatar({ name, avatarUrl }: { name: string; avatarUrl?: string | null }) {
@@ -55,6 +56,7 @@ export function PaymentItem({
   payment,
   onPress,
   onShareWhatsApp,
+  onDelete,
 }: PaymentItemProps) {
   const { colors, isDark } = useTheme();
   const memberName = payment.members?.full_name || 'Member';
@@ -156,20 +158,39 @@ export function PaymentItem({
             </View>
           </View>
 
-          {onShareWhatsApp ? (
-            <TouchableOpacity
-              onPress={() => {
-                haptics.medium();
-                onShareWhatsApp();
-              }}
-              style={[styles.shareBtn, { backgroundColor: colors.goldMuted }]}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            >
-              <Share2 size={16} color={colors.gold} />
-            </TouchableOpacity>
-          ) : (
-            <ChevronRight size={18} color={colors.textMuted} style={styles.chevron} />
-          )}
+          <View style={styles.actionsContainer}>
+            {onShareWhatsApp && (
+              <TouchableOpacity
+                onPress={() => {
+                  haptics.medium();
+                  onShareWhatsApp();
+                }}
+                style={[styles.shareBtn, { backgroundColor: colors.goldMuted }]}
+                hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                accessibilityLabel="Share on WhatsApp"
+              >
+                <Share2 size={15} color={colors.gold} />
+              </TouchableOpacity>
+            )}
+
+            {onDelete && (
+              <TouchableOpacity
+                onPress={() => {
+                  haptics.warning();
+                  onDelete();
+                }}
+                style={[styles.deleteBtn, { backgroundColor: 'rgba(239, 68, 68, 0.12)' }]}
+                hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                accessibilityLabel="Revert or delete payment"
+              >
+                <Trash2 size={15} color="#EF4444" />
+              </TouchableOpacity>
+            )}
+
+            {!onShareWhatsApp && !onDelete && (
+              <ChevronRight size={18} color={colors.textMuted} style={styles.chevron} />
+            )}
+          </View>
         </View>
       </Pressable>
     </Animated.View>
@@ -282,16 +303,28 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: typography.fonts.inter,
   },
-  shareBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+  actionsContainer: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 6,
     marginLeft: 8,
   },
+  shareBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   chevron: {
-    marginLeft: 6,
+    marginLeft: 2,
     opacity: 0.6,
   },
 });
