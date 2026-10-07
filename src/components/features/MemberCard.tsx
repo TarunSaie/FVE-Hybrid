@@ -76,14 +76,14 @@ export function MemberCard({
   const cardBg = isExpired
     ? isDark ? '#140D0E' : '#FEF2F2'
     : isExpiringSoon
-    ? isDark ? '#12100A' : '#FFFBEB'
-    : colors.cardBackground;
+      ? isDark ? '#12100A' : '#FFFBEB'
+      : colors.cardBackground;
 
   const cardBorder = isExpired
     ? isDark ? 'rgba(239, 68, 68, 0.3)' : 'rgba(220, 38, 38, 0.25)'
     : isExpiringSoon
-    ? isDark ? 'rgba(245, 158, 11, 0.35)' : 'rgba(217, 119, 6, 0.25)'
-    : colors.borderDark;
+      ? isDark ? 'rgba(245, 158, 11, 0.35)' : 'rgba(217, 119, 6, 0.25)'
+      : colors.borderDark;
 
   return (
     <Animated.View style={[{ transform: [{ scale }] }]}>
@@ -254,6 +254,9 @@ export function MemberCard({
                 style={[
                   styles.actionBtnAlert,
                   isExpired && styles.actionBtnAlertExpired,
+                  {
+                    paddingLeft: 20
+                  },
                 ]}
               >
                 <MessageCircle size={13} color={isExpired ? '#EF4444' : '#F59E0B'} />
@@ -261,6 +264,9 @@ export function MemberCard({
                   style={[
                     styles.actionBtnAlertText,
                     isExpired && styles.actionBtnAlertTextExpired,
+                    {
+                      paddingLeft: 4
+                    },
                   ]}
                 >
                   {isExpiringSoon ? 'Renewal Remind' : 'Expiry Alert'}
