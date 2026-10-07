@@ -47,7 +47,7 @@ import { supabase } from '@/api/supabase';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
-import { getLocalDateStr, getLocalMonthStr, formatDate } from '@/utils/date';
+import { getLocalDateStr, getLocalMonthStr, formatDate, normalizeMembershipStatus } from '@/utils/date';
 import { visitLimitStatus, consumeVisitDay } from '@/utils/visitLimit';
 import { useAuth } from '@/contexts/AuthContext';
 import { haptics } from '@/utils/haptics';
@@ -328,13 +328,42 @@ export function AttendanceScreen() {
   const handleManualCheckIn = async (member: Member | MonitoringMember, targetDate: string = selectedDate) => {
     setManualLoading(true);
     try {
-      // 1. Verify active membership
+      // 1. Auto-activate any UPCOMING membership for this member that is due today
+      const { data: upcomingDue } = await supabase
+        .from('memberships')
+        .select('id, start_date, expiry_date')
+        .eq('member_id', member.id)
+        .eq('status', 'UPCOMING')
+        .lte('start_date', todayStr)
+        .order('start_date', { ascending: true })
+        .limit(1);
+
+      if (upcomingDue && upcomingDue.length > 0) {
+        const up = upcomingDue[0];
+        await supabase
+          .from('memberships')
+          .update({ status: 'EXPIRED' })
+          .eq('member_id', member.id)
+          .neq('id', up.id)
+          .in('status', ['ACTIVE', 'EXPIRING_SOON'])
+          .lt('expiry_date', todayStr);
+
+        const newStatus = normalizeMembershipStatus('ACTIVE', up.expiry_date, up.start_date) || 'ACTIVE';
+        await supabase
+          .from('memberships')
+          .update({ status: newStatus })
+          .eq('id', up.id);
+      }
+
+      // 1b. Verify active membership valid for today
       const { data: memberships } = await supabase
         .from('memberships')
-        .select('id, expiry_date, status, visit_day_limit, visit_days_used')
+        .select('id, start_date, expiry_date, status, visit_day_limit, visit_days_used')
         .eq('member_id', member.id)
         .in('status', ['ACTIVE', 'EXPIRING_SOON'])
-        .order('created_at', { ascending: false })
+        .lte('start_date', todayStr)
+        .gte('expiry_date', todayStr)
+        .order('expiry_date', { ascending: false })
         .limit(1);
 
       const activeMs = memberships?.[0];

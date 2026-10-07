@@ -12,6 +12,8 @@ import {
   formatDate,
   getNextDayStr,
   calculateRenewalStartDate,
+  findLatestUnexpiredMembershipExpiry,
+  normalizeMembershipStatus,
 } from '@/utils/date';
 import { formatCurrency, generateReceiptNumber, getFriendlyErrorMessage } from '@/utils/format';
 import { useAuth } from '@/contexts/AuthContext';
@@ -71,19 +73,19 @@ export function PaymentFormModal({
       .from('memberships')
       .select('id, expiry_date, status, membership_plans(name)')
       .eq('member_id', selectedMemberId)
-      .in('status', ['ACTIVE', 'EXPIRING_SOON'])
+      .in('status', ['ACTIVE', 'EXPIRING_SOON', 'UPCOMING'])
       .order('expiry_date', { ascending: false })
-      .limit(1)
-      .maybeSingle()
       .then(({ data }) => {
-        if (data) {
-          const todayStr = getLocalDateStr();
-          const notExpired = !!data.expiry_date && data.expiry_date >= todayStr;
-          const plan = data.membership_plans as { name?: string } | null;
+        const todayStr = getLocalDateStr();
+        const unexpired = (data || []).filter(d => !!d.expiry_date && d.expiry_date >= todayStr);
+        if (unexpired.length > 0) {
+          const latestExpiry = unexpired[0].expiry_date;
+          const activeOrFirst = unexpired.find(d => d.status === 'ACTIVE' || d.status === 'EXPIRING_SOON') || unexpired[0];
+          const plan = activeOrFirst.membership_plans as { name?: string } | null;
           setActivePlanInfo({
             name: plan?.name || 'Active Membership',
-            expiryDate: data.expiry_date,
-            isActive: notExpired,
+            expiryDate: latestExpiry,
+            isActive: true,
           });
         } else {
           setActivePlanInfo(null);
@@ -250,28 +252,31 @@ export function PaymentFormModal({
           .order('expiry_date', { ascending: false });
 
         const hasAnyMembership = (existingMs || []).length > 0;
-        const unexpiredMs = (existingMs || []).find(
-          m => (m.status === 'ACTIVE' || m.status === 'EXPIRING_SOON') && m.expiry_date && m.expiry_date >= today
-        );
+        const latestUnexpiredExpiry = findLatestUnexpiredMembershipExpiry(existingMs);
 
-        // Consecutive renewal: starts the day after current expiry (0 days lost)
+        // Consecutive renewal: starts the day after latest unexpired expiry (0 days lost)
         // Use manual override if set, otherwise compute
         subStartDate = manualStartDate ?? calculateRenewalStartDate(
-          unexpiredMs?.expiry_date,
+          latestUnexpiredExpiry,
           memberObj?.joining_date,
           hasAnyMembership
         );
 
         const expiryStr = manualExpiryDate ?? calculateExpiryDate(subStartDate, selectedPlan.duration_days);
+        const isAdvanceRenewal = subStartDate > today;
+        const newStatus = isAdvanceRenewal ? 'UPCOMING' : (normalizeMembershipStatus('ACTIVE', expiryStr, subStartDate) || 'ACTIVE');
 
-        // Expire all previous active/expiring memberships so old ones don't conflict
-        await supabase
-          .from('memberships')
-          .update({ status: 'EXPIRED' })
-          .eq('member_id', selectedMemberId)
-          .in('status', ['ACTIVE', 'EXPIRING_SOON']);
+        // Only expire previous memberships if this plan starts immediately (today or past).
+        // For advance renewals (subStartDate > today), DO NOT expire active memberships — keep them active through their expiry date!
+        if (!isAdvanceRenewal) {
+          await supabase
+            .from('memberships')
+            .update({ status: 'EXPIRED' })
+            .eq('member_id', selectedMemberId)
+            .in('status', ['ACTIVE', 'EXPIRING_SOON', 'HOLD']);
+        }
 
-        // Insert new active membership with future expiry date
+        // Insert new membership with appropriate status ('UPCOMING' for advance, 'ACTIVE' for immediate)
         const { data: newMs, error: msError } = await supabase
           .from('memberships')
           .insert({
@@ -279,7 +284,7 @@ export function PaymentFormModal({
             plan_id: selectedPlan.id,
             start_date: subStartDate,
             expiry_date: expiryStr,
-            status: 'ACTIVE',
+            status: newStatus,
             visit_day_limit: selectedPlan.visit_day_limit || null,
             visit_days_used: 0,
             created_at: new Date().toISOString(),

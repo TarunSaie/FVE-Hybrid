@@ -16,7 +16,7 @@ import { FVEButton } from '@/components/common/FVEButton';
 import { FVEInput } from '@/components/common/FVEInput';
 import { supabase } from '@/api/supabase';
 import { visitLimitStatus, consumeVisitDay } from '@/utils/visitLimit';
-import { getLocalDateStr, formatDate } from '@/utils/date';
+import { getLocalDateStr, formatDate, normalizeMembershipStatus } from '@/utils/date';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
@@ -122,25 +122,71 @@ export function QRScannerScreen() {
         return;
       }
 
-      // 2. Look up active membership
+      // 2. Auto-activate any UPCOMING membership for this member that is due today
       const today = getLocalDateStr();
+      const { data: upcomingDue } = await supabase
+        .from('memberships')
+        .select('id, start_date, expiry_date')
+        .eq('member_id', member.id)
+        .eq('status', 'UPCOMING')
+        .lte('start_date', today)
+        .order('start_date', { ascending: true })
+        .limit(1);
+
+      if (upcomingDue && upcomingDue.length > 0) {
+        const up = upcomingDue[0];
+        await supabase
+          .from('memberships')
+          .update({ status: 'EXPIRED' })
+          .eq('member_id', member.id)
+          .neq('id', up.id)
+          .in('status', ['ACTIVE', 'EXPIRING_SOON'])
+          .lt('expiry_date', today);
+
+        const newStatus = normalizeMembershipStatus('ACTIVE', up.expiry_date, up.start_date) || 'ACTIVE';
+        await supabase
+          .from('memberships')
+          .update({ status: newStatus })
+          .eq('id', up.id);
+      }
+
+      // 2b. Look up active membership valid today
       const { data: memberships } = await supabase
         .from('memberships')
         .select('*, membership_plans(*)')
         .eq('member_id', member.id)
-        .order('created_at', { ascending: false })
+        .in('status', ['ACTIVE', 'EXPIRING_SOON'])
+        .lte('start_date', today)
+        .gte('expiry_date', today)
+        .order('expiry_date', { ascending: false })
         .limit(1);
 
       const activeMs = memberships?.[0];
 
       if (!activeMs || activeMs.status === 'HOLD' || (activeMs.expiry_date && activeMs.expiry_date < today)) {
+        const { data: upcomingMs } = await supabase
+          .from('memberships')
+          .select('start_date, status')
+          .eq('member_id', member.id)
+          .eq('status', 'UPCOMING')
+          .gt('start_date', today)
+          .order('start_date', { ascending: true })
+          .limit(1);
+
+        const upPlan = upcomingMs?.[0];
+        const errorMsg = upPlan
+          ? `Plan starts on ${formatDate(upPlan.start_date)}. Check-in not allowed yet.`
+          : activeMs?.status === 'HOLD'
+            ? 'Membership is on hold. Please visit reception desk.'
+            : 'Membership is inactive or expired. Please renew.';
+
         sounds.qrInvalid();
         haptics.warning();
         setScannedResult({
           member,
           membership: activeMs,
           status: 'error',
-          message: 'Membership is inactive or expired. Please renew.',
+          message: errorMsg,
         });
         resetTimerRef.current = setTimeout(() => {
           setScannedResult(null);

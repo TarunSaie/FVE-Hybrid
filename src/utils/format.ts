@@ -86,6 +86,13 @@ export function getMembershipStatusStyle(status?: string | null): { bg: string; 
         border: 'rgba(156, 163, 175, 0.35)',
         label: 'ON HOLD',
       };
+    case 'UPCOMING':
+      return {
+        bg: colors.blueMuted,
+        text: colors.blueLight || colors.blue,
+        border: colors.blueBorder,
+        label: 'UPCOMING',
+      };
     default:
       return {
         bg: colors.goldMuted,

@@ -43,6 +43,11 @@ export interface MemberWithMembership extends Member {
   member_id_num?: number | null;
   visit_day_limit?: number | null;
   visit_days_used?: number | null;
+  upcoming_membership_id?: string | null;
+  upcoming_plan_name?: string | null;
+  upcoming_start_date?: string | null;
+  upcoming_expiry_date?: string | null;
+  has_upcoming_membership?: boolean | null;
 }
 
 export interface MembershipPlan {
@@ -166,7 +171,7 @@ export type UserRole = 'OWNER' | 'ADMIN' | 'RECEPTIONIST' | 'TRAINER' | 'ATTENDA
 
 export const PAYMENT_METHODS = ['Cash', 'UPI', 'Card', 'Bank Transfer'] as const;
 export const EXPENSE_CATEGORIES = ['Rent', 'Electricity', 'Equipment', 'Salaries', 'Maintenance', 'Marketing', 'Other'] as const;
-export const MEMBERSHIP_STATUSES = ['ACTIVE', 'EXPIRING_SOON', 'EXPIRED', 'HOLD'] as const;
+export const MEMBERSHIP_STATUSES = ['ACTIVE', 'EXPIRING_SOON', 'EXPIRED', 'HOLD', 'UPCOMING'] as const;
 export const USER_ROLES: UserRole[] = ['OWNER', 'ADMIN', 'RECEPTIONIST', 'TRAINER', 'ATTENDANCE_SCANNER'];
 export const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] as const;
 

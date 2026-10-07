@@ -185,6 +185,26 @@ export function MemberCard({
                 </View>
               ) : null}
             </View>
+
+            {member.has_upcoming_membership && member.upcoming_plan_name ? (
+              <View
+                style={[
+                  styles.upcomingQueueBadge,
+                  {
+                    backgroundColor: isDark ? 'rgba(168, 85, 247, 0.12)' : 'rgba(168, 85, 247, 0.08)',
+                    borderColor: isDark ? 'rgba(168, 85, 247, 0.3)' : 'rgba(168, 85, 247, 0.25)',
+                  },
+                ]}
+              >
+                <View style={styles.upcomingDot} />
+                <Text
+                  numberOfLines={1}
+                  style={[styles.upcomingQueueText, { color: isDark ? '#C084FC' : '#9333EA' }]}
+                >
+                  Queued: {member.upcoming_plan_name} ({formatDate(member.upcoming_start_date)})
+                </Text>
+              </View>
+            ) : null}
           </View>
 
           {/* Actions & Chevron */}
@@ -408,5 +428,28 @@ const styles = StyleSheet.create({
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '700',
     letterSpacing: 0.5,
+  },
+  upcomingQueueBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginTop: 4,
+    alignSelf: 'flex-start',
+  },
+  upcomingDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: '#A855F7',
+  },
+  upcomingQueueText: {
+    fontSize: 10,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
 });

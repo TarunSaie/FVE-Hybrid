@@ -334,7 +334,10 @@ export function MemberDetailScreen() {
 
   const activeMembership =
     memberships?.find(m => m.status === 'ACTIVE' || m.status === 'EXPIRING_SOON') ||
+    memberships?.find(m => m.status !== 'CANCELLED') ||
     memberships?.[0];
+
+  const upcomingMembership = memberships?.find(m => m.status === 'UPCOMING');
 
   // Query actual attendance records for this member within the active membership period
   const activeMembershipStart = activeMembership?.start_date;
@@ -546,7 +549,6 @@ export function MemberDetailScreen() {
     !activeMembership ||
     activeMembership.status === 'EXPIRED' ||
     (!!activeMembership?.expiry_date && activeMembership.expiry_date < todayStr);
-  const canCollectPayment = isMemberExpired;
 
   const handleWhatsApp = () => {
     if (member?.mobile) {
@@ -822,22 +824,20 @@ export function MemberDetailScreen() {
               </>
             )}
 
-            {/* Collect Payment — only shown if payment is pending or due */}
-            {canCollectPayment ? (
-              <TouchableOpacity
-                onPress={() => {
-                  haptics.medium();
-                  setShowPaymentModal(true);
-                }}
-                style={[styles.contactBtn, styles.collectPayBtn]}
-                activeOpacity={0.7}
-              >
-                <CreditCard size={14} color={isDark ? '#00E5FF' : colors.blue} />
-                <Text style={[styles.contactBtnText, { color: isDark ? '#00E5FF' : colors.blue }]}>
-                  Collect Payment
-                </Text>
-              </TouchableOpacity>
-            ) : null}
+            {/* Collect Payment / Renew Membership Button */}
+            <TouchableOpacity
+              onPress={() => {
+                haptics.medium();
+                setShowPaymentModal(true);
+              }}
+              style={[styles.contactBtn, styles.collectPayBtn]}
+              activeOpacity={0.7}
+            >
+              <CreditCard size={14} color={isDark ? '#00E5FF' : colors.blue} />
+              <Text style={[styles.contactBtnText, { color: isDark ? '#00E5FF' : colors.blue }]}>
+                {isMemberExpired ? 'Pay' : (upcomingMembership ? 'Extend' : 'Renew')}
+              </Text>
+            </TouchableOpacity>
           </View>
 
           {/* Quick Info Grid */}
@@ -935,19 +935,20 @@ export function MemberDetailScreen() {
                   )}
                 </TouchableOpacity>
               )}
-              {canCollectPayment ? (
-                <TouchableOpacity
-                  onPress={() => {
-                    haptics.medium();
-                    setShowPaymentModal(true);
-                  }}
-                  style={styles.newPayLink}
-                  activeOpacity={0.7}
-                >
-                  <CreditCard size={14} color={colors.gold} />
-                  <Text style={styles.newPayLinkText}>+ Collect Payment</Text>
-                </TouchableOpacity>
-              ) : (
+              <TouchableOpacity
+                onPress={() => {
+                  haptics.medium();
+                  setShowPaymentModal(true);
+                }}
+                style={styles.newPayLink}
+                activeOpacity={0.7}
+              >
+                <CreditCard size={14} color={colors.gold} />
+                <Text style={styles.newPayLinkText}>
+                  {isMemberExpired ? '+ Collect Payment' : (upcomingMembership ? '+ Add Extension' : '+ Renew Plan')}
+                </Text>
+              </TouchableOpacity>
+              {!isMemberExpired && (
                 <View style={styles.paidStatusBadge}>
                   <CheckCircle2 size={12} color={colors.success} />
                   <Text style={styles.paidStatusText}>Paid</Text>
@@ -1051,13 +1052,48 @@ export function MemberDetailScreen() {
             <View style={styles.emptyNotice}>
               <Text style={styles.emptyNoticeText}>No active membership plan.</Text>
               <FVEButton
-                title={canCollectPayment ? "Collect Payment & Assign Plan" : "Payment Completed"}
-                disabled={!canCollectPayment}
+                title="Collect Payment & Assign Plan"
                 onPress={() => setShowPaymentModal(true)}
-                variant={canCollectPayment ? "gold" : "outline"}
+                variant="gold"
                 size="sm"
-                style={{ marginTop: 10, opacity: canCollectPayment ? 1 : 0.6 }}
+                style={{ marginTop: 10 }}
               />
+            </View>
+          )}
+
+          {upcomingMembership && (
+            <View
+              style={{
+                marginTop: 12,
+                padding: 12,
+                borderRadius: 12,
+                backgroundColor: isDark ? 'rgba(0, 102, 255, 0.08)' : 'rgba(0, 102, 255, 0.05)',
+                borderWidth: 1,
+                borderColor: colors.blueBorder,
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Calendar size={13} color={colors.blueLight || colors.blue} />
+                  <Text style={[styles.cardHeaderTitle, { color: colors.blueLight || colors.blue }]}>
+                    UPCOMING MEMBERSHIP QUEUED
+                  </Text>
+                </View>
+                <View style={[styles.zeroDaysBadge, { backgroundColor: colors.blueMuted, borderColor: colors.blueBorder }]}>
+                  <Text style={[styles.zeroDaysBadgeText, { color: colors.blueLight || colors.blue }]}>
+                    Starts {formatDate(upcomingMembership.start_date)}
+                  </Text>
+                </View>
+              </View>
+              <Text style={[styles.planNameTitle, { fontSize: 15, marginBottom: 4 }]}>
+                {upcomingMembership.membership_plans?.name || 'Upcoming Membership'}
+              </Text>
+              <Text style={[styles.detailValue, { fontSize: 12, color: colors.textSecondary }]}>
+                Valid: {formatDate(upcomingMembership.start_date)} to {formatDate(upcomingMembership.expiry_date)}
+              </Text>
+              <Text style={{ fontSize: 11, color: colors.blueLight || colors.blue, marginTop: 4 }}>
+                ✦ Advance renewal paid · Activates automatically the day after current plan expires (0 days lost)
+              </Text>
             </View>
           )}
         </View>
@@ -2935,6 +2971,18 @@ const getMemberDetailStyles = (colors: ThemeColors, isDark: boolean) =>
   },
   paidStatusText: {
     color: colors.success,
+    fontSize: 11,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  zeroDaysBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  zeroDaysBadgeText: {
     fontSize: 11,
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '700',

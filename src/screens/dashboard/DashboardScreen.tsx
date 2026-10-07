@@ -153,7 +153,9 @@ export function DashboardScreen() {
           .select('*', { count: 'exact', head: true })
           .lte('start_date', monthEnd)
           .gte('expiry_date', monthStart)
-          .neq('status', 'HOLD'),
+          .neq('status', 'HOLD')
+          .neq('status', 'CANCELLED')
+          .neq('status', 'UPCOMING'),
 
         supabase
           .from('attendance')
@@ -170,7 +172,8 @@ export function DashboardScreen() {
           .from('memberships')
           .select('*', { count: 'exact', head: true })
           .gte('expiry_date', monthStart)
-          .lte('expiry_date', monthEnd),
+          .lte('expiry_date', monthEnd)
+          .neq('status', 'CANCELLED'),
 
         supabase
           .from('memberships')

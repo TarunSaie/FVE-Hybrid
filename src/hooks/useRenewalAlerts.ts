@@ -29,15 +29,29 @@ export function useRenewalAlerts() {
         // 1. Find memberships expiring in 0-7 days
         const sevenDaysLater = new Date();
         sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
-        const { data: expiring } = await supabase
+        const { data: expiringRaw } = await supabase
           .from('memberships')
           .select('*, members(full_name), membership_plans(name)')
           .in('status', ['ACTIVE', 'EXPIRING_SOON'])
           .lte('expiry_date', getLocalDateStr(sevenDaysLater))
           .gte('expiry_date', today);
 
+        // Exclude members who already have an UPCOMING membership queued
+        let expiring = expiringRaw || [];
+        if (expiring.length > 0) {
+          const expiringMemberIds = expiring.map(e => e.member_id);
+          const { data: upcomingRenewals } = await supabase
+            .from('memberships')
+            .select('member_id')
+            .in('member_id', expiringMemberIds)
+            .eq('status', 'UPCOMING');
+
+          const alreadyRenewedMemberIds = new Set((upcomingRenewals || []).map(u => u.member_id));
+          expiring = expiring.filter(e => !alreadyRenewedMemberIds.has(e.member_id));
+        }
+
         // 2. Notifications: only OWNER/ADMIN create them
-        if (expiring && expiring.length > 0 && ['OWNER', 'ADMIN'].includes(user.role)) {
+        if (expiring.length > 0 && ['OWNER', 'ADMIN'].includes(user.role)) {
           const { data: staffList } = await supabase
             .from('user_profiles')
             .select('id, role')

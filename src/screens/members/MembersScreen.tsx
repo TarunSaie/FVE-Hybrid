@@ -143,9 +143,9 @@ export function MembersScreen() {
 
       const mappedMembers: MemberWithMembership[] = rawMembers.map(m => {
         const list = [...(m.memberships || [])].sort((a, b) => {
-          const aActive = a.status && ['ACTIVE', 'EXPIRING_SOON'].includes(a.status) ? 1 : 0;
-          const bActive = b.status && ['ACTIVE', 'EXPIRING_SOON'].includes(b.status) ? 1 : 0;
-          if (aActive !== bActive) return bActive - aActive;
+          const aRank = a.status === 'ACTIVE' || a.status === 'EXPIRING_SOON' ? 4 : a.status === 'HOLD' ? 3 : a.status === 'UPCOMING' ? 2 : 1;
+          const bRank = b.status === 'ACTIVE' || b.status === 'EXPIRING_SOON' ? 4 : b.status === 'HOLD' ? 3 : b.status === 'UPCOMING' ? 2 : 1;
+          if (aRank !== bRank) return bRank - aRank;
           return (b.expiry_date || '').localeCompare(a.expiry_date || '');
         });
 
@@ -156,10 +156,14 @@ export function MembersScreen() {
           group = expiry >= todayStr ? 1 : 2;
         }
 
+        const upcoming = (m.memberships || []).find(ms => ms.status === 'UPCOMING');
+
         // Determine computed status:
         let computedStatus = latest?.status || 'NONE';
         if (latest?.status === 'HOLD') {
           computedStatus = 'HOLD';
+        } else if (latest?.status === 'UPCOMING' || (latest?.start_date && latest.start_date > todayStr)) {
+          computedStatus = 'UPCOMING';
         } else if (expiry && expiry < todayStr) {
           computedStatus = 'EXPIRED';
         } else if (expiry && expiry >= todayStr) {
@@ -183,6 +187,11 @@ export function MembersScreen() {
           expiry_sort_group: group,
           visit_day_limit: latest?.visit_day_limit ?? null,
           visit_days_used: latest?.visit_days_used ?? 0,
+          upcoming_membership_id: upcoming?.id || null,
+          upcoming_plan_name: upcoming?.membership_plans?.name || null,
+          upcoming_start_date: upcoming?.start_date || null,
+          upcoming_expiry_date: upcoming?.expiry_date || null,
+          has_upcoming_membership: !!upcoming,
         };
       });
 
@@ -336,7 +345,7 @@ export function MembersScreen() {
     }
   };
 
-  const statusFilters = ['ALL', 'ACTIVE', 'EXPIRING_SOON', 'EXPIRED', 'HOLD'];
+  const statusFilters = ['ALL', 'ACTIVE', 'EXPIRING_SOON', 'EXPIRED', 'HOLD', 'UPCOMING'];
 
   const handleStatusSelect = (status: string) => {
     haptics.selection();
@@ -364,6 +373,7 @@ export function MembersScreen() {
         (!!m.membership_expiry_date && m.membership_expiry_date < todayStr)
     ).length,
     HOLD: allMembers.filter(m => m.membership_status === 'HOLD').length,
+    UPCOMING: allMembers.filter(m => m.has_upcoming_membership || m.membership_status === 'UPCOMING').length,
   };
 
   // Filter members by the selected tab
@@ -387,6 +397,9 @@ export function MembersScreen() {
     }
     if (statusFilter === 'HOLD') {
       return m.membership_status === 'HOLD';
+    }
+    if (statusFilter === 'UPCOMING') {
+      return m.has_upcoming_membership || m.membership_status === 'UPCOMING';
     }
     return true;
   });
@@ -434,7 +447,12 @@ export function MembersScreen() {
             const isSelected = statusFilter === status;
             const isExpiredChip = status === 'EXPIRED';
             const count = counts[status as keyof typeof counts] || 0;
-            const label = `${status.replace('_', ' ')} (${count})`;
+            const displayStatus = status === 'ACTIVE'
+              ? 'TOTAL ACTIVE'
+              : status === 'UPCOMING'
+              ? 'ADVANCE QUEUED'
+              : status.replace('_', ' ');
+            const label = `${displayStatus} (${count})`;
 
             return (
               <TouchableOpacity

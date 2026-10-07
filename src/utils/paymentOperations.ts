@@ -141,11 +141,12 @@ export async function revertOrDeletePayment(
       .order('created_at', { ascending: false });
 
     if (!remainingPayments || remainingPayments.length === 0) {
+      const isUpcoming = payment.memberships?.status === 'UPCOMING';
       await supabase
         .from('memberships')
         .update({
-          status: 'EXPIRED',
-          notes: `[Payment #${resolvedReceiptNo} deleted on ${getLocalDateStr()} — membership deactivated, no valid payment remains]`,
+          status: isUpcoming ? 'CANCELLED' : 'EXPIRED',
+          notes: `[Payment #${resolvedReceiptNo} deleted on ${getLocalDateStr()} — ${isUpcoming ? 'advance renewal cancelled' : 'membership deactivated, no valid payment remains'}]`,
         })
         .eq('id', payment.membership_id);
     } else {

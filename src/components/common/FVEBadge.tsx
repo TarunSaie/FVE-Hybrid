@@ -55,6 +55,11 @@ export function FVEBadge({
       bg = isDark ? 'rgba(156, 163, 175, 0.15)' : 'rgba(100, 116, 139, 0.12)';
       textColor = isDark ? '#9CA3AF' : '#475569';
       border = isDark ? 'rgba(156, 163, 175, 0.35)' : 'rgba(100, 116, 139, 0.3)';
+    } else if (s === 'UPCOMING') {
+      text = 'UPCOMING';
+      bg = colors.blueMuted;
+      textColor = colors.blueLight || colors.blue;
+      border = colors.blueBorder;
     } else {
       text = status;
       bg = colors.goldMuted;
