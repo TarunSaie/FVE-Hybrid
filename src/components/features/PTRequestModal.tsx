@@ -194,7 +194,7 @@ export function PTRequestModal({
       title="REQUEST PERSONAL TRAINING"
       subtitle={`Member: ${memberName}`}
     >
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <View>
         {/* Protection Note */}
         <View style={styles.protectionBox}>
           <ShieldCheck size={16} color={colors.gold} />
@@ -351,7 +351,7 @@ export function PTRequestModal({
           size="lg"
           style={{ marginTop: 20, marginBottom: 10 }}
         />
-      </ScrollView>
+      </View>
     </FVEModal>
   );
 }

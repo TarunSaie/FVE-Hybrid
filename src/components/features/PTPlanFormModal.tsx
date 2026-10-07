@@ -170,11 +170,7 @@ export function PTPlanFormModal({
       title={plan ? 'EDIT PT PACKAGE' : 'NEW PT PACKAGE'}
       subtitle="Define personal training packages & pricing"
     >
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-      >
+      <View style={styles.scrollContent}>
         {/* Plan Name */}
         <FVEInput
           label="PACKAGE NAME *"
@@ -318,7 +314,7 @@ export function PTPlanFormModal({
             loading={loading}
           />
         </View>
-      </ScrollView>
+      </View>
     </FVEModal>
   );
 }

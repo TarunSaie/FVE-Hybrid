@@ -642,11 +642,7 @@ export function PlanChangeModal({
       title={existingRequest ? 'REVIEW PLAN CHANGE' : 'UPGRADE OR DOWNGRADE PLAN'}
       subtitle="Adjust membership tier, collect balance, or revert plan"
     >
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={styles.scrollContent}
-      >
+      <View style={styles.scrollContent}>
         {/* ── REVERT PREVIOUS PLAN BANNER ── */}
         {latestCompletedRequest && (
           <View style={styles.revertBanner}>
@@ -1130,7 +1126,7 @@ export function PlanChangeModal({
             />
           )}
         </View>
-      </ScrollView>
+      </View>
     </FVEModal>
   );
 }

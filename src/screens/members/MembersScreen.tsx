@@ -690,7 +690,7 @@ export function MembersScreen() {
         title="SORT ATHLETES"
         subtitle="Select sorting criteria matching web dashboard"
       >
-        <ScrollView style={styles.sortModalScroll} showsVerticalScrollIndicator={false}>
+        <View style={styles.sortModalScroll}>
           {SORT_OPTIONS.map((opt) => {
             const isSelected = sortBy === opt.id;
             return (
@@ -729,7 +729,7 @@ export function MembersScreen() {
               </TouchableOpacity>
             );
           })}
-        </ScrollView>
+        </View>
       </FVEModal>
     </View>
   );
@@ -966,8 +966,7 @@ const getMembersStyles = (colors: ThemeColors, isDark: boolean) =>
       fontWeight: '700',
     },
     sortModalScroll: {
-      maxHeight: 460,
-      marginBottom: 10,
+      marginBottom: 4,
     },
     sortOptionItem: {
       flexDirection: 'row',

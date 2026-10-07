@@ -140,7 +140,7 @@ export function AttendanceFollowUpModal({
       title="FOLLOW-UP MESSAGE"
       subtitle={`Member: ${member.full_name}${member.mobile ? ` (${member.mobile})` : ''}`}
     >
-      <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <View>
         {/* Absence Status Badge Box */}
         <View
           style={[
@@ -348,7 +348,7 @@ export function AttendanceFollowUpModal({
             <Text style={styles.whatsappButtonText}>Send WhatsApp</Text>
           </TouchableOpacity>
         </View>
-      </ScrollView>
+      </View>
     </FVEModal>
   );
 }

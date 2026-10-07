@@ -193,7 +193,7 @@ export function WorkoutActivityModal({
       title="WORKOUT ACTIVITY"
       subtitle={`${member.full_name} · ${formatDate(attendanceDate)}`}
     >
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+      <View style={styles.container}>
         {/* PT Badge / Member Info */}
         <View style={styles.metaRow}>
           {isPTMember && (
@@ -293,7 +293,7 @@ export function WorkoutActivityModal({
             style={styles.saveBtn}
           />
         </View>
-      </ScrollView>
+      </View>
     </FVEModal>
   );
 }

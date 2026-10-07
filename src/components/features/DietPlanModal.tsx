@@ -521,11 +521,7 @@ export function DietPlanModal({
       title={existingDiet ? 'EDIT DIET PLAN' : 'CREATE DIET PLAN'}
       subtitle="Exclusively for Personal Training members"
     >
-      <ScrollView
-        style={styles.modalScroll}
-        contentContainerStyle={styles.modalScrollContent}
-        showsVerticalScrollIndicator={false}
-      >
+      <View style={styles.modalScrollContent}>
         {/* PT Gate Banner */}
         {ptMembers.length === 0 && !ptMembersLoading && (
           <View style={styles.warningBanner}>
@@ -974,7 +970,7 @@ export function DietPlanModal({
             size="md"
           />
         </View>
-      </ScrollView>
+      </View>
     </FVEModal>
   );
 }

@@ -1,17 +1,22 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Modal,
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   Pressable,
   BackHandler,
   Animated,
   PanResponder,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  StyleProp,
+  ViewStyle,
+  useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { X } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { typography } from '@/constants/typography';
@@ -23,6 +28,9 @@ interface FVEModalProps {
   title: string;
   children: React.ReactNode;
   subtitle?: string;
+  maxHeight?: number | `${number}%`;
+  scrollable?: boolean;
+  contentContainerStyle?: StyleProp<ViewStyle>;
 }
 
 export function FVEModal({
@@ -31,9 +39,22 @@ export function FVEModal({
   title,
   children,
   subtitle,
+  maxHeight = '90%',
+  scrollable = true,
+  contentContainerStyle,
 }: FVEModalProps) {
   const { colors, isDark } = useTheme();
+  const { height: screenHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const bottomInset = Math.max(insets.bottom, 16);
+  const topInset = Math.max(insets.top, 24);
+
   const translateY = useRef(new Animated.Value(0)).current;
+  const currentOffset = useRef(0);
+  const [sheetHeight, setSheetHeight] = useState(0);
+
+  // Maximum distance the sheet can travel upwards toward the top of the screen
+  const maxUpDrag = Math.max(0, screenHeight - sheetHeight - topInset - 16);
 
   const handleClose = () => {
     haptics.light();
@@ -43,6 +64,7 @@ export function FVEModal({
   useEffect(() => {
     if (visible) {
       translateY.setValue(0);
+      currentOffset.current = 0;
     }
   }, [visible, translateY]);
 
@@ -57,30 +79,115 @@ export function FVEModal({
 
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 5,
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return (
+          Math.abs(gestureState.dy) > 5 &&
+          Math.abs(gestureState.dy) > Math.abs(gestureState.dx)
+        );
+      },
       onPanResponderMove: (_, gestureState) => {
-        if (gestureState.dy > 0) {
-          translateY.setValue(gestureState.dy);
+        const offset = currentOffset.current;
+        const rawTarget = offset + gestureState.dy;
+
+        if (rawTarget < -maxUpDrag) {
+          // Beyond top boundary: rubber-band resistance
+          const overdrag = -maxUpDrag - rawTarget;
+          translateY.setValue(-maxUpDrag - overdrag * 0.2);
+        } else {
+          translateY.setValue(rawTarget);
         }
       },
       onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dy > 90 || gestureState.vy > 0.65) {
-          haptics.light();
-          Animated.timing(translateY, {
-            toValue: 600,
-            duration: 180,
-            useNativeDriver: true,
-          }).start(() => {
-            translateY.setValue(0);
-            onClose();
-          });
+        const offset = currentOffset.current;
+        const dy = gestureState.dy;
+        const vy = gestureState.vy;
+
+        if (offset === 0) {
+          // Currently at REST (natural content height)
+          if (dy < -40 || vy < -0.45) {
+            // Dragged up significantly -> Snap to TOP smoothly
+            if (maxUpDrag > 25) {
+              haptics.light();
+              Animated.spring(translateY, {
+                toValue: -maxUpDrag,
+                useNativeDriver: true,
+                damping: 20,
+                stiffness: 150,
+                mass: 0.8,
+              }).start(() => {
+                currentOffset.current = -maxUpDrag;
+              });
+            } else {
+              // Already near top
+              Animated.spring(translateY, {
+                toValue: 0,
+                useNativeDriver: true,
+                bounciness: 4,
+              }).start();
+            }
+          } else if (dy > 80 || vy > 0.6) {
+            // Dragged down significantly -> Dismiss smoothly
+            haptics.light();
+            Animated.timing(translateY, {
+              toValue: screenHeight,
+              duration: 180,
+              useNativeDriver: true,
+            }).start(() => {
+              translateY.setValue(0);
+              currentOffset.current = 0;
+              onClose();
+            });
+          } else {
+            // Revert back to REST position
+            Animated.spring(translateY, {
+              toValue: 0,
+              useNativeDriver: true,
+              bounciness: 4,
+            }).start(() => {
+              currentOffset.current = 0;
+            });
+          }
         } else {
-          Animated.spring(translateY, {
-            toValue: 0,
-            useNativeDriver: true,
-            bounciness: 4,
-          }).start();
+          // Currently at EXPANDED (top position)
+          if (dy > 45 || vy > 0.45) {
+            // Dragged down from top position
+            if (dy > maxUpDrag + 80 || vy > 1.1) {
+              // Dragged all the way down off screen -> Dismiss
+              haptics.light();
+              Animated.timing(translateY, {
+                toValue: screenHeight,
+                duration: 180,
+                useNativeDriver: true,
+              }).start(() => {
+                translateY.setValue(0);
+                currentOffset.current = 0;
+                onClose();
+              });
+            } else {
+              // Snap back down to REST position
+              haptics.light();
+              Animated.spring(translateY, {
+                toValue: 0,
+                useNativeDriver: true,
+                damping: 20,
+                stiffness: 150,
+                mass: 0.8,
+              }).start(() => {
+                currentOffset.current = 0;
+              });
+            }
+          } else {
+            // Keep at EXPANDED top position
+            Animated.spring(translateY, {
+              toValue: -maxUpDrag,
+              useNativeDriver: true,
+              damping: 20,
+              stiffness: 150,
+            }).start(() => {
+              currentOffset.current = -maxUpDrag;
+            });
+          }
         }
       },
     })
@@ -103,17 +210,40 @@ export function FVEModal({
         {/* Backdrop tap to dismiss */}
         <Pressable style={styles.backdropTap} onPress={handleClose} />
 
-        <SafeAreaView pointerEvents="box-none" style={styles.safeArea}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.keyboardAvoid}
+          pointerEvents="box-none"
+        >
           <Animated.View
+            onLayout={(e) => {
+              const h = e.nativeEvent.layout.height;
+              if (h > 0 && Math.abs(h - sheetHeight) > 2) {
+                setSheetHeight(h);
+              }
+            }}
             style={[
               styles.sheet,
               {
                 backgroundColor: sheetBg,
                 borderColor: sheetBorder,
+                maxHeight,
                 transform: [{ translateY }],
               },
             ]}
           >
+            {/* Seamless Bottom Skirt to prevent any gap when dragged towards top */}
+            <View
+              pointerEvents="none"
+              style={[
+                styles.bottomSkirt,
+                {
+                  backgroundColor: sheetBg,
+                  borderColor: sheetBorder,
+                },
+              ]}
+            />
+
             {/* Native Sheet Grab Handle with Drag Gesture */}
             <View {...panResponder.panHandlers} style={styles.handleContainer}>
               <View style={[styles.sheetHandle, { backgroundColor: handleBg }]} />
@@ -147,17 +277,35 @@ export function FVEModal({
               </TouchableOpacity>
             </View>
 
-            <ScrollView
-              style={styles.body}
-              contentContainerStyle={styles.bodyContent}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-              bounces={true}
-            >
-              {children}
-            </ScrollView>
+            {scrollable ? (
+              <ScrollView
+                style={styles.body}
+                contentContainerStyle={[
+                  styles.bodyContent,
+                  { paddingBottom: bottomInset + 12 },
+                  contentContainerStyle,
+                ]}
+                keyboardShouldPersistTaps="handled"
+                nestedScrollEnabled={true}
+                showsVerticalScrollIndicator={false}
+                bounces={false}
+              >
+                {children}
+              </ScrollView>
+            ) : (
+              <View
+                style={[
+                  styles.body,
+                  styles.bodyContent,
+                  { paddingBottom: bottomInset + 12 },
+                  contentContainerStyle,
+                ]}
+              >
+                {children}
+              </View>
+            )}
           </Animated.View>
-        </SafeAreaView>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );
@@ -175,26 +323,34 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
   },
-  safeArea: {
-    flex: 1,
+  keyboardAvoid: {
+    width: '100%',
     justifyContent: 'flex-end',
   },
   sheet: {
+    width: '100%',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     borderWidth: 1,
     borderBottomWidth: 0,
-    maxHeight: '92%',
-    flex: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -6 },
     shadowOpacity: 0.35,
     shadowRadius: 16,
     elevation: 24,
   },
+  bottomSkirt: {
+    position: 'absolute',
+    bottom: -1000,
+    left: 0,
+    right: 0,
+    height: 1000,
+    borderWidth: 1,
+    borderTopWidth: 0,
+  },
   handleContainer: {
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 12,
   },
   sheetHandle: {
     width: 44,
@@ -232,10 +388,11 @@ const styles = StyleSheet.create({
     marginLeft: 10,
   },
   body: {
-    flex: 1,
+    flexGrow: 0,
+    flexShrink: 1,
   },
   bodyContent: {
-    padding: 22,
-    paddingBottom: 48,
+    paddingHorizontal: 22,
+    paddingTop: 16,
   },
 });

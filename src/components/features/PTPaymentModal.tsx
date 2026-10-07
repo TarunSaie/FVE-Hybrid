@@ -165,7 +165,7 @@ export function PTPaymentModal({
       title="COLLECT PT PAYMENT"
       subtitle={`Client: ${pt.members?.full_name || 'Member'}`}
     >
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <View>
         {/* Summary Card */}
         <View style={styles.summaryCard}>
           <View style={styles.summaryRow}>
@@ -264,7 +264,7 @@ export function PTPaymentModal({
           size="lg"
           style={{ marginTop: 20, marginBottom: 10 }}
         />
-      </ScrollView>
+      </View>
     </FVEModal>
   );
 }

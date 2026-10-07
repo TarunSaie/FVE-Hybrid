@@ -144,7 +144,7 @@ export function PTAssignmentModal({
       title="ASSIGN TRAINER & PRICING"
       subtitle={`Member: ${pt.members?.full_name || 'Member'}`}
     >
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <View>
         {/* Goals Info */}
         {pt.special_goals ? (
           <View style={styles.infoBox}>
@@ -279,7 +279,7 @@ export function PTAssignmentModal({
           size="lg"
           style={{ marginTop: 20, marginBottom: 10 }}
         />
-      </ScrollView>
+      </View>
     </FVEModal>
   );
 }

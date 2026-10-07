@@ -165,11 +165,7 @@ export function PlanFormModal({
       title={plan ? 'EDIT MEMBERSHIP PLAN' : 'CREATE MEMBERSHIP PLAN'}
       subtitle="Configure gym subscription tiers & features"
     >
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.form}
-        keyboardShouldPersistTaps="handled"
-      >
+      <View style={styles.form}>
         {/* Plan Name */}
         <FVEInput
           label="PLAN NAME *"
@@ -299,7 +295,7 @@ export function PlanFormModal({
           size="lg"
           style={styles.saveButton}
         />
-      </ScrollView>
+      </View>
     </FVEModal>
   );
 }

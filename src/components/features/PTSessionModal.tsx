@@ -184,7 +184,7 @@ export function PTSessionModal({
       title={isCompleting ? 'COMPLETE SESSION' : 'SCHEDULE PT SESSION'}
       subtitle={`Client: ${pt.members?.full_name || 'Member'} · Session ${(pt.sessions_completed || 0) + 1} of ${pt.total_sessions}`}
     >
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <View>
         {!isCompleting ? (
           <>
             {/* Session Date */}
@@ -298,7 +298,7 @@ export function PTSessionModal({
           size="lg"
           style={{ marginTop: 20, marginBottom: 10 }}
         />
-      </ScrollView>
+      </View>
     </FVEModal>
   );
 }
