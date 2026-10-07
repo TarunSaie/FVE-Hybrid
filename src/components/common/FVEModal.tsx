@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   Modal,
   View,
@@ -49,149 +49,201 @@ export function FVEModal({
   const bottomInset = Math.max(insets.bottom, 16);
   const topInset = Math.max(insets.top, 24);
 
-  const translateY = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(screenHeight)).current;
   const currentOffset = useRef(0);
   const [sheetHeight, setSheetHeight] = useState(0);
+  const isDragging = useRef(false);
+  const isClosingRef = useRef(false);
 
   // Maximum distance the sheet can travel upwards toward the top of the screen
   const maxUpDrag = Math.max(0, screenHeight - sheetHeight - topInset - 16);
 
-  const handleClose = () => {
+  const closeWithAnimation = useCallback(() => {
+    if (isClosingRef.current) return;
+    isClosingRef.current = true;
     haptics.light();
-    onClose();
+    Animated.timing(translateY, {
+      toValue: screenHeight,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      onClose();
+      // Keep offscreen position so it never flashes back to 0 before unmounting
+      setTimeout(() => {
+        isClosingRef.current = false;
+      }, 150);
+    });
+  }, [screenHeight, onClose, translateY]);
+
+  // Synchronously keep live parameters updated on every render to eliminate stale closures
+  const paramsRef = useRef({
+    maxUpDrag: Math.round(screenHeight * 0.45),
+    screenHeight,
+    closeWithAnimation,
+  });
+  paramsRef.current = {
+    maxUpDrag: maxUpDrag > 20 ? maxUpDrag : Math.round(screenHeight * 0.45),
+    screenHeight,
+    closeWithAnimation,
   };
 
   useEffect(() => {
     if (visible) {
-      translateY.setValue(0);
+      isClosingRef.current = false;
+      translateY.setValue(screenHeight);
       currentOffset.current = 0;
+      Animated.spring(translateY, {
+        toValue: 0,
+        useNativeDriver: true,
+        damping: 24,
+        stiffness: 200,
+        mass: 0.8,
+      }).start();
+    } else {
+      translateY.setValue(screenHeight);
+      currentOffset.current = 0;
+      isClosingRef.current = false;
     }
-  }, [visible, translateY]);
+  }, [visible, screenHeight, translateY]);
 
   useEffect(() => {
     if (!visible) return;
     const backSub = BackHandler.addEventListener('hardwareBackPress', () => {
-      handleClose();
+      closeWithAnimation();
       return true;
     });
     return () => backSub.remove();
-  }, [visible]);
+  }, [visible, closeWithAnimation]);
 
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
+      onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
       onMoveShouldSetPanResponder: (_, gestureState) => {
         return (
-          Math.abs(gestureState.dy) > 5 &&
+          Math.abs(gestureState.dy) > 2 &&
           Math.abs(gestureState.dy) > Math.abs(gestureState.dx)
         );
       },
+      onMoveShouldSetPanResponderCapture: (_, gestureState) => {
+        return (
+          Math.abs(gestureState.dy) > 2 &&
+          Math.abs(gestureState.dy) > Math.abs(gestureState.dx)
+        );
+      },
+      onPanResponderTerminationRequest: () => false,
+      onShouldBlockNativeResponder: () => true,
+      onPanResponderGrant: () => {
+        isDragging.current = true;
+        translateY.stopAnimation();
+        // @ts-ignore - access synchronous current animated value safely
+        const liveVal =
+          typeof (translateY as any)._value === 'number'
+            ? (translateY as any)._value
+            : currentOffset.current;
+        currentOffset.current = liveVal;
+      },
       onPanResponderMove: (_, gestureState) => {
-        const offset = currentOffset.current;
-        const rawTarget = offset + gestureState.dy;
+        const { maxUpDrag: maxUp } = paramsRef.current;
+        const target = currentOffset.current + gestureState.dy;
 
-        if (rawTarget < -maxUpDrag) {
-          // Beyond top boundary: rubber-band resistance
-          const overdrag = -maxUpDrag - rawTarget;
-          translateY.setValue(-maxUpDrag - overdrag * 0.2);
+        if (target < -maxUp) {
+          // Dragging above top limit: apply rubber-band damping
+          const over = -maxUp - target;
+          translateY.setValue(-maxUp - over * 0.25);
         } else {
-          translateY.setValue(rawTarget);
+          translateY.setValue(target);
         }
       },
       onPanResponderRelease: (_, gestureState) => {
-        const offset = currentOffset.current;
+        isDragging.current = false;
+        const { maxUpDrag: maxUp, closeWithAnimation: closeAnim } = paramsRef.current;
+        const startOffset = currentOffset.current;
         const dy = gestureState.dy;
         const vy = gestureState.vy;
+        const endPosition = startOffset + dy;
 
-        if (offset === 0) {
-          // Currently at REST (natural content height)
-          if (dy < -40 || vy < -0.45) {
-            // Dragged up significantly -> Snap to TOP smoothly
-            if (maxUpDrag > 25) {
-              haptics.light();
-              Animated.spring(translateY, {
-                toValue: -maxUpDrag,
-                useNativeDriver: true,
-                damping: 20,
-                stiffness: 150,
-                mass: 0.8,
-              }).start(() => {
-                currentOffset.current = -maxUpDrag;
-              });
-            } else {
-              // Already near top
-              Animated.spring(translateY, {
-                toValue: 0,
-                useNativeDriver: true,
-                bounciness: 4,
-              }).start();
-            }
-          } else if (dy > 80 || vy > 0.6) {
-            // Dragged down significantly -> Dismiss smoothly
+        // Quick tap on handle (minimal movement): toggle between REST and TOP
+        if (Math.abs(dy) < 6 && Math.abs(vy) < 0.15) {
+          if (startOffset === 0 && maxUp > 30) {
             haptics.light();
-            Animated.timing(translateY, {
-              toValue: screenHeight,
-              duration: 180,
+            Animated.spring(translateY, {
+              toValue: -maxUp,
               useNativeDriver: true,
+              damping: 20,
+              stiffness: 160,
+              mass: 0.8,
             }).start(() => {
-              translateY.setValue(0);
-              currentOffset.current = 0;
-              onClose();
+              currentOffset.current = -maxUp;
             });
-          } else {
-            // Revert back to REST position
+            return;
+          } else if (startOffset < -20) {
+            haptics.light();
             Animated.spring(translateY, {
               toValue: 0,
               useNativeDriver: true,
-              bounciness: 4,
+              damping: 20,
+              stiffness: 160,
+              mass: 0.8,
             }).start(() => {
               currentOffset.current = 0;
             });
-          }
-        } else {
-          // Currently at EXPANDED (top position)
-          if (dy > 45 || vy > 0.45) {
-            // Dragged down from top position
-            if (dy > maxUpDrag + 80 || vy > 1.1) {
-              // Dragged all the way down off screen -> Dismiss
-              haptics.light();
-              Animated.timing(translateY, {
-                toValue: screenHeight,
-                duration: 180,
-                useNativeDriver: true,
-              }).start(() => {
-                translateY.setValue(0);
-                currentOffset.current = 0;
-                onClose();
-              });
-            } else {
-              // Snap back down to REST position
-              haptics.light();
-              Animated.spring(translateY, {
-                toValue: 0,
-                useNativeDriver: true,
-                damping: 20,
-                stiffness: 150,
-                mass: 0.8,
-              }).start(() => {
-                currentOffset.current = 0;
-              });
-            }
-          } else {
-            // Keep at EXPANDED top position
-            Animated.spring(translateY, {
-              toValue: -maxUpDrag,
-              useNativeDriver: true,
-              damping: 20,
-              stiffness: 150,
-            }).start(() => {
-              currentOffset.current = -maxUpDrag;
-            });
+            return;
           }
         }
+
+        // 1. DISMISS CONDITION:
+        // Dragged down past rest position by > 75px or strong downward flick
+        if (endPosition > 75 || (vy > 0.6 && endPosition > -30)) {
+          closeAnim();
+          return;
+        }
+
+        // 2. EXPAND TO TOP CONDITION:
+        // Strong upward flick or dragged past 35% of upward travel
+        if (maxUp > 30 && (vy < -0.4 || endPosition < -maxUp * 0.35)) {
+          haptics.light();
+          Animated.spring(translateY, {
+            toValue: -maxUp,
+            useNativeDriver: true,
+            damping: 20,
+            stiffness: 160,
+            mass: 0.8,
+          }).start(() => {
+            currentOffset.current = -maxUp;
+          });
+          return;
+        }
+
+        // 3. COLLAPSE TO REST POSITION (Default):
+        haptics.light();
+        Animated.spring(translateY, {
+          toValue: 0,
+          useNativeDriver: true,
+          damping: 20,
+          stiffness: 160,
+          mass: 0.8,
+        }).start(() => {
+          currentOffset.current = 0;
+        });
+      },
+      onPanResponderTerminate: () => {
+        isDragging.current = false;
+        Animated.spring(translateY, {
+          toValue: currentOffset.current,
+          useNativeDriver: true,
+          damping: 20,
+          stiffness: 160,
+        }).start();
       },
     })
   ).current;
+
+  const backdropOpacity = translateY.interpolate({
+    inputRange: [-maxUpDrag - 40, 0, screenHeight * 0.75],
+    outputRange: [1, 1, 0],
+    extrapolate: 'clamp',
+  });
 
   const sheetBg = isDark ? '#12151B' : colors.cardBackground;
   const sheetBorder = isDark ? 'rgba(255, 255, 255, 0.1)' : colors.borderDark;
@@ -202,13 +254,25 @@ export function FVEModal({
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
-      onRequestClose={handleClose}
+      animationType="none"
+      onRequestClose={closeWithAnimation}
       statusBarTranslucent
     >
-      <View style={[styles.backdrop, { backgroundColor: colors.overlay }]}>
+      <View style={styles.modalRoot}>
+        {/* Animated Dim Backdrop */}
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              backgroundColor: colors.overlay,
+              opacity: backdropOpacity,
+            },
+          ]}
+        />
+
         {/* Backdrop tap to dismiss */}
-        <Pressable style={styles.backdropTap} onPress={handleClose} />
+        <Pressable style={StyleSheet.absoluteFill} onPress={closeWithAnimation} />
 
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -217,8 +281,9 @@ export function FVEModal({
         >
           <Animated.View
             onLayout={(e) => {
+              if (isDragging.current) return;
               const h = e.nativeEvent.layout.height;
-              if (h > 0 && Math.abs(h - sheetHeight) > 2) {
+              if (h > 0 && Math.abs(h - sheetHeight) > 4) {
                 setSheetHeight(h);
               }
             }}
@@ -245,19 +310,22 @@ export function FVEModal({
             />
 
             {/* Native Sheet Grab Handle with Drag Gesture */}
-            <View {...panResponder.panHandlers} style={styles.handleContainer}>
+            <View
+              {...panResponder.panHandlers}
+              style={styles.handleContainer}
+              hitSlop={{ top: 10, bottom: 10 }}
+            >
               <View style={[styles.sheetHandle, { backgroundColor: handleBg }]} />
             </View>
 
             {/* Header */}
             <View
-              {...panResponder.panHandlers}
               style={[
                 styles.header,
                 { borderBottomColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.borderDark },
               ]}
             >
-              <View style={styles.headerTextContainer}>
+              <View {...panResponder.panHandlers} style={styles.headerTextContainer}>
                 <Text numberOfLines={1} style={[styles.title, { color: colors.textPrimary }]}>
                   {title}
                 </Text>
@@ -268,7 +336,7 @@ export function FVEModal({
                 )}
               </View>
               <TouchableOpacity
-                onPress={handleClose}
+                onPress={closeWithAnimation}
                 style={[styles.closeButton, { backgroundColor: closeBtnBg }]}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 activeOpacity={0.7}
@@ -312,16 +380,9 @@ export function FVEModal({
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
+  modalRoot: {
     flex: 1,
     justifyContent: 'flex-end',
-  },
-  backdropTap: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
   },
   keyboardAvoid: {
     width: '100%',
@@ -341,19 +402,23 @@ const styles = StyleSheet.create({
   },
   bottomSkirt: {
     position: 'absolute',
-    bottom: -1000,
+    bottom: -1200,
     left: 0,
     right: 0,
-    height: 1000,
-    borderWidth: 1,
+    height: 1200,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderBottomWidth: 0,
     borderTopWidth: 0,
   },
   handleContainer: {
     alignItems: 'center',
-    paddingVertical: 12,
+    justifyContent: 'center',
+    paddingVertical: 14,
+    width: '100%',
   },
   sheetHandle: {
-    width: 44,
+    width: 48,
     height: 5,
     borderRadius: 3,
   },

@@ -42,6 +42,7 @@ import { FVEEmptyState } from '@/components/common/FVEEmptyState';
 import { FVELogoLoader } from '@/components/common/FVELogoLoader';
 import { AttendanceCalendarModal } from '@/components/features/AttendanceCalendarModal';
 import { AttendanceFollowUpModal } from '@/components/features/AttendanceFollowUpModal';
+import { ProfilePhotoModal } from '@/components/features/ProfilePhotoModal';
 import { Attendance, Member, Membership } from '@/types';
 import { supabase } from '@/api/supabase';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -100,6 +101,11 @@ export function AttendanceScreen() {
   const [manualSearch, setManualSearch] = useState('');
   const [selectedMemberForCalendar, setSelectedMemberForCalendar] = useState<{
     id: string;
+    full_name: string;
+    member_id?: string | null;
+  } | null>(null);
+  const [previewPhotoMember, setPreviewPhotoMember] = useState<{
+    profile_photo?: string | null;
     full_name: string;
     member_id?: string | null;
   } | null>(null);
@@ -700,6 +706,16 @@ export function AttendanceScreen() {
                       });
                     }
                   }}
+                  onAvatarPress={att => {
+                    if (att.members) {
+                      haptics.light();
+                      setPreviewPhotoMember({
+                        profile_photo: att.members.profile_photo,
+                        full_name: att.members.full_name || 'Member',
+                        member_id: att.members.member_id,
+                      });
+                    }
+                  }}
                 />
               )}
               contentContainerStyle={styles.listContent}
@@ -906,14 +922,41 @@ export function AttendanceScreen() {
                 const initial = item.full_name.charAt(0).toUpperCase();
                 return (
                   <View style={styles.monitorCard}>
-                    <View style={styles.monitorCardTop}>
-                      {item.profile_photo ? (
-                        <Image source={{ uri: item.profile_photo }} style={styles.monitorAvatar} />
-                      ) : (
-                        <View style={styles.monitorAvatarFallback}>
-                          <Text style={styles.monitorAvatarText}>{initial}</Text>
-                        </View>
-                      )}
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      onPress={() => {
+                        haptics.light();
+                        setSelectedMemberForCalendar({
+                          id: item.id,
+                          full_name: item.full_name,
+                          member_id: item.member_id,
+                        });
+                      }}
+                      style={styles.monitorCardTop}
+                    >
+                      <TouchableOpacity
+                        activeOpacity={0.75}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        onPress={e => {
+                          e?.stopPropagation?.();
+                          haptics.light();
+                          setPreviewPhotoMember({
+                            profile_photo: item.profile_photo,
+                            full_name: item.full_name,
+                            member_id: item.member_id,
+                          });
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`View profile photo of ${item.full_name}`}
+                      >
+                        {item.profile_photo ? (
+                          <Image source={{ uri: item.profile_photo }} style={styles.monitorAvatar} />
+                        ) : (
+                          <View style={styles.monitorAvatarFallback}>
+                            <Text style={styles.monitorAvatarText}>{initial}</Text>
+                          </View>
+                        )}
+                      </TouchableOpacity>
 
                       <View style={styles.monitorDetails}>
                         <View style={styles.monitorNameRow}>
@@ -961,7 +1004,7 @@ export function AttendanceScreen() {
                           </>
                         )}
                       </View>
-                    </View>
+                    </TouchableOpacity>
 
                     {/* Action Buttons Row */}
                     <View style={styles.monitorActionsRow}>
@@ -1160,6 +1203,15 @@ export function AttendanceScreen() {
               }
             : null
         }
+      />
+
+      {/* Full-Size Profile Photo Modal */}
+      <ProfilePhotoModal
+        visible={!!previewPhotoMember}
+        onClose={() => setPreviewPhotoMember(null)}
+        photoUrl={previewPhotoMember?.profile_photo}
+        memberName={previewPhotoMember?.full_name || 'Member'}
+        memberId={previewPhotoMember?.member_id}
       />
     </View>
   );

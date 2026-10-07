@@ -1,18 +1,20 @@
 import React, { useRef } from 'react';
-import { View, Text, StyleSheet, Image, Pressable, Animated } from 'react-native';
+import { View, Text, StyleSheet, Image, Pressable, Animated, TouchableOpacity } from 'react-native';
 import { Clock, QrCode, UserCheck } from 'lucide-react-native';
 import { Attendance } from '@/types';
 import { useTheme } from '@/contexts/ThemeContext';
 import { typography } from '@/constants/typography';
+import { haptics } from '@/utils/haptics';
 
 import { formatTime } from '@/utils/date';
 
 interface AttendanceItemProps {
   item: Attendance & { members?: { full_name?: string; profile_photo?: string | null; member_id?: string | null } };
   onPress?: () => void;
+  onAvatarPress?: (item: Attendance & { members?: { full_name?: string; profile_photo?: string | null; member_id?: string | null } }) => void;
 }
 
-export function AttendanceItem({ item, onPress }: AttendanceItemProps) {
+export function AttendanceItem({ item, onPress, onAvatarPress }: AttendanceItemProps) {
   const { colors, isDark } = useTheme();
   const memberName = item.members?.full_name || 'Member';
   const memberId = item.members?.member_id;
@@ -25,10 +27,23 @@ export function AttendanceItem({ item, onPress }: AttendanceItemProps) {
   const handlePressIn = () => Animated.spring(scale, { toValue: 0.975, useNativeDriver: true, speed: 35, bounciness: 4 }).start();
   const handlePressOut = () => Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 35, bounciness: 4 }).start();
 
+  const handlePress = () => {
+    haptics.light();
+    onPress?.();
+  };
+
+  const handleAvatarPress = (e?: any) => {
+    e?.stopPropagation?.();
+    if (onAvatarPress) {
+      haptics.light();
+      onAvatarPress(item);
+    }
+  };
+
   return (
     <Animated.View style={{ transform: [{ scale }] }}>
       <Pressable
-        onPress={onPress}
+        onPress={handlePress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         style={[
@@ -42,21 +57,30 @@ export function AttendanceItem({ item, onPress }: AttendanceItemProps) {
         android_ripple={{ color: colors.goldMuted, borderless: false }}
       >
         <View style={styles.leftRow}>
-          {photo ? (
-            <Image source={{ uri: photo }} style={[styles.avatar, { borderColor: colors.goldBorder }]} />
-          ) : (
-            <View
-              style={[
-                styles.fallbackAvatar,
-                {
-                  backgroundColor: isDark ? '#181C24' : '#EDF2F7',
-                  borderColor: colors.goldBorder,
-                },
-              ]}
-            >
-              <Text style={[styles.fallbackText, { color: colors.gold }]}>{initial}</Text>
-            </View>
-          )}
+          <TouchableOpacity
+            activeOpacity={0.75}
+            onPress={(e) => handleAvatarPress(e)}
+            disabled={!onAvatarPress}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel={`View profile photo of ${memberName}`}
+          >
+            {photo ? (
+              <Image source={{ uri: photo }} style={[styles.avatar, { borderColor: colors.goldBorder }]} />
+            ) : (
+              <View
+                style={[
+                  styles.fallbackAvatar,
+                  {
+                    backgroundColor: isDark ? '#181C24' : '#EDF2F7',
+                    borderColor: colors.goldBorder,
+                  },
+                ]}
+              >
+                <Text style={[styles.fallbackText, { color: colors.gold }]}>{initial}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
 
           <View style={styles.details}>
             <View style={styles.nameRow}>
