@@ -676,7 +676,9 @@ export function PaymentReceiptScreen() {
             </View>
             <View style={styles.modalOptionTextContainer}>
               <View style={styles.modalOptionTitleRow}>
-                <Text style={[styles.modalOptionTitle, { color: '#25D366' }]}>Direct WhatsApp (with PDF Link)</Text>
+                <Text style={[styles.modalOptionTitle, { color: '#25D366' }]} numberOfLines={2}>
+                  Direct WhatsApp (with PDF Link)
+                </Text>
                 <View style={[styles.recommendedBadge, { backgroundColor: 'rgba(37, 211, 102, 0.15)', borderColor: '#25D366' }]}>
                   <Text style={[styles.recommendedBadgeText, { color: '#25D366' }]}>DIRECT</Text>
                 </View>
@@ -700,7 +702,11 @@ export function PaymentReceiptScreen() {
               <FileText size={20} color={colors.gold} />
             </View>
             <View style={styles.modalOptionTextContainer}>
-              <Text style={styles.modalOptionTitle}>Attach PDF File (Share Sheet)</Text>
+              <View style={styles.modalOptionTitleRow}>
+                <Text style={styles.modalOptionTitle} numberOfLines={2}>
+                  Attach PDF File (Share Sheet)
+                </Text>
+              </View>
               <Text style={styles.modalOptionDesc}>
                 Generates branded PDF file and opens system share dialog to manually attach in WhatsApp, Drive, or Email.
               </Text>
@@ -720,7 +726,11 @@ export function PaymentReceiptScreen() {
               <Printer size={20} color={colors.blue} />
             </View>
             <View style={styles.modalOptionTextContainer}>
-              <Text style={styles.modalOptionTitle}>Print / Save PDF Document</Text>
+              <View style={styles.modalOptionTitleRow}>
+                <Text style={styles.modalOptionTitle} numberOfLines={2}>
+                  Print / Save PDF Document
+                </Text>
+              </View>
               <Text style={styles.modalOptionDesc}>
                 Opens system print preview to save PDF locally to files or print wirelessly.
               </Text>
@@ -915,55 +925,67 @@ const getReceiptStyles = (colors: ThemeColors, isDark: boolean) =>
     modalOptionList: {
       gap: 12,
       paddingVertical: 6,
+      width: '100%',
     },
     modalOptionCard: {
       flexDirection: 'row',
-      alignItems: 'center',
+      alignItems: 'flex-start',
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.borderDark,
       borderRadius: 14,
-      padding: 16,
-      gap: 14,
+      padding: 14,
+      gap: 12,
+      width: '100%',
+      overflow: 'hidden',
     },
     modalOptionCardHighlight: {
-      borderColor: isDark ? 'rgba(239, 161, 0, 0.45)' : 'rgba(217, 130, 0, 0.45)',
-      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.04)' : 'rgba(217, 130, 0, 0.06)',
+      borderColor: isDark ? 'rgba(37, 211, 102, 0.4)' : 'rgba(37, 211, 102, 0.35)',
+      backgroundColor: isDark ? 'rgba(37, 211, 102, 0.05)' : 'rgba(37, 211, 102, 0.06)',
     },
     modalOptionIconBox: {
-      width: 44,
-      height: 44,
-      borderRadius: 12,
+      width: 40,
+      height: 40,
+      borderRadius: 10,
       borderWidth: 1,
       alignItems: 'center',
       justifyContent: 'center',
+      flexShrink: 0,
+      marginTop: 2,
     },
     modalOptionTextContainer: {
       flex: 1,
+      minWidth: 0,
     },
     modalOptionTitleRow: {
       flexDirection: 'row',
-      alignItems: 'center',
+      alignItems: 'flex-start',
       justifyContent: 'space-between',
+      gap: 8,
       marginBottom: 4,
     },
     modalOptionTitle: {
+      flex: 1,
+      flexShrink: 1,
       color: colors.textPrimary,
-      fontSize: typography.sizes.sm,
-      fontFamily: typography.fonts.orbitron,
+      fontSize: 14,
+      fontFamily: typography.fonts.rajdhani,
       fontWeight: '700',
-      letterSpacing: 0.5,
+      letterSpacing: 0.4,
+      lineHeight: 18,
     },
     recommendedBadge: {
-      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.2)' : 'rgba(217, 130, 0, 0.15)',
+      flexShrink: 0,
+      backgroundColor: isDark ? 'rgba(37, 211, 102, 0.15)' : 'rgba(37, 211, 102, 0.12)',
       borderWidth: 1,
-      borderColor: colors.gold,
-      borderRadius: 8,
+      borderColor: '#25D366',
+      borderRadius: 6,
       paddingHorizontal: 6,
       paddingVertical: 2,
+      marginTop: 1,
     },
     recommendedBadgeText: {
-      color: colors.gold,
+      color: '#25D366',
       fontSize: 9,
       fontFamily: typography.fonts.rajdhani,
       fontWeight: '800',
@@ -973,7 +995,7 @@ const getReceiptStyles = (colors: ThemeColors, isDark: boolean) =>
       color: colors.textSecondary,
       fontSize: 11,
       fontFamily: typography.fonts.inter,
-      lineHeight: 15,
+      lineHeight: 16,
     },
     receiptSubHeader: {
       color: colors.textMuted,
