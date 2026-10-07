@@ -779,8 +779,8 @@ export function MemberDetailScreen() {
 
             <View style={styles.profileInfo}>
               <View style={styles.nameBadgeRow}>
-                <Text numberOfLines={1} style={styles.memberName}>
-                  {member?.full_name}
+                <Text numberOfLines={2} ellipsizeMode="tail" style={styles.memberName}>
+                  {member?.full_name || 'Member'}
                 </Text>
                 {member?.member_id && (
                   <View style={styles.idBadge}>

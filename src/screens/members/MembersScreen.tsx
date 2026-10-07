@@ -179,6 +179,7 @@ export function MembersScreen() {
 
         return {
           ...m,
+          full_name: (m.full_name || (m as any).name || '').trim() || 'Member',
           membership_id: latest?.id || null,
           membership_start_date: latest?.start_date || null,
           membership_expiry_date: expiry,

@@ -38,7 +38,8 @@ export function MemberCard({
   onAvatarPress,
 }: MemberCardProps) {
   const { colors, isDark } = useTheme();
-  const initial = member.full_name?.charAt(0)?.toUpperCase() || '?';
+  const memberName = (member.full_name || (member as any).name || '').trim() || 'Member';
+  const initial = memberName.charAt(0).toUpperCase();
   const scale = useRef(new Animated.Value(1)).current;
 
   const todayStr = getLocalDateStr();
@@ -100,24 +101,25 @@ export function MemberCard({
           },
         ]}
       >
-        <View style={styles.contentRow}>
-          {/* Avatar */}
-          <View style={styles.avatarContainer}>
+        {/* Tier 1: Avatar, Full Name & Meta Info, and Chevron Indicator */}
+        <View style={styles.cardHeader}>
+          {/* Avatar with independent full-size photo preview */}
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={(e) => {
+              e?.stopPropagation?.();
+              if (onAvatarPress) {
+                haptics.light();
+                onAvatarPress(member);
+              }
+            }}
+            disabled={!onAvatarPress}
+            accessibilityRole="button"
+            accessibilityLabel={`View full profile photo of ${memberName}`}
+            style={styles.avatarContainer}
+          >
             {member.profile_photo ? (
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => {
-                  if (onAvatarPress) {
-                    haptics.light();
-                    onAvatarPress(member);
-                  }
-                }}
-                disabled={!onAvatarPress}
-                accessibilityRole="button"
-                accessibilityLabel={`View full profile photo of ${member.full_name}`}
-              >
-                <Image source={{ uri: member.profile_photo }} style={[styles.avatar, { borderColor: colors.goldBorder }]} />
-              </TouchableOpacity>
+              <Image source={{ uri: member.profile_photo }} style={[styles.avatar, { borderColor: colors.goldBorder }]} />
             ) : (
               <View
                 style={[
@@ -131,13 +133,13 @@ export function MemberCard({
                 <Text style={[styles.fallbackText, { color: colors.gold }]}>{initial}</Text>
               </View>
             )}
-          </View>
+          </TouchableOpacity>
 
-          {/* Info */}
+          {/* Info Block with Full Room for Full Name */}
           <View style={styles.info}>
             <View style={styles.nameRow}>
-              <Text numberOfLines={1} style={[styles.name, { color: colors.textPrimary }]}>
-                {member.full_name}
+              <Text numberOfLines={2} ellipsizeMode="tail" style={[styles.name, { color: colors.textPrimary }]}>
+                {memberName}
               </Text>
               {member.member_id && (
                 <View style={[styles.idBadge, { backgroundColor: colors.goldMuted, borderColor: colors.goldBorder }]}>
@@ -146,9 +148,11 @@ export function MemberCard({
               )}
             </View>
 
+            {/* Mobile Contact */}
             {member.mobile ? (
               <TouchableOpacity
-                onPress={() => {
+                onPress={(e) => {
+                  e?.stopPropagation?.();
                   haptics.selection();
                   const cleanPhone = member.mobile?.replace(/\D/g, '');
                   if (cleanPhone) Linking.openURL(`tel:${cleanPhone}`);
@@ -162,6 +166,7 @@ export function MemberCard({
               </TouchableOpacity>
             ) : null}
 
+            {/* Plan and Expiry Meta Row */}
             <View style={styles.statusRow}>
               <FVEBadge status={displayStatus} size="sm" />
               {member.plan_name ? (
@@ -186,6 +191,7 @@ export function MemberCard({
               ) : null}
             </View>
 
+            {/* Upcoming Queued Membership if exists */}
             {member.has_upcoming_membership && member.upcoming_plan_name ? (
               <View
                 style={[
@@ -207,24 +213,29 @@ export function MemberCard({
             ) : null}
           </View>
 
-          {/* Actions & Chevron */}
-          <View style={styles.rightActions}>
-            {/* Direct WhatsApp Chat for EVERY member */}
+          {/* Chevron Navigation Indicator */}
+          <ChevronRight size={18} color={isExpired ? colors.error : colors.gold} style={styles.chevron} />
+        </View>
+
+        {/* Tier 2: Bottom Action Row - Spacious, thumb-friendly buttons with ample room */}
+        {(onChat || ((isExpired || isExpiringSoon) && onWhatsAppAlert) || onShare) && (
+          <View style={[styles.actionsRow, { borderTopColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.borderDark }]}>
+            {/* Direct WhatsApp Chat */}
             {onChat ? (
               <TouchableOpacity
                 onPress={(e) => {
-                  e.stopPropagation();
+                  e?.stopPropagation?.();
                   haptics.medium();
                   onChat(member);
                 }}
                 accessibilityRole="button"
-                accessibilityLabel={`Chat with ${member.full_name} on WhatsApp`}
+                accessibilityLabel={`Chat with ${memberName} on WhatsApp`}
                 activeOpacity={0.75}
                 hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
-                style={styles.whatsappChatBtn}
+                style={styles.actionBtnWhatsApp}
               >
-                <MessageCircle size={13} color="#25D366" />
-                <Text style={styles.whatsappChatText}>Chat</Text>
+                <MessageCircle size={14} color="#25D366" />
+                <Text style={styles.actionBtnWhatsAppText}>Chat</Text>
               </TouchableOpacity>
             ) : null}
 
@@ -232,18 +243,27 @@ export function MemberCard({
             {(isExpired || isExpiringSoon) && onWhatsAppAlert ? (
               <TouchableOpacity
                 onPress={(e) => {
-                  e.stopPropagation();
+                  e?.stopPropagation?.();
                   haptics.medium();
                   onWhatsAppAlert(member);
                 }}
                 accessibilityRole="button"
-                accessibilityLabel={isExpiringSoon ? `Send renewal reminder to ${member.full_name}` : `Send expiration alert to ${member.full_name}`}
+                accessibilityLabel={isExpiringSoon ? `Send renewal reminder to ${memberName}` : `Send expiration alert to ${memberName}`}
                 activeOpacity={0.8}
                 hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
-                style={styles.whatsappAlertBtn}
+                style={[
+                  styles.actionBtnAlert,
+                  isExpired && styles.actionBtnAlertExpired,
+                ]}
               >
-                <Text style={styles.whatsappAlertText}>
-                  {isExpiringSoon ? 'Remind' : 'Alert'}
+                <MessageCircle size={13} color={isExpired ? '#EF4444' : '#F59E0B'} />
+                <Text
+                  style={[
+                    styles.actionBtnAlertText,
+                    isExpired && styles.actionBtnAlertTextExpired,
+                  ]}
+                >
+                  {isExpiringSoon ? 'Renewal Remind' : 'Expiry Alert'}
                 </Text>
               </TouchableOpacity>
             ) : null}
@@ -252,28 +272,29 @@ export function MemberCard({
             {onShare ? (
               <TouchableOpacity
                 onPress={(e) => {
-                  e.stopPropagation();
+                  e?.stopPropagation?.();
                   haptics.light();
                   onShare(member);
                 }}
                 disabled={isSharing}
-                accessibilityLabel={`Share ${member.full_name}'s member pass PDF`}
+                accessibilityLabel={`Share ${memberName}'s member pass PDF`}
                 accessibilityHint="Generates athlete pass PDF and opens share sheet"
                 activeOpacity={0.7}
                 hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
-                style={[styles.shareCardBtn, { backgroundColor: colors.goldMuted, borderColor: colors.goldBorder }]}
+                style={[styles.actionBtnShare, { backgroundColor: colors.goldMuted, borderColor: colors.goldBorder }]}
               >
                 {isSharing ? (
                   <ActivityIndicator size={12} color={colors.gold} />
                 ) : (
-                  <FileText size={13} color={colors.gold} />
+                  <>
+                    <FileText size={13} color={colors.gold} />
+                    <Text style={[styles.actionBtnShareText, { color: colors.gold }]}>Pass PDF</Text>
+                  </>
                 )}
               </TouchableOpacity>
             ) : null}
-
-            <ChevronRight size={18} color={isExpired ? colors.error : colors.gold} style={styles.chevron} />
           </View>
-        </View>
+        )}
       </Pressable>
     </Animated.View>
   );
@@ -290,7 +311,7 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 2,
   },
-  contentRow: {
+  cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -301,13 +322,13 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    borderWidth: 1,
+    borderWidth: 1.5,
   },
   avatarFallback: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    borderWidth: 1,
+    borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -318,31 +339,32 @@ const styles = StyleSheet.create({
   },
   info: {
     flex: 1,
-    marginRight: 6,
+    marginRight: 8,
   },
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     marginBottom: 3,
-    flexWrap: 'nowrap',
+    flexWrap: 'wrap',
   },
   name: {
-    flexShrink: 1,
-    fontSize: typography.sizes.base,
+    fontSize: 16,
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '700',
     letterSpacing: 0.3,
+    flexShrink: 1,
   },
   idBadge: {
     borderWidth: 1,
     borderRadius: 6,
     paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingVertical: 1.5,
+    alignSelf: 'center',
   },
   idText: {
     fontSize: 10,
-    fontFamily: typography.fonts.rajdhani,
+    fontFamily: typography.fonts.orbitron,
     fontWeight: '700',
   },
   detailRow: {
@@ -365,7 +387,7 @@ const styles = StyleSheet.create({
   planName: {
     fontSize: typography.sizes.xs,
     fontFamily: typography.fonts.inter,
-    maxWidth: 110,
+    maxWidth: 130,
   },
   expiryContainer: {
     flexDirection: 'row',
@@ -377,57 +399,8 @@ const styles = StyleSheet.create({
     fontFamily: typography.fonts.inter,
   },
   chevron: {
-    marginLeft: 2,
-    opacity: 0.7,
-  },
-  rightActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
     marginLeft: 4,
-  },
-  shareCardBtn: {
-    padding: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  whatsappChatBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(37, 211, 102, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(37, 211, 102, 0.4)',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-  },
-  whatsappChatText: {
-    color: '#25D366',
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  whatsappAlertBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(37, 211, 102, 0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(37, 211, 102, 0.3)',
-    borderRadius: 8,
-    paddingHorizontal: 7,
-    paddingVertical: 6,
-  },
-  whatsappAlertText: {
-    color: '#25D366',
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    letterSpacing: 0.5,
+    opacity: 0.8,
   },
   upcomingQueueBadge: {
     flexDirection: 'row',
@@ -451,5 +424,74 @@ const styles = StyleSheet.create({
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '700',
     letterSpacing: 0.3,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+  },
+  actionBtnWhatsApp: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(37, 211, 102, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(37, 211, 102, 0.4)',
+    borderRadius: 9,
+    paddingVertical: 7,
+  },
+  actionBtnWhatsAppText: {
+    color: '#25D366',
+    fontSize: 12,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+  },
+  actionBtnAlert: {
+    flex: 1.2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.4)',
+    borderRadius: 9,
+    paddingVertical: 7,
+  },
+  actionBtnAlertText: {
+    color: '#F59E0B',
+    fontSize: 12,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+  },
+  actionBtnAlertExpired: {
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderColor: 'rgba(239, 68, 68, 0.4)',
+  },
+  actionBtnAlertTextExpired: {
+    color: '#EF4444',
+  },
+  actionBtnShare: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderRadius: 9,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  actionBtnShareText: {
+    fontSize: 12,
+    fontFamily: typography.fonts.rajdhani,
+    fontWeight: '700',
+    letterSpacing: 0.4,
   },
 });
