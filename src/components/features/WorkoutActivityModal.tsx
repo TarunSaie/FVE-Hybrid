@@ -40,6 +40,7 @@ const COMMON_FOCUS_AREAS = [
   'Full Body',
   'Cardio & HIIT',
   'Mobility & Recovery',
+  'Others', 'N/A'
 ];
 
 export function WorkoutActivityModal({

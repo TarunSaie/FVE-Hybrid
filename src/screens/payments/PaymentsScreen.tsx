@@ -20,8 +20,10 @@ import { PaymentItem } from '@/components/features/PaymentItem';
 import { PaymentFormModal } from '@/components/features/PaymentFormModal';
 import { DailyPassFormModal } from '@/components/features/DailyPassFormModal';
 import { UPIQRCodeModal } from '@/components/features/UPIQRCodeModal';
+import { ProfilePhotoModal } from '@/components/features/ProfilePhotoModal';
 import { FVEEmptyState } from '@/components/common/FVEEmptyState';
 import { FVELogoLoader } from '@/components/common/FVELogoLoader';
+import { M3Switch } from '@/components/common/M3Switch';
 import { Payment, DailyPass, PAYMENT_METHODS } from '@/types';
 import { supabase } from '@/api/supabase';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -60,6 +62,11 @@ export function PaymentsScreen() {
   const [showPayModal, setShowPayModal] = useState(false);
   const [showDailyPassModal, setShowDailyPassModal] = useState(false);
   const [showUPIModal, setShowUPIModal] = useState(false);
+  const [previewMember, setPreviewMember] = useState<{
+    profile_photo?: string | null;
+    full_name: string;
+    member_id?: string | null;
+  } | null>(null);
 
   // 1. Query Membership Payments with Joined Members
   const { data: payments = [], isLoading: isPaymentsLoading } = useQuery({
@@ -389,26 +396,28 @@ export function PaymentsScreen() {
           </View>
         </View>
 
-        {/* Daily Pass Combine Toggle Switch */}
-        <View style={styles.toggleRow}>
-          <TouchableOpacity
-            onPress={() => {
-              haptics.selection();
-              setIncludeDailyPasses(!includeDailyPasses);
-            }}
-            style={[styles.toggleBtn, includeDailyPasses && styles.toggleBtnActive]}
-            activeOpacity={0.8}
-          >
-            <Ticket size={13} color={includeDailyPasses ? colors.gold : colors.textMuted} />
-            <Text style={[styles.toggleBtnText, includeDailyPasses && styles.toggleBtnTextActive]}>
-              {includeDailyPasses
-                ? `Combined (+₹${formatCurrency(dailyPassRevenue)} Daily Pass)`
-                : '+ Include Daily Pass Revenue'}
-            </Text>
-            <View style={[styles.switchTrack, includeDailyPasses && styles.switchTrackActive]}>
-              <View style={[styles.switchThumb, includeDailyPasses && styles.switchThumbActive]} />
+        {/* Daily Pass Combine M3 Switch */}
+        <View style={styles.m3ToggleCard}>
+          <View style={styles.m3ToggleLeft}>
+            <View style={[styles.m3ToggleIconBox, includeDailyPasses && styles.m3ToggleIconBoxActive]}>
+              <Ticket size={16} color={includeDailyPasses ? colors.gold : colors.textMuted} />
             </View>
-          </TouchableOpacity>
+            <View style={styles.m3ToggleTextBox}>
+              <Text style={[styles.m3ToggleTitle, includeDailyPasses && styles.m3ToggleTitleActive]}>
+                Combine Daily Pass Revenue
+              </Text>
+              <Text style={styles.m3ToggleSubtitle}>
+                {includeDailyPasses
+                  ? `Includes +₹${formatCurrency(dailyPassRevenue)} from day pass receipts`
+                  : 'Toggle to merge daily pass sales into total'}
+              </Text>
+            </View>
+          </View>
+          <M3Switch
+            value={includeDailyPasses}
+            onValueChange={setIncludeDailyPasses}
+            accessibilityLabel="Combine Daily Pass Revenue"
+          />
         </View>
       </View>
 
@@ -509,6 +518,15 @@ export function PaymentsScreen() {
               onPress={() => navigation.navigate('PaymentReceipt', { payment: item })}
               onShareWhatsApp={() => handleShareWhatsApp(item)}
               onDelete={() => handleDeletePayment(item)}
+              onAvatarPress={(p) => {
+                if (p.members) {
+                  setPreviewMember({
+                    profile_photo: p.members.profile_photo,
+                    full_name: p.members.full_name,
+                    member_id: p.members.member_id,
+                  });
+                }
+              }}
             />
           )}
           contentContainerStyle={styles.listContent}
@@ -626,6 +644,15 @@ export function PaymentsScreen() {
           onClose={() => setShowUPIModal(false)}
         />
       )}
+
+      {/* Full-Size Profile Photo Modal */}
+      <ProfilePhotoModal
+        visible={!!previewMember}
+        onClose={() => setPreviewMember(null)}
+        photoUrl={previewMember?.profile_photo}
+        memberName={previewMember?.full_name || 'Member'}
+        memberId={previewMember?.member_id}
+      />
     </View>
   );
 }
@@ -707,60 +734,55 @@ const getPaymentsStyles = (colors: ThemeColors, isDark: boolean) =>
       fontFamily: typography.fonts.rajdhani,
       fontWeight: '700',
     },
-    toggleRow: {
-      marginTop: 12,
-      paddingTop: 10,
+    m3ToggleCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginTop: 14,
+      paddingTop: 12,
       borderTopWidth: 1,
       borderTopColor: colors.borderDark,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'flex-start',
     },
-    toggleBtn: {
+    m3ToggleLeft: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 7,
-      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.03)',
+      gap: 10,
+      flex: 1,
+      marginRight: 12,
+    },
+    m3ToggleIconBox: {
+      width: 36,
+      height: 36,
+      borderRadius: 10,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : '#F1F5F9',
       borderWidth: 1,
       borderColor: colors.borderDark,
-      borderRadius: 20,
-      paddingHorizontal: 12,
-      paddingVertical: 5,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
-    toggleBtnActive: {
+    m3ToggleIconBoxActive: {
       backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : 'rgba(217, 130, 0, 0.12)',
       borderColor: colors.goldBorder,
     },
-    toggleBtnText: {
-      color: colors.textMuted,
-      fontSize: 11,
-      fontFamily: typography.fonts.inter,
-      fontWeight: '600',
+    m3ToggleTextBox: {
+      flex: 1,
     },
-    toggleBtnTextActive: {
+    m3ToggleTitle: {
+      fontSize: 12,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      letterSpacing: 0.3,
+    },
+    m3ToggleTitleActive: {
       color: colors.gold,
     },
-    switchTrack: {
-      width: 28,
-      height: 16,
-      borderRadius: 8,
-      backgroundColor: isDark ? '#333' : '#ccc',
-      padding: 2,
-      justifyContent: 'center',
-      marginLeft: 4,
-    },
-    switchTrackActive: {
-      backgroundColor: colors.gold,
-    },
-    switchThumb: {
-      width: 12,
-      height: 12,
-      borderRadius: 6,
-      backgroundColor: '#fff',
-      transform: [{ translateX: 0 }],
-    },
-    switchThumbActive: {
-      transform: [{ translateX: 12 }],
+    m3ToggleSubtitle: {
+      fontSize: 10.5,
+      fontFamily: typography.fonts.inter,
+      color: colors.textSecondary,
+      marginTop: 1,
+      lineHeight: 14,
     },
 
     // Segmented Tabs

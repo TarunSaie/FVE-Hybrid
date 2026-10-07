@@ -34,7 +34,8 @@ const FOCUS_AREAS = [
   'Shoulders & Traps',
   'Full Body Conditioning',
   'HIIT & Cardio',
-  'Mobility & Posture'
+  'Mobility & Posture',
+  'Others', 'N/A'
 ];
 
 export function PTSessionModal({

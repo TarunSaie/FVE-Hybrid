@@ -590,53 +590,70 @@ export function PaymentReceiptScreen() {
             style={{ marginTop: 8 }}
           />
 
-          <FVEButton
-            title="REVERT / DELETE THIS PAYMENT"
-            onPress={() => {
-              Alert.alert(
-                'Revert / Delete Payment',
-                `Are you sure you want to revert or delete payment receipt #${activePayment.receipt_number || activePayment.id}? This will safely roll back any linked plan upgrade, restore previous membership expiry dates, and unlink personal training packages.`,
-                [
-                  { text: 'Cancel', style: 'cancel' },
-                  {
-                    text: 'Delete & Revert',
-                    style: 'destructive',
-                    onPress: async () => {
-                      try {
-                        setIsDeleting(true);
-                        const result = await revertOrDeletePayment(activePayment);
-                        if (result.success) {
-                          haptics.success();
-                          queryClient.invalidateQueries({ queryKey: ['payments'] });
-                          queryClient.invalidateQueries({ queryKey: ['members'] });
-                          queryClient.invalidateQueries({ queryKey: ['member-detail'] });
-                          queryClient.invalidateQueries({ queryKey: ['dashboard-metrics'] });
-                          Alert.alert(
-                            'Payment Reverted',
-                            'The payment record has been deleted and member plan status has been safely restored.',
-                            [{ text: 'OK', onPress: () => navigation.goBack() }]
-                          );
-                        } else {
-                          haptics.error();
-                          Alert.alert('Error', result.error || 'Failed to revert payment');
+          {/* Administrative Transaction Rollback Card */}
+          <View style={styles.revertCard}>
+            <View style={styles.revertHeaderRow}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Trash2 size={13} color="#EF4444" />
+                <Text style={styles.revertCardTitle}>TRANSACTION ROLLBACK</Text>
+              </View>
+              <View style={styles.revertBadge}>
+                <Text style={styles.revertBadgeText}>ADMIN ACTION</Text>
+              </View>
+            </View>
+            <Text style={styles.revertCardDesc}>
+              Reverting will safely delete this payment transaction, restore the member's previous membership plan dates, and rollback linked plan upgrades with zero data loss.
+            </Text>
+            <TouchableOpacity
+              onPress={() => {
+                Alert.alert(
+                  'Revert / Delete Payment',
+                  `Are you sure you want to revert or delete payment receipt #${activePayment.receipt_number || activePayment.id}? This will safely roll back any linked plan upgrade, restore previous membership expiry dates, and unlink personal training packages.`,
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Delete & Revert',
+                      style: 'destructive',
+                      onPress: async () => {
+                        try {
+                          setIsDeleting(true);
+                          const result = await revertOrDeletePayment(activePayment);
+                          if (result.success) {
+                            haptics.success();
+                            queryClient.invalidateQueries({ queryKey: ['payments'] });
+                            queryClient.invalidateQueries({ queryKey: ['members'] });
+                            queryClient.invalidateQueries({ queryKey: ['member-detail'] });
+                            queryClient.invalidateQueries({ queryKey: ['dashboard-metrics'] });
+                            Alert.alert(
+                              'Payment Reverted',
+                              'The payment record has been deleted and member plan status has been safely restored.',
+                              [{ text: 'OK', onPress: () => navigation.goBack() }]
+                            );
+                          } else {
+                            haptics.error();
+                            Alert.alert('Error', result.error || 'Failed to revert payment');
+                          }
+                        } catch (err: unknown) {
+                          const msg = err instanceof Error ? err.message : 'Unknown error occurred';
+                          Alert.alert('Error', msg);
+                        } finally {
+                          setIsDeleting(false);
                         }
-                      } catch (err: unknown) {
-                        const msg = err instanceof Error ? err.message : 'Unknown error occurred';
-                        Alert.alert('Error', msg);
-                      } finally {
-                        setIsDeleting(false);
-                      }
+                      },
                     },
-                  },
-                ]
-              );
-            }}
-            loading={isDeleting}
-            variant="danger"
-            size="md"
-            icon={<Trash2 size={16} color="#EF4444" />}
-            style={{ marginTop: 8, borderColor: 'rgba(239, 68, 68, 0.4)', borderWidth: 1 }}
-          />
+                  ]
+                );
+              }}
+              disabled={isDeleting}
+              style={styles.revertActionBtn}
+              activeOpacity={0.8}
+            >
+              <Trash2 size={14} color="#EF4444" />
+              <Text style={styles.revertActionBtnText}>
+                {isDeleting ? 'Reverting Transaction...' : 'Revert & Delete This Payment'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
 
@@ -1032,5 +1049,66 @@ const getReceiptStyles = (colors: ThemeColors, isDark: boolean) =>
       fontSize: 10,
       fontFamily: typography.fonts.inter,
       marginTop: 2,
+    },
+    revertCard: {
+      marginTop: 20,
+      marginBottom: 8,
+      padding: 14,
+      borderRadius: 14,
+      backgroundColor: isDark ? 'rgba(239, 68, 68, 0.05)' : '#FEF2F2',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 68, 68, 0.25)' : 'rgba(239, 68, 68, 0.2)',
+    },
+    revertHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 6,
+    },
+    revertCardTitle: {
+      color: '#EF4444',
+      fontSize: 11,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 0.8,
+    },
+    revertBadge: {
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+      backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.1)',
+    },
+    revertBadgeText: {
+      color: '#EF4444',
+      fontSize: 9,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 0.5,
+    },
+    revertCardDesc: {
+      color: colors.textSecondary,
+      fontSize: 11,
+      fontFamily: typography.fonts.inter,
+      lineHeight: 16,
+      marginBottom: 10,
+    },
+    revertActionBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      borderRadius: 10,
+      backgroundColor: isDark ? 'rgba(239, 68, 68, 0.12)' : 'rgba(239, 68, 68, 0.08)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 68, 68, 0.4)' : 'rgba(239, 68, 68, 0.3)',
+    },
+    revertActionBtnText: {
+      color: '#EF4444',
+      fontSize: 12,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 0.5,
     },
   });

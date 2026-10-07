@@ -32,6 +32,7 @@ import {
   Cake,
   MessageCircle,
   CheckCircle2,
+  AlertCircle,
   Sparkles,
   ArrowRight,
   Apple,
@@ -550,15 +551,18 @@ export function MemberDetailScreen() {
     activeMembership.status === 'EXPIRED' ||
     (!!activeMembership?.expiry_date && activeMembership.expiry_date < todayStr);
 
+  const canHoldOrReactivate =
+    !!activeMembership && (!isMemberExpired || activeMembership.status === 'HOLD');
+
   const handleWhatsApp = () => {
     if (member?.mobile) {
       haptics.medium();
       const msg = isMemberExpired
         ? buildExpiredAlertMessage(
-            member.full_name,
-            activeMembership?.membership_plans?.name,
-            activeMembership?.expiry_date
-          )
+          member.full_name,
+          activeMembership?.membership_plans?.name,
+          activeMembership?.expiry_date
+        )
         : `Hi ${member.full_name}, greetings from FitVerse Elite!`;
       openWhatsAppLink(member.mobile, msg);
     }
@@ -679,7 +683,8 @@ export function MemberDetailScreen() {
           haptics.error();
           Alert.alert('Error', msg || 'Failed to share Member Pass PDF');
         }
-      }    }
+      }
+    }
   };
 
   const isBirthdayToday = member?.date_of_birth ? (() => {
@@ -905,56 +910,49 @@ export function MemberDetailScreen() {
         {/* Active Membership Details */}
         <View style={styles.sectionCard}>
           <View style={styles.sectionHeaderRow}>
-            <Text style={styles.cardHeaderTitle}>CURRENT SUBSCRIPTION</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              {activeMembership && (
-                <TouchableOpacity
-                  onPress={handleToggleHold}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <CreditCard size={15} color={colors.gold} />
+              <Text style={styles.cardHeaderTitle}>CURRENT SUBSCRIPTION</Text>
+            </View>
+
+            {activeMembership ? (
+              activeMembership.status === 'HOLD' ? (
+                <View style={styles.holdStatusIndicator}>
+                  <PauseCircle size={12} color="#FBBF24" />
+                  <Text style={styles.holdStatusIndicatorText}>ON HOLD</Text>
+                </View>
+              ) : isMemberExpired ? (
+                <View
                   style={[
-                    styles.holdToggleBtn,
-                    activeMembership.status === 'HOLD'
-                      ? styles.reactivateToggleBtn
-                      : styles.pauseToggleBtn,
+                    styles.paidStatusBadge,
+                    {
+                      backgroundColor: colors.errorMuted,
+                      borderColor: colors.errorBorder,
+                    },
                   ]}
-                  activeOpacity={0.8}
                 >
-                  {activeMembership.status === 'HOLD' ? (
-                    <>
-                      <PlayCircle size={13} color={colors.success} />
-                      <Text style={[styles.holdToggleText, { color: colors.success }]}>
-                        Reactivate
-                      </Text>
-                    </>
-                  ) : (
-                    <>
-                      <PauseCircle size={13} color="#FBBF24" />
-                      <Text style={[styles.holdToggleText, { color: '#FBBF24' }]}>
-                        Hold
-                      </Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity
-                onPress={() => {
-                  haptics.medium();
-                  setShowPaymentModal(true);
-                }}
-                style={styles.newPayLink}
-                activeOpacity={0.7}
-              >
-                <CreditCard size={14} color={colors.gold} />
-                <Text style={styles.newPayLinkText}>
-                  {isMemberExpired ? '+ Collect Payment' : (upcomingMembership ? '+ Add Extension' : '+ Renew Plan')}
-                </Text>
-              </TouchableOpacity>
-              {!isMemberExpired && (
+                  <AlertCircle size={12} color={colors.error} />
+                  <Text style={[styles.paidStatusText, { color: colors.error }]}>EXPIRED</Text>
+                </View>
+              ) : (
                 <View style={styles.paidStatusBadge}>
                   <CheckCircle2 size={12} color={colors.success} />
-                  <Text style={styles.paidStatusText}>Paid</Text>
+                  <Text style={styles.paidStatusText}>PAID · ACTIVE</Text>
                 </View>
-              )}
-            </View>
+              )
+            ) : (
+              <View
+                style={[
+                  styles.paidStatusBadge,
+                  {
+                    backgroundColor: 'transparent',
+                    borderColor: colors.borderDark,
+                  },
+                ]}
+              >
+                <Text style={[styles.paidStatusText, { color: colors.textMuted }]}>NO PLAN</Text>
+              </View>
+            )}
           </View>
 
           {activeMembership ? (
@@ -1047,6 +1045,56 @@ export function MemberDetailScreen() {
                   </View>
                 )}
               </View>
+
+              {/* Action Buttons Row */}
+              <View style={styles.subscriptionActionRow}>
+                {canHoldOrReactivate && (
+                  <TouchableOpacity
+                    onPress={handleToggleHold}
+                    style={[
+                      styles.subscriptionActionBtn,
+                      activeMembership.status === 'HOLD'
+                        ? styles.reactivateToggleBtn
+                        : styles.pauseToggleBtn,
+                    ]}
+                    activeOpacity={0.8}
+                  >
+                    {activeMembership.status === 'HOLD' ? (
+                      <>
+                        <PlayCircle size={14} color={colors.success} />
+                        <Text style={[styles.subscriptionActionBtnText, { color: colors.success }]}>
+                          Reactivate
+                        </Text>
+                      </>
+                    ) : (
+                      <>
+                        <PauseCircle size={14} color="#FBBF24" />
+                        <Text style={[styles.subscriptionActionBtnText, { color: '#FBBF24' }]}>
+                          Hold
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                )}
+
+                <TouchableOpacity
+                  onPress={() => {
+                    haptics.medium();
+                    setShowPaymentModal(true);
+                  }}
+                  style={[styles.subscriptionActionBtn, styles.collectPayActionBtn]}
+                  activeOpacity={0.7}
+                >
+                  <CreditCard size={14} color={colors.gold} />
+                  <Text style={[styles.subscriptionActionBtnText, { color: colors.gold }]}>
+                    {isMemberExpired
+                      ? '+ Collect Payment'
+                      : upcomingMembership
+                      ? '+ Add Extension'
+                      : '+ Renew Plan'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
           ) : (
             <View style={styles.emptyNotice}>
@@ -1112,28 +1160,28 @@ export function MemberDetailScreen() {
                   personalTraining.status === 'ACTIVE'
                     ? colors.success
                     : personalTraining.status === 'PENDING_PAYMENT'
-                    ? colors.warning
-                    : personalTraining.status === 'COMPLETED'
-                    ? colors.info
-                    : colors.gold
+                      ? colors.warning
+                      : personalTraining.status === 'COMPLETED'
+                        ? colors.info
+                        : colors.gold
                 }
                 bgColor={
                   personalTraining.status === 'ACTIVE'
                     ? colors.successMuted
                     : personalTraining.status === 'PENDING_PAYMENT'
-                    ? colors.warningMuted
-                    : personalTraining.status === 'COMPLETED'
-                    ? colors.infoMuted
-                    : colors.goldMuted
+                      ? colors.warningMuted
+                      : personalTraining.status === 'COMPLETED'
+                        ? colors.infoMuted
+                        : colors.goldMuted
                 }
                 borderColor={
                   personalTraining.status === 'ACTIVE'
                     ? colors.successBorder
                     : personalTraining.status === 'PENDING_PAYMENT'
-                    ? colors.warningBorder
-                    : personalTraining.status === 'COMPLETED'
-                    ? colors.infoBorder
-                    : colors.goldBorder
+                      ? colors.warningBorder
+                      : personalTraining.status === 'COMPLETED'
+                        ? colors.infoBorder
+                        : colors.goldBorder
                 }
               />
             ) : null}
@@ -2227,20 +2275,21 @@ const getMemberDetailStyles = (colors: ThemeColors, isDark: boolean) =>
     },
     subscriptionActionBtn: {
       flex: 1,
-      minHeight: 36,
+      minHeight: 38,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
       gap: 6,
       paddingHorizontal: 8,
-      paddingVertical: 7,
+      paddingVertical: 8,
       borderRadius: 8,
       borderWidth: 1,
     },
     subscriptionActionBtnText: {
-      fontSize: 11.5,
+      fontSize: 12,
       fontFamily: typography.fonts.rajdhani,
       fontWeight: '700',
+      letterSpacing: 0.3,
     },
     pauseToggleBtn: {
       backgroundColor: 'rgba(251, 191, 36, 0.1)',
@@ -2624,368 +2673,368 @@ const getMemberDetailStyles = (colors: ThemeColors, isDark: boolean) =>
       fontWeight: '700',
       fontFamily: typography.fonts.rajdhani,
     },
-  pendingUpgradeBanner: {
-    backgroundColor: 'rgba(239, 161, 0, 0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.35)',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 10,
-    gap: 6,
-  },
-  pendingUpgradeHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  pendingUpgradeTitle: {
-    fontFamily: typography.fonts.rajdhani,
-    fontSize: 11,
-    color: colors.warning,
-    letterSpacing: 0.6,
-  },
-  pendingUpgradeBalance: {
-    fontFamily: typography.fonts.rajdhani,
-    fontSize: 12,
-    color: colors.gold,
-  },
-  pendingUpgradeDesc: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    lineHeight: 16,
-  },
-  reviewUpgradeBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: colors.gold,
-    borderRadius: 8,
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-    marginTop: 4,
-  },
-  reviewUpgradeBtnText: {
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    color: colors.background,
-  },
-  membershipTitleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  upgradePlanLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(239, 161, 0, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.3)',
-    borderRadius: 6,
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-  },
-  upgradePlanLinkText: {
-    fontSize: 10,
-    fontFamily: typography.fonts.rajdhani,
-    color: colors.gold,
-    letterSpacing: 0.3,
-  },
-  ptDietCard: {
-    marginTop: 12,
-    padding: 12,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.25)',
-    gap: 8,
-  },
-  ptDietCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  ptDietCardTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    fontFamily: typography.fonts.rajdhani,
-    letterSpacing: 0.5,
-  },
-  ptDietCardSub: {
-    fontSize: 9,
-    color: colors.textMuted,
-    fontFamily: typography.fonts.inter,
-  },
-  ptDietEditBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-  },
-  ptDietEditBtnText: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    fontFamily: typography.fonts.inter,
-  },
-  ptDietCreateBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-    backgroundColor: 'rgba(239, 161, 0, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.3)',
-  },
-  ptDietCreateBtnText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.gold,
-    fontFamily: typography.fonts.rajdhani,
-  },
-  ptDietBody: {
-    gap: 8,
-  },
-  ptDietPlanTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    fontFamily: typography.fonts.rajdhani,
-  },
-  ptDietPlanGoal: {
-    fontSize: 11,
-    color: colors.gold,
-    fontFamily: typography.fonts.inter,
-  },
-  ptDietMacrosRow: {
-    flexDirection: 'row',
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.02)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-  },
-  ptDietMacroCol: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  ptDietMacroLabel: {
-    fontSize: 8,
-    color: colors.textMuted,
-    fontFamily: typography.fonts.inter,
-    marginBottom: 2,
-  },
-  ptDietMacroVal: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    fontFamily: typography.fonts.rajdhani,
-  },
-  ptDietMealsBox: {
-    padding: 6,
-    borderRadius: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.02)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
-  },
-  ptDietMealsTitle: {
-    fontSize: 10,
-    color: colors.textSecondary,
-    fontFamily: typography.fonts.inter,
-  },
-  ptDietWhatsAppBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: '#25D366',
-    paddingVertical: 8,
-    borderRadius: 8,
-    shadowColor: '#25D366',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  ptDietWhatsAppBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#000',
-    fontFamily: typography.fonts.rajdhani,
-    letterSpacing: 0.5,
-  },
-  ptDietEmptyText: {
-    fontSize: 11,
-    color: colors.textMuted,
-    fontFamily: typography.fonts.inter,
-    lineHeight: 16,
-    fontStyle: 'italic',
-  },
-  lockedDietBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    padding: 10,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    marginTop: 6,
-    marginBottom: 8,
-  },
-  lockedDietText: {
-    flex: 1,
-    fontSize: 11,
-    color: colors.textMuted,
-    fontFamily: typography.fonts.inter,
-    lineHeight: 15,
-  },
-  dietValidityRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 2,
-    marginBottom: 4,
-  },
-  dietValidityText: {
-    fontSize: 10,
-    color: colors.textSecondary,
-    fontFamily: typography.fonts.rajdhani,
-  },
-  dietDayChip: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginRight: 6,
-  },
-  dietDayChipActive: {
-    backgroundColor: colors.gold,
-    borderColor: colors.gold,
-  },
-  dietDayChipText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.textMuted,
-    fontFamily: typography.fonts.rajdhani,
-  },
-  dietDayChipTextActive: {
-    color: '#000',
-  },
-  ptDietMealItem: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    fontFamily: typography.fonts.inter,
-    marginVertical: 1,
-  },
-  ptDietMealsMore: {
-    fontSize: 10,
-    color: colors.textMuted,
-    fontFamily: typography.fonts.inter,
-    textAlign: 'center',
-    marginTop: 2,
-  },
-  dietMoreDaysBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  shareDayItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  shareDayName: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    fontFamily: typography.fonts.rajdhani,
-  },
-  shareDayCount: {
-    fontSize: 11,
-    color: colors.textMuted,
-    fontFamily: typography.fonts.inter,
-  },
-  shareFullWeekBtn: {
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: 'rgba(0, 102, 255, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(0, 102, 255, 0.3)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  shareFullWeekText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.blue,
-    fontFamily: typography.fonts.rajdhani,
-  },
-  holdToggleBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
-  },
-  holdToggleText: {
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  recordCountBadge: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '600',
-  },
-  paidStatusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.25)',
-  },
-  paidStatusText: {
-    color: colors.success,
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  zeroDaysBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    borderWidth: 1,
-  },
-  zeroDaysBadgeText: {
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
+    pendingUpgradeBanner: {
+      backgroundColor: 'rgba(239, 161, 0, 0.08)',
+      borderWidth: 1,
+      borderColor: 'rgba(239, 161, 0, 0.35)',
+      borderRadius: 12,
+      padding: 12,
+      marginBottom: 10,
+      gap: 6,
+    },
+    pendingUpgradeHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    pendingUpgradeTitle: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 11,
+      color: colors.warning,
+      letterSpacing: 0.6,
+    },
+    pendingUpgradeBalance: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 12,
+      color: colors.gold,
+    },
+    pendingUpgradeDesc: {
+      fontSize: 11,
+      color: colors.textSecondary,
+      lineHeight: 16,
+    },
+    reviewUpgradeBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      backgroundColor: colors.gold,
+      borderRadius: 8,
+      paddingVertical: 7,
+      paddingHorizontal: 12,
+      marginTop: 4,
+    },
+    reviewUpgradeBtnText: {
+      fontSize: 11,
+      fontFamily: typography.fonts.rajdhani,
+      color: colors.background,
+    },
+    membershipTitleRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 4,
+    },
+    upgradePlanLink: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: 'rgba(239, 161, 0, 0.1)',
+      borderWidth: 1,
+      borderColor: 'rgba(239, 161, 0, 0.3)',
+      borderRadius: 6,
+      paddingVertical: 3,
+      paddingHorizontal: 8,
+    },
+    upgradePlanLinkText: {
+      fontSize: 10,
+      fontFamily: typography.fonts.rajdhani,
+      color: colors.gold,
+      letterSpacing: 0.3,
+    },
+    ptDietCard: {
+      marginTop: 12,
+      padding: 12,
+      borderRadius: 10,
+      backgroundColor: 'rgba(255, 255, 255, 0.03)',
+      borderWidth: 1,
+      borderColor: 'rgba(239, 161, 0, 0.25)',
+      gap: 8,
+    },
+    ptDietCardHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    ptDietCardTitle: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      fontFamily: typography.fonts.rajdhani,
+      letterSpacing: 0.5,
+    },
+    ptDietCardSub: {
+      fontSize: 9,
+      color: colors.textMuted,
+      fontFamily: typography.fonts.inter,
+    },
+    ptDietEditBtn: {
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 6,
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.15)',
+      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    },
+    ptDietEditBtnText: {
+      fontSize: 11,
+      color: colors.textSecondary,
+      fontFamily: typography.fonts.inter,
+    },
+    ptDietCreateBtn: {
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 6,
+      backgroundColor: 'rgba(239, 161, 0, 0.15)',
+      borderWidth: 1,
+      borderColor: 'rgba(239, 161, 0, 0.3)',
+    },
+    ptDietCreateBtnText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.gold,
+      fontFamily: typography.fonts.rajdhani,
+    },
+    ptDietBody: {
+      gap: 8,
+    },
+    ptDietPlanTitle: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      fontFamily: typography.fonts.rajdhani,
+    },
+    ptDietPlanGoal: {
+      fontSize: 11,
+      color: colors.gold,
+      fontFamily: typography.fonts.inter,
+    },
+    ptDietMacrosRow: {
+      flexDirection: 'row',
+      borderRadius: 8,
+      backgroundColor: 'rgba(255, 255, 255, 0.02)',
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.06)',
+      paddingVertical: 6,
+      paddingHorizontal: 4,
+    },
+    ptDietMacroCol: {
+      flex: 1,
+      alignItems: 'center',
+    },
+    ptDietMacroLabel: {
+      fontSize: 8,
+      color: colors.textMuted,
+      fontFamily: typography.fonts.inter,
+      marginBottom: 2,
+    },
+    ptDietMacroVal: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      fontFamily: typography.fonts.rajdhani,
+    },
+    ptDietMealsBox: {
+      padding: 6,
+      borderRadius: 6,
+      backgroundColor: 'rgba(255, 255, 255, 0.02)',
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.05)',
+    },
+    ptDietMealsTitle: {
+      fontSize: 10,
+      color: colors.textSecondary,
+      fontFamily: typography.fonts.inter,
+    },
+    ptDietWhatsAppBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      backgroundColor: '#25D366',
+      paddingVertical: 8,
+      borderRadius: 8,
+      shadowColor: '#25D366',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 4,
+      elevation: 2,
+    },
+    ptDietWhatsAppBtnText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: '#000',
+      fontFamily: typography.fonts.rajdhani,
+      letterSpacing: 0.5,
+    },
+    ptDietEmptyText: {
+      fontSize: 11,
+      color: colors.textMuted,
+      fontFamily: typography.fonts.inter,
+      lineHeight: 16,
+      fontStyle: 'italic',
+    },
+    lockedDietBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      padding: 10,
+      borderRadius: 8,
+      backgroundColor: 'rgba(255, 255, 255, 0.03)',
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.08)',
+      marginTop: 6,
+      marginBottom: 8,
+    },
+    lockedDietText: {
+      flex: 1,
+      fontSize: 11,
+      color: colors.textMuted,
+      fontFamily: typography.fonts.inter,
+      lineHeight: 15,
+    },
+    dietValidityRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: 2,
+      marginBottom: 4,
+    },
+    dietValidityText: {
+      fontSize: 10,
+      color: colors.textSecondary,
+      fontFamily: typography.fonts.rajdhani,
+    },
+    dietDayChip: {
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+      backgroundColor: 'rgba(255, 255, 255, 0.04)',
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginRight: 6,
+    },
+    dietDayChipActive: {
+      backgroundColor: colors.gold,
+      borderColor: colors.gold,
+    },
+    dietDayChipText: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: colors.textMuted,
+      fontFamily: typography.fonts.rajdhani,
+    },
+    dietDayChipTextActive: {
+      color: '#000',
+    },
+    ptDietMealItem: {
+      fontSize: 11,
+      color: colors.textSecondary,
+      fontFamily: typography.fonts.inter,
+      marginVertical: 1,
+    },
+    ptDietMealsMore: {
+      fontSize: 10,
+      color: colors.textMuted,
+      fontFamily: typography.fonts.inter,
+      textAlign: 'center',
+      marginTop: 2,
+    },
+    dietMoreDaysBtn: {
+      paddingHorizontal: 10,
+      paddingVertical: 9,
+      borderRadius: 8,
+      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    shareDayItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      borderRadius: 8,
+      backgroundColor: 'rgba(255, 255, 255, 0.03)',
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    shareDayName: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      fontFamily: typography.fonts.rajdhani,
+    },
+    shareDayCount: {
+      fontSize: 11,
+      color: colors.textMuted,
+      fontFamily: typography.fonts.inter,
+    },
+    shareFullWeekBtn: {
+      paddingVertical: 10,
+      borderRadius: 8,
+      backgroundColor: 'rgba(0, 102, 255, 0.12)',
+      borderWidth: 1,
+      borderColor: 'rgba(0, 102, 255, 0.3)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    shareFullWeekText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.blue,
+      fontFamily: typography.fonts.rajdhani,
+    },
+    holdToggleBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+      borderWidth: 1,
+    },
+    holdToggleText: {
+      fontSize: 11,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    recordCountBadge: {
+      color: colors.textMuted,
+      fontSize: 11,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '600',
+    },
+    paidStatusBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 6,
+      backgroundColor: 'rgba(16, 185, 129, 0.1)',
+      borderWidth: 1,
+      borderColor: 'rgba(16, 185, 129, 0.25)',
+    },
+    paidStatusText: {
+      color: colors.success,
+      fontSize: 11,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 0.5,
+    },
+    zeroDaysBadge: {
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 6,
+      borderWidth: 1,
+    },
+    zeroDaysBadgeText: {
+      fontSize: 11,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 0.5,
+    },
   });

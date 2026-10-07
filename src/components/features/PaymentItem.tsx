@@ -21,6 +21,7 @@ interface PaymentItemProps {
   onPress: () => void;
   onShareWhatsApp?: () => void;
   onDelete?: () => void;
+  onAvatarPress?: (payment: Payment) => void;
 }
 
 function MemberAvatar({ name, avatarUrl }: { name: string; avatarUrl?: string | null }) {
@@ -57,6 +58,7 @@ export function PaymentItem({
   onPress,
   onShareWhatsApp,
   onDelete,
+  onAvatarPress,
 }: PaymentItemProps) {
   const { colors, isDark } = useTheme();
   const memberName = payment.members?.full_name || 'Member';
@@ -104,7 +106,20 @@ export function PaymentItem({
       >
         <View style={styles.contentRow}>
           <View style={styles.avatarContainer}>
-            <MemberAvatar name={memberName} avatarUrl={avatarUrl} />
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={(e) => {
+                if (onAvatarPress) {
+                  haptics.light();
+                  onAvatarPress(payment);
+                }
+              }}
+              disabled={!onAvatarPress}
+              accessibilityRole="button"
+              accessibilityLabel={`View profile photo of ${memberName}`}
+            >
+              <MemberAvatar name={memberName} avatarUrl={avatarUrl} />
+            </TouchableOpacity>
           </View>
 
           <View style={styles.info}>
@@ -165,11 +180,18 @@ export function PaymentItem({
                   haptics.medium();
                   onShareWhatsApp();
                 }}
-                style={[styles.shareBtn, { backgroundColor: colors.goldMuted }]}
+                style={[
+                  styles.actionBtn,
+                  styles.shareBtn,
+                  {
+                    backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : colors.goldMuted,
+                    borderColor: colors.goldBorder,
+                  },
+                ]}
                 hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
                 accessibilityLabel="Share on WhatsApp"
               >
-                <Share2 size={15} color={colors.gold} />
+                <Share2 size={14} color={colors.gold} />
               </TouchableOpacity>
             )}
 
@@ -179,11 +201,18 @@ export function PaymentItem({
                   haptics.warning();
                   onDelete();
                 }}
-                style={[styles.deleteBtn, { backgroundColor: 'rgba(239, 68, 68, 0.12)' }]}
+                style={[
+                  styles.actionBtn,
+                  styles.deleteBtn,
+                  {
+                    backgroundColor: isDark ? 'rgba(239, 68, 68, 0.08)' : 'rgba(239, 68, 68, 0.05)',
+                    borderColor: isDark ? 'rgba(239, 68, 68, 0.3)' : 'rgba(239, 68, 68, 0.25)',
+                  },
+                ]}
                 hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
                 accessibilityLabel="Revert or delete payment"
               >
-                <Trash2 size={15} color="#EF4444" />
+                <Trash2 size={14} color="#EF4444" />
               </TouchableOpacity>
             )}
 
@@ -306,23 +335,19 @@ const styles = StyleSheet.create({
   actionsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 7,
     marginLeft: 8,
   },
-  shareBtn: {
+  actionBtn: {
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: 9,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  deleteBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  shareBtn: {},
+  deleteBtn: {},
   chevron: {
     marginLeft: 2,
     opacity: 0.6,
