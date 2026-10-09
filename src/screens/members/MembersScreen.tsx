@@ -10,7 +10,7 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search, UserPlus, Users, Filter, X, ArrowUpDown, AlertCircle, Check, ChevronDown, UserCheck } from 'lucide-react-native';
@@ -28,7 +28,7 @@ import { supabase } from '@/api/supabase';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
-import { RootStackParamList } from '@/navigation/types';
+import { RootStackParamList, MainTabParamList } from '@/navigation/types';
 
 import { haptics } from '@/utils/haptics';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -92,6 +92,7 @@ function parseMemberIdNum(id?: string | null): number {
 
 export function MembersScreen() {
   const navigation = useNavigation<NavigationProp>();
+  const route = useRoute<RouteProp<MainTabParamList, 'Members'>>();
   const qc = useQueryClient();
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getMembersStyles(colors, isDark), [colors, isDark]);
@@ -99,8 +100,14 @@ export function MembersScreen() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
-  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState(() => route.params?.initialStatusFilter || 'ALL');
   const [genderFilter, setGenderFilter] = useState('ALL');
+
+  useEffect(() => {
+    if (route.params?.initialStatusFilter) {
+      setStatusFilter(route.params.initialStatusFilter);
+    }
+  }, [route.params?.initialStatusFilter]);
   const [sortBy, setSortBy] = useState<MemberSortOption>('expiry_asc');
   const [showSortModal, setShowSortModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);

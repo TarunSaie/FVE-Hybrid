@@ -340,6 +340,8 @@ export function FVEModal({
                 style={[styles.closeButton, { backgroundColor: closeBtnBg }]}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Close dialog"
               >
                 <X size={18} color={colors.textSecondary} />
               </TouchableOpacity>

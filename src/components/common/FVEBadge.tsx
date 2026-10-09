@@ -134,6 +134,8 @@ const styles = StyleSheet.create({
   text: {
     fontFamily: typography.fonts.rajdhani,
     fontWeight: '700',
-    letterSpacing: 0.5,
-  },
+    },
 });
+
+export const StatusBadge = FVEBadge;
+

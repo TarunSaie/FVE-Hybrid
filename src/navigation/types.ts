@@ -3,7 +3,7 @@ import { MemberWithMembership, Payment } from '@/types';
 
 export type MainTabParamList = {
   Dashboard: undefined;
-  Members: undefined;
+  Members: { initialStatusFilter?: string } | undefined;
   Attendance: undefined;
   Payments: undefined;
   Settings: undefined;
@@ -24,6 +24,8 @@ export type RootStackParamList = {
   PaymentQR: undefined;
   BrandStudio: undefined;
   DailyPass: undefined;
+  RenewalBatch: undefined;
+  PlanDistribution: undefined;
 };
 
 

@@ -38,6 +38,8 @@ import {
   Laptop,
   Palette,
   Ticket,
+  MessageCircle,
+  Layers,
 } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -75,6 +77,7 @@ const NAV_SECTIONS: NavSection[] = [
       { screen: 'Members', icon: Users, label: 'Members', route: '/members' },
       { screen: 'Attendance', icon: UserCheck, label: 'Attendance', route: '/attendance' },
       { screen: 'QRScanner', icon: QrCode, label: 'QR Scanner Kiosk', route: '/scanner' },
+      { screen: 'RenewalBatch', icon: MessageCircle, label: 'Renewal Reminders', route: '/renewals' },
     ],
   },
   {
@@ -84,6 +87,7 @@ const NAV_SECTIONS: NavSection[] = [
       { screen: 'DailyPass', icon: Ticket, label: 'Daily Pass', route: '/daily-pass' },
       { screen: 'PaymentQR', icon: QrCode, label: 'Payment QR Code', route: '/payment-qr' },
       { screen: 'MembershipPlans', icon: Award, label: 'Membership Plans', route: '/plans' },
+      { screen: 'PlanDistribution', icon: Layers, label: 'Plan Distribution', route: '/plan-distribution' },
       { screen: 'Expenses', icon: DollarSign, label: 'Gym Expenses', route: '/expenses' },
     ],
   },
@@ -213,6 +217,10 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
         navigation.navigate('PaymentQR');
       } else if (screenName === 'BrandStudio') {
         navigation.navigate('BrandStudio');
+      } else if (screenName === 'RenewalBatch') {
+        navigation.navigate('RenewalBatch');
+      } else if (screenName === 'PlanDistribution') {
+        navigation.navigate('PlanDistribution');
       }
     });
   };
@@ -369,6 +377,9 @@ export function AppDrawerModal({ visible, onClose }: AppDrawerModalProps) {
                         <Pressable
                           key={item.screen}
                           onPress={() => handleNavigate(item.screen)}
+                          accessibilityRole="button"
+                          accessibilityLabel={item.label}
+                          accessibilityState={{ selected: isActive }}
                           style={({ pressed }) => [
                             styles.navItem,
                             isActive && [styles.navItemActive, { borderLeftColor: colors.gold, backgroundColor: colors.goldMuted }],

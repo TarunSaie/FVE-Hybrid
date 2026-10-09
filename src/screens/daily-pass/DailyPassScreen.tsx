@@ -597,6 +597,8 @@ export function DailyPassScreen() {
       {/* Floating Action Button */}
       <TouchableOpacity
         style={styles.fab}
+        accessibilityRole="button"
+        accessibilityLabel="Issue New Daily Pass"
         onPress={() => {
           haptics.medium();
           setSelectedPass(null);

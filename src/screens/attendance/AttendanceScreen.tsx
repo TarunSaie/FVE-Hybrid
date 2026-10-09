@@ -33,6 +33,7 @@ import {
   UserX,
   MessageCircle,
   Clock,
+  Ban,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEInput } from '@/components/common/FVEInput';
@@ -58,6 +59,7 @@ import { RootStackParamList } from '@/navigation/types';
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type AttendanceMode = 'LOG' | 'MONITORING';
 type CheckInMethod = 'ALL' | 'QR' | 'MANUAL';
+export type MonitoringTab = 'ALL' | 'ACTIVE' | 'PRESENT' | 'ABSENT' | 'EXPIRED';
 
 interface MonitoringMember {
   id: string;
@@ -73,6 +75,9 @@ interface MonitoringMember {
   lastCheckInDate?: string | null;
   consecutiveAbsentDays: number;
   isContinuousAbsent: boolean;
+  isActive: boolean;
+  isExpired: boolean;
+  membershipStatus: 'ACTIVE' | 'EXPIRING_SOON' | 'EXPIRED' | 'HOLD' | 'UPCOMING' | 'NONE';
   activeMembership?: Membership | null;
 }
 
@@ -92,13 +97,14 @@ export function AttendanceScreen() {
 
   // Member Monitoring Search & Filters
   const [monitorSearch, setMonitorSearch] = useState('');
-  const [monitoringFilter, setMonitoringFilter] = useState<'ALL' | 'PRESENT' | 'ABSENT' | 'CONTINUOUS_ABSENT'>('ALL');
+  const [monitoringFilter, setMonitoringFilter] = useState<MonitoringTab>('ALL');
   const [followUpMember, setFollowUpMember] = useState<MonitoringMember | null>(null);
 
   // Modals
   const [showManualModal, setShowManualModal] = useState(false);
   const [manualLoading, setManualLoading] = useState(false);
   const [manualSearch, setManualSearch] = useState('');
+  const [manualFilter, setManualFilter] = useState<'ACTIVE' | 'ALL'>('ACTIVE');
   const [selectedMemberForCalendar, setSelectedMemberForCalendar] = useState<{
     id: string;
     full_name: string;
@@ -211,12 +217,40 @@ export function AttendanceScreen() {
       });
 
       const list: MonitoringMember[] = (membersRes.data || []).map(m => {
-        const msList = (m.memberships || []).sort((a: { expiry_date?: string }, b: { expiry_date?: string }) =>
-          (b.expiry_date || '').localeCompare(a.expiry_date || '')
+        const msList = (m.memberships || []).sort((a: any, b: any) => {
+          const aRank = ['ACTIVE', 'EXPIRING_SOON'].includes(a.status || '') ? 4 : a.status === 'HOLD' ? 3 : a.status === 'UPCOMING' ? 2 : 1;
+          const bRank = ['ACTIVE', 'EXPIRING_SOON'].includes(b.status || '') ? 4 : b.status === 'HOLD' ? 3 : b.status === 'UPCOMING' ? 2 : 1;
+          if (aRank !== bRank) return bRank - aRank;
+          return (b.expiry_date || '').localeCompare(a.expiry_date || '');
+        });
+
+        // 1. Identify active membership valid for today
+        const activeMs = msList.find((ms: any) => {
+          const norm = normalizeMembershipStatus(ms.status, ms.expiry_date, ms.start_date);
+          return (norm === 'ACTIVE' || norm === 'EXPIRING_SOON') &&
+            (!ms.start_date || ms.start_date <= todayStr) &&
+            (!ms.expiry_date || ms.expiry_date >= todayStr);
+        }) || null;
+
+        const latestMs = msList[0] || null;
+        const normalizedLatest = latestMs
+          ? normalizeMembershipStatus(latestMs.status, latestMs.expiry_date, latestMs.start_date)
+          : null;
+
+        const isActive = Boolean(activeMs);
+        const isExpired = !isActive && Boolean(
+          normalizedLatest === 'EXPIRED' ||
+          (latestMs?.expiry_date && latestMs.expiry_date < todayStr) ||
+          latestMs?.status === 'EXPIRED' ||
+          msList.length === 0
         );
-        const activeMs = msList.find((ms: { status?: string; expiry_date?: string }) =>
-          ['ACTIVE', 'EXPIRING_SOON'].includes(ms.status || '') && (ms.expiry_date || '') >= todayStr
-        ) || msList[0] || null;
+
+        let membershipStatus: 'ACTIVE' | 'EXPIRING_SOON' | 'EXPIRED' | 'HOLD' | 'UPCOMING' | 'NONE' = 'NONE';
+        if (isActive && activeMs) {
+          membershipStatus = normalizeMembershipStatus(activeMs.status, activeMs.expiry_date, activeMs.start_date) || 'ACTIVE';
+        } else if (latestMs) {
+          membershipStatus = normalizedLatest || (latestMs.status as any) || 'NONE';
+        }
 
         const att = attendanceMap.get(m.id);
         const isPresentToday = Boolean(att);
@@ -247,32 +281,43 @@ export function AttendanceScreen() {
           mobile: m.mobile,
           profile_photo: m.profile_photo,
           qr_code: m.qr_code,
-          plan_name: (activeMs?.membership_plans as { name?: string } | null)?.name || null,
+          plan_name: ((activeMs || latestMs)?.membership_plans as { name?: string } | null)?.name || null,
           checkedInToday: isPresentToday,
           checkInTime: att?.check_in_time || null,
           checkInMethod: att?.check_in_method || null,
           lastCheckInDate: latestAtt?.date || null,
           consecutiveAbsentDays,
           isContinuousAbsent,
+          isActive,
+          isExpired,
+          membershipStatus,
           activeMembership: (activeMs as unknown as Membership) || null,
         };
       });
 
       return list;
     },
-    enabled: mode === 'MONITORING',
     refetchInterval: 15000,
   });
 
-  // Filtered monitoring members
+  // Tab Counts dynamically derived from monitoringMembers
+  const totalCount = monitoringMembers.length;
+  const activeCount = monitoringMembers.filter(m => m.isActive).length;
+  const presentCount = monitoringMembers.filter(m => m.checkedInToday).length;
+  const absentCount = monitoringMembers.filter(m => m.isActive && !m.checkedInToday).length;
+  const expiredCount = monitoringMembers.filter(m => m.isExpired).length;
+
+  // Filtered monitoring members according to selected tab and search query
   const filteredMonitoring = useMemo(() => {
     let list = monitoringMembers;
-    if (monitoringFilter === 'PRESENT') {
+    if (monitoringFilter === 'ACTIVE') {
+      list = list.filter(m => m.isActive);
+    } else if (monitoringFilter === 'PRESENT') {
       list = list.filter(m => m.checkedInToday);
     } else if (monitoringFilter === 'ABSENT') {
-      list = list.filter(m => !m.checkedInToday);
-    } else if (monitoringFilter === 'CONTINUOUS_ABSENT') {
-      list = list.filter(m => m.isContinuousAbsent);
+      list = list.filter(m => m.isActive && !m.checkedInToday);
+    } else if (monitoringFilter === 'EXPIRED') {
+      list = list.filter(m => m.isExpired);
     }
 
     const term = monitorSearch.trim().toLowerCase();
@@ -284,33 +329,91 @@ export function AttendanceScreen() {
     );
   }, [monitoringMembers, monitorSearch, monitoringFilter]);
 
-  const presentCount = monitoringMembers.filter(m => m.checkedInToday).length;
-  const absentCount = monitoringMembers.filter(m => !m.checkedInToday).length;
-  const continuousAbsentCount = monitoringMembers.filter(m => m.isContinuousAbsent).length;
-  const totalCount = monitoringMembers.length;
-
+  const totalPreview = useMemo(
+    () => monitoringMembers.slice(0, 2).map(m => m.full_name),
+    [monitoringMembers]
+  );
+  const activePreview = useMemo(
+    () => monitoringMembers.filter(m => m.isActive).slice(0, 2).map(m => m.full_name),
+    [monitoringMembers]
+  );
   const presentPreview = useMemo(
     () => monitoringMembers.filter(m => m.checkedInToday).slice(0, 2).map(m => m.full_name),
     [monitoringMembers]
   );
   const absentPreview = useMemo(
-    () => monitoringMembers.filter(m => !m.checkedInToday).slice(0, 2).map(m => m.full_name),
+    () => monitoringMembers.filter(m => m.isActive && !m.checkedInToday).slice(0, 2).map(m => m.full_name),
     [monitoringMembers]
   );
-  const continuousPreview = useMemo(
-    () => monitoringMembers.filter(m => m.isContinuousAbsent).slice(0, 2).map(m => m.full_name),
+  const expiredPreview = useMemo(
+    () => monitoringMembers.filter(m => m.isExpired).slice(0, 2).map(m => m.full_name),
     [monitoringMembers]
   );
 
-  // Fetch all active members for manual check-in modal
-  const { data: allMembers } = useQuery({
-    queryKey: ['all-members-attendance'],
+  // Fetch all members with memberships for manual check-in modal to enforce Active Rule
+  const { data: allMembers = [] } = useQuery({
+    queryKey: ['manual-checkin-members', todayStr],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('members')
-        .select('id, full_name, mobile, member_id');
-      const members = (data || []) as Member[];
+        .select('id, full_name, mobile, member_id, profile_photo, qr_code, memberships(id, start_date, expiry_date, status, visit_day_limit, visit_days_used, membership_plans(name))')
+        .order('full_name', { ascending: true });
+
+      if (error) throw error;
+
+      type MemberWithComputed = Member & {
+        isActive: boolean;
+        isExpired: boolean;
+        planName: string | null;
+        activeMembership?: any;
+      };
+
+      const members: MemberWithComputed[] = (data || []).map((m: any) => {
+        const msList = (m.memberships || []).sort((a: any, b: any) => {
+          const aRank = ['ACTIVE', 'EXPIRING_SOON'].includes(a.status || '') ? 4 : a.status === 'HOLD' ? 3 : a.status === 'UPCOMING' ? 2 : 1;
+          const bRank = ['ACTIVE', 'EXPIRING_SOON'].includes(b.status || '') ? 4 : b.status === 'HOLD' ? 3 : b.status === 'UPCOMING' ? 2 : 1;
+          if (aRank !== bRank) return bRank - aRank;
+          return (b.expiry_date || '').localeCompare(a.expiry_date || '');
+        });
+
+        const activeMs = msList.find((ms: any) => {
+          const norm = normalizeMembershipStatus(ms.status, ms.expiry_date, ms.start_date);
+          return (norm === 'ACTIVE' || norm === 'EXPIRING_SOON') &&
+            (!ms.start_date || ms.start_date <= todayStr) &&
+            (!ms.expiry_date || ms.expiry_date >= todayStr);
+        }) || null;
+
+        const latestMs = msList[0] || null;
+        const normalizedLatest = latestMs
+          ? normalizeMembershipStatus(latestMs.status, latestMs.expiry_date, latestMs.start_date)
+          : null;
+
+        const isActive = Boolean(activeMs);
+        const isExpired = !isActive && Boolean(
+          normalizedLatest === 'EXPIRED' ||
+          (latestMs?.expiry_date && latestMs.expiry_date < todayStr) ||
+          latestMs?.status === 'EXPIRED' ||
+          msList.length === 0
+        );
+
+        return {
+          id: m.id,
+          full_name: m.full_name,
+          mobile: m.mobile,
+          member_id: m.member_id,
+          profile_photo: m.profile_photo,
+          qr_code: m.qr_code,
+          isActive,
+          isExpired,
+          planName: (activeMs || latestMs)?.membership_plans?.name || 'Standard',
+          activeMembership: activeMs,
+        } as MemberWithComputed;
+      });
+
+      // Sort: Active members first, then by ID / name
       members.sort((a, b) => {
+        if (a.isActive && !b.isActive) return -1;
+        if (!a.isActive && b.isActive) return 1;
         const aMatch = (a.member_id || '').match(/\d+/);
         const bMatch = (b.member_id || '').match(/\d+/);
         const aNum = aMatch ? parseInt(aMatch[0], 10) : 999999999;
@@ -318,6 +421,7 @@ export function AttendanceScreen() {
         if (aNum !== bNum) return aNum - bNum;
         return (a.full_name || '').localeCompare(b.full_name || '');
       });
+
       return members;
     },
     enabled: showManualModal,
@@ -327,11 +431,24 @@ export function AttendanceScreen() {
     haptics.light();
     qc.invalidateQueries({ queryKey: ['mobile-attendance-log'] });
     qc.invalidateQueries({ queryKey: ['monitoring-attendance-members'] });
+    qc.invalidateQueries({ queryKey: ['manual-checkin-members'] });
+    qc.invalidateQueries({ queryKey: ['all-members-attendance'] });
     qc.invalidateQueries({ queryKey: ['mobile-dashboard-stats'] });
   }, [qc]);
 
   // Handle validated manual member check-in
   const handleManualCheckIn = async (member: Member | MonitoringMember, targetDate: string = selectedDate) => {
+    // Attendance Rule: Only active members should be allowed to mark attendance
+    if ('isActive' in member && (member as any).isActive === false) {
+      sounds.qrInvalid();
+      haptics.warning();
+      Alert.alert(
+        'Attendance Restricted',
+        `Only active members are permitted to mark attendance.\n\n${member.full_name}'s membership is ${(member as any).isExpired ? 'expired' : 'inactive'}. Please renew their subscription before checking in.`
+      );
+      return;
+    }
+
     setManualLoading(true);
     try {
       // 1. Auto-activate any UPCOMING membership for this member that is due today
@@ -361,24 +478,24 @@ export function AttendanceScreen() {
           .eq('id', up.id);
       }
 
-      // 1b. Verify active membership valid for today
+      // 1b. Verify active membership valid for targetDate
       const { data: memberships } = await supabase
         .from('memberships')
         .select('id, start_date, expiry_date, status, visit_day_limit, visit_days_used')
         .eq('member_id', member.id)
         .in('status', ['ACTIVE', 'EXPIRING_SOON'])
-        .lte('start_date', todayStr)
-        .gte('expiry_date', todayStr)
+        .lte('start_date', targetDate)
+        .gte('expiry_date', targetDate)
         .order('expiry_date', { ascending: false })
         .limit(1);
 
       const activeMs = memberships?.[0];
-      if (!activeMs || activeMs.status === 'HOLD' || (activeMs.expiry_date && activeMs.expiry_date < todayStr)) {
+      if (!activeMs || activeMs.status === 'HOLD' || (activeMs.expiry_date && activeMs.expiry_date < targetDate)) {
         sounds.qrInvalid();
         haptics.warning();
         Alert.alert(
-          'Inactive Membership',
-          `${member.full_name} does not have an active membership. Please renew their subscription before checking in.`
+          'Attendance Restricted',
+          `Only active members are permitted to mark attendance.\n\n${member.full_name} does not have an active membership valid for ${formatDate(targetDate)}. Please renew their subscription before checking in.`
         );
         return;
       }
@@ -529,7 +646,7 @@ export function AttendanceScreen() {
         subtitle={
           mode === 'LOG'
             ? `${selectedDate === todayStr ? 'Today' : formatDate(selectedDate)} · ${logs?.length || 0} checked in`
-            : `Live Roster · ${presentCount} present, ${absentCount} absent`
+            : `Live Roster · ${presentCount} present, ${absentCount} absent · ${activeCount} active`
         }
         rightAction={
           <TouchableOpacity
@@ -758,13 +875,13 @@ export function AttendanceScreen() {
          ───────────────────────────────────────────────────────────── */}
       {mode === 'MONITORING' && (
         <View style={{ flex: 1 }}>
-          {/* 4 Attendance Status Tiles */}
+          {/* 5 Attendance Status Tiles */}
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.monitorTilesContainer}
           >
-            {/* Tile 1: Total Attendance */}
+            {/* Tile 1: All Members */}
             <TouchableOpacity
               onPress={() => {
                 haptics.selection();
@@ -779,22 +896,52 @@ export function AttendanceScreen() {
               <View style={styles.monitorTileHeader}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                   <Users size={13} color={colors.gold} />
-                  <Text style={styles.monitorTileTitle}>TOTAL</Text>
+                  <Text style={styles.monitorTileTitle}>ALL MEMBERS</Text>
                 </View>
-                {monitoringFilter === 'ALL' && (
+                {/* {monitoringFilter === 'ALL' && (
                   <View style={styles.activePillGold}>
                     <Text style={styles.activePillGoldText}>Active</Text>
                   </View>
-                )}
+                )} */}
               </View>
               <Text style={styles.monitorTileCount}>{totalCount}</Text>
-              <Text style={styles.monitorTileSubtitle}>All enrolled athletes</Text>
+              <Text style={styles.monitorTileSubtitle}>Total athletes</Text>
               <Text numberOfLines={1} style={styles.monitorTilePreview}>
-                Present & absent
+                {totalPreview.length > 0 ? totalPreview.join(', ') : 'No members'}
               </Text>
             </TouchableOpacity>
 
-            {/* Tile 2: Present Today */}
+            {/* Tile 2: Active Members */}
+            <TouchableOpacity
+              onPress={() => {
+                haptics.selection();
+                setMonitoringFilter('ACTIVE');
+              }}
+              style={[
+                styles.monitorTile,
+                monitoringFilter === 'ACTIVE' && styles.monitorTileActiveBlue,
+              ]}
+              activeOpacity={0.8}
+            >
+              <View style={styles.monitorTileHeader}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                  <UserCheck size={13} color="#00D4FF" />
+                  <Text style={[styles.monitorTileTitle, { color: '#00D4FF' }]}>ACTIVE</Text>
+                </View>
+                {monitoringFilter === 'ACTIVE' && (
+                  <View style={styles.activePillBlue}>
+                    <Text style={styles.activePillBlueText}>Active</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={[styles.monitorTileCount, { color: '#00D4FF' }]}>{activeCount}</Text>
+              <Text style={styles.monitorTileSubtitle}>Valid memberships</Text>
+              <Text numberOfLines={1} style={styles.monitorTilePreview}>
+                {activePreview.length > 0 ? activePreview.join(', ') : 'No active members'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Tile 3: Present Today */}
             <TouchableOpacity
               onPress={() => {
                 haptics.selection();
@@ -824,7 +971,7 @@ export function AttendanceScreen() {
               </Text>
             </TouchableOpacity>
 
-            {/* Tile 3: Absent Today */}
+            {/* Tile 4: Absent Today */}
             <TouchableOpacity
               onPress={() => {
                 haptics.selection();
@@ -848,43 +995,106 @@ export function AttendanceScreen() {
                 )}
               </View>
               <Text style={[styles.monitorTileCount, { color: '#F59E0B' }]}>{absentCount}</Text>
-              <Text style={styles.monitorTileSubtitle}>Not checked in today</Text>
+              <Text style={styles.monitorTileSubtitle}>Active not checked in</Text>
               <Text numberOfLines={1} style={styles.monitorTilePreview}>
                 {absentPreview.length > 0 ? absentPreview.join(', ') : 'Everyone present'}
               </Text>
             </TouchableOpacity>
 
-            {/* Tile 4: Continuous Absence (3+ Days) */}
+            {/* Tile 5: Expired Memberships */}
             <TouchableOpacity
               onPress={() => {
                 haptics.selection();
-                setMonitoringFilter('CONTINUOUS_ABSENT');
+                setMonitoringFilter('EXPIRED');
               }}
               style={[
                 styles.monitorTile,
-                monitoringFilter === 'CONTINUOUS_ABSENT' && styles.monitorTileActiveRed,
+                monitoringFilter === 'EXPIRED' && styles.monitorTileActiveRed,
               ]}
               activeOpacity={0.8}
             >
               <View style={styles.monitorTileHeader}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                   <AlertTriangle size={13} color="#EF4444" />
-                  <Text style={[styles.monitorTileTitle, { color: '#EF4444' }]}>3+ DAYS ABSENT</Text>
+                  <Text style={[styles.monitorTileTitle, { color: '#EF4444' }]}>EXPIRED</Text>
                 </View>
-                <View style={styles.badge3D}>
-                  <Text style={styles.badge3DText}>Alert</Text>
-                </View>
+                {monitoringFilter === 'EXPIRED' && (
+                  <View style={styles.activePillRed}>
+                    <Text style={styles.activePillRedText}>Active</Text>
+                  </View>
+                )}
               </View>
-              <Text style={[styles.monitorTileCount, { color: '#EF4444' }]}>{continuousAbsentCount}</Text>
-              <Text style={styles.monitorTileSubtitle}>Continuous absentees</Text>
+              <Text style={[styles.monitorTileCount, { color: '#EF4444' }]}>{expiredCount}</Text>
+              <Text style={styles.monitorTileSubtitle}>Expired memberships</Text>
               <Text numberOfLines={1} style={[styles.monitorTilePreview, { color: '#FCA5A5' }]}>
-                {continuousPreview.length > 0 ? continuousPreview.join(', ') : 'No 3+ day absentees'}
+                {expiredPreview.length > 0 ? expiredPreview.join(', ') : 'No expired members'}
               </Text>
             </TouchableOpacity>
           </ScrollView>
 
+          {/* Dedicated Tab Chip Row */}
+          <View style={styles.rosterTabBarContainer}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.rosterTabBar}
+            >
+              {[
+                { id: 'ALL' as const, label: 'All Members', count: totalCount, color: colors.gold },
+                { id: 'ACTIVE' as const, label: 'Active', count: activeCount, color: '#00D4FF' },
+                { id: 'PRESENT' as const, label: 'Present', count: presentCount, color: colors.success },
+                { id: 'ABSENT' as const, label: 'Absent', count: absentCount, color: '#F59E0B' },
+                { id: 'EXPIRED' as const, label: 'Expired', count: expiredCount, color: '#EF4444' },
+              ].map(tab => {
+                const isSelected = monitoringFilter === tab.id;
+                return (
+                  <TouchableOpacity
+                    key={tab.id}
+                    onPress={() => {
+                      haptics.selection();
+                      setMonitoringFilter(tab.id);
+                    }}
+                    style={[
+                      styles.rosterTabChip,
+                      isSelected && {
+                        borderColor: tab.color,
+                        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)',
+                      },
+                    ]}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[styles.rosterTabDot, { backgroundColor: tab.color }]} />
+                    <Text
+                      style={[
+                        styles.rosterTabChipText,
+                        isSelected && { color: colors.textPrimary, fontWeight: '800' },
+                      ]}
+                    >
+                      {tab.label}
+                    </Text>
+                    <View
+                      style={[
+                        styles.rosterTabCountBadge,
+                        isSelected && { backgroundColor: tab.color },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.rosterTabCountText,
+                          isSelected && { color: '#050505', fontWeight: '900' },
+                        ]}
+                      >
+                        {tab.count}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+
           {/* Search Member Roster */}
-          <View style={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6 }}>
+          <View style={{ paddingHorizontal: 16, paddingTop: 6, paddingBottom: 6 }}>
             <FVEInput
               value={monitorSearch}
               onChangeText={setMonitorSearch}
@@ -980,15 +1190,31 @@ export function AttendanceScreen() {
                         style={
                           item.checkedInToday
                             ? styles.presentPill
-                            : item.isContinuousAbsent
-                            ? styles.continuousAbsentPill
-                            : styles.absentPill
+                            : item.isExpired
+                              ? styles.expiredPill
+                              : !item.isActive
+                                ? styles.inactivePill
+                                : item.isContinuousAbsent
+                                  ? styles.continuousAbsentPill
+                                  : styles.absentPill
                         }
                       >
                         {item.checkedInToday ? (
                           <>
                             <CheckCircle size={11} color={colors.success} />
                             <Text style={styles.presentPillText}>PRESENT</Text>
+                          </>
+                        ) : item.isExpired ? (
+                          <>
+                            <AlertTriangle size={11} color="#EF4444" />
+                            <Text style={styles.expiredPillText}>EXPIRED</Text>
+                          </>
+                        ) : !item.isActive ? (
+                          <>
+                            <AlertTriangle size={11} color="#F59E0B" />
+                            <Text style={styles.inactivePillText}>
+                              {item.membershipStatus === 'HOLD' ? 'ON HOLD' : item.membershipStatus === 'UPCOMING' ? 'UPCOMING' : 'INACTIVE'}
+                            </Text>
                           </>
                         ) : item.isContinuousAbsent ? (
                           <>
@@ -1009,7 +1235,7 @@ export function AttendanceScreen() {
                     {/* Action Buttons Row */}
                     <View style={styles.monitorActionsRow}>
                       {!item.checkedInToday ? (
-                        <>
+                        item.isActive ? (
                           <TouchableOpacity
                             onPress={() => handleManualCheckIn(item, todayStr)}
                             disabled={manualLoading}
@@ -1019,19 +1245,25 @@ export function AttendanceScreen() {
                             <UserCheck size={14} color="#050505" />
                             <Text style={styles.monitorCheckInBtnText}>Check In</Text>
                           </TouchableOpacity>
-
+                        ) : (
                           <TouchableOpacity
                             onPress={() => {
-                              haptics.medium();
-                              setFollowUpMember(item);
+                              haptics.warning();
+                              sounds.qrInvalid();
+                              Alert.alert(
+                                'Attendance Restricted',
+                                `Only active members are permitted to mark attendance.\n\n${item.full_name}'s membership is ${item.isExpired ? 'expired' : 'inactive'}. Please renew their subscription before checking in.`
+                              );
                             }}
-                            style={styles.monitorFollowUpBtn}
-                            activeOpacity={0.85}
+                            style={styles.monitorBlockedCheckInBtn}
+                            activeOpacity={0.75}
                           >
-                            <MessageCircle size={13} color="#FFFFFF" />
-                            <Text style={styles.monitorFollowUpBtnText}>Follow Up</Text>
+                            <Ban size={13} color="#EF4444" />
+                            <Text style={styles.monitorBlockedCheckInBtnText}>
+                              {item.isExpired ? 'Expired' : 'Inactive'}
+                            </Text>
                           </TouchableOpacity>
-                        </>
+                        )
                       ) : (
                         <View style={styles.checkedInTimeBadge}>
                           <Clock size={12} color={colors.success} />
@@ -1039,13 +1271,25 @@ export function AttendanceScreen() {
                             Checked in at{' '}
                             {item.checkInTime
                               ? new Date(item.checkInTime).toLocaleTimeString('en-IN', {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })
                               : 'Today'}
                           </Text>
                         </View>
                       )}
+
+                      <TouchableOpacity
+                        onPress={() => {
+                          haptics.medium();
+                          setFollowUpMember(item);
+                        }}
+                        style={styles.monitorFollowUpBtn}
+                        activeOpacity={0.85}
+                      >
+                        <MessageCircle size={13} color="#FFFFFF" />
+                        <Text style={styles.monitorFollowUpBtnText}>Follow Up</Text>
+                      </TouchableOpacity>
 
                       <TouchableOpacity
                         onPress={() => {
@@ -1080,9 +1324,45 @@ export function AttendanceScreen() {
               ListEmptyComponent={
                 !monitoringLoading ? (
                   <FVEEmptyState
-                    icon={<Users size={40} color={colors.gold} />}
-                    title="No Members Found"
-                    description="Try searching with a different name or member code."
+                    icon={
+                      monitoringFilter === 'ACTIVE' ? (
+                        <UserCheck size={40} color="#00D4FF" />
+                      ) : monitoringFilter === 'PRESENT' ? (
+                        <CheckCircle size={40} color={colors.success} />
+                      ) : monitoringFilter === 'EXPIRED' ? (
+                        <AlertTriangle size={40} color="#EF4444" />
+                      ) : (
+                        <Users size={40} color={colors.gold} />
+                      )
+                    }
+                    title={
+                      monitorSearch.trim()
+                        ? 'No Matching Athletes'
+                        : monitoringFilter === 'ACTIVE'
+                          ? 'No Active Members'
+                          : monitoringFilter === 'PRESENT'
+                            ? 'No Check-Ins Today'
+                            : monitoringFilter === 'ABSENT'
+                              ? 'All Active Members Present!'
+                              : monitoringFilter === 'EXPIRED'
+                                ? 'No Expired Members'
+                                : 'No Members Found'
+                    }
+                    description={
+                      monitorSearch.trim()
+                        ? `No athletes found matching "${monitorSearch}".`
+                        : monitoringFilter === 'ACTIVE'
+                          ? 'There are currently no members with an active subscription.'
+                          : monitoringFilter === 'PRESENT'
+                            ? 'No members have checked in today yet. Use the camera scanner or check in active members above.'
+                            : monitoringFilter === 'ABSENT'
+                              ? 'Awesome! All active enrolled athletes have checked in today.'
+                              : monitoringFilter === 'EXPIRED'
+                                ? 'All enrolled athletes currently have valid subscriptions.'
+                                : 'Add members from the Members tab to begin tracking gym attendance.'
+                    }
+                    actionTitle={monitoringFilter === 'PRESENT' ? 'Scan Member QR' : undefined}
+                    onAction={monitoringFilter === 'PRESENT' ? () => navigation.navigate('QRScanner') : undefined}
                   />
                 ) : null
               }
@@ -1095,9 +1375,54 @@ export function AttendanceScreen() {
       <FVEModal
         visible={showManualModal}
         onClose={() => { setShowManualModal(false); setManualSearch(''); }}
-        title="Manual Check-In"
+        title="MANUAL CHECK-IN"
         subtitle="Select an active gym member to register attendance"
       >
+        {/* Active vs All filter buttons */}
+        <View style={styles.manualFilterRow}>
+          <TouchableOpacity
+            onPress={() => {
+              haptics.selection();
+              setManualFilter('ACTIVE');
+            }}
+            style={[
+              styles.manualFilterBtn,
+              manualFilter === 'ACTIVE' && styles.manualFilterBtnActive,
+            ]}
+          >
+            <UserCheck size={13} color={manualFilter === 'ACTIVE' ? '#050505' : colors.textSecondary} />
+            <Text
+              style={[
+                styles.manualFilterBtnText,
+                manualFilter === 'ACTIVE' && styles.manualFilterBtnTextActive,
+              ]}
+            >
+              Active Only ({allMembers.filter(m => m.isActive).length})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => {
+              haptics.selection();
+              setManualFilter('ALL');
+            }}
+            style={[
+              styles.manualFilterBtn,
+              manualFilter === 'ALL' && styles.manualFilterBtnActive,
+            ]}
+          >
+            <Users size={13} color={manualFilter === 'ALL' ? '#050505' : colors.textSecondary} />
+            <Text
+              style={[
+                styles.manualFilterBtnText,
+                manualFilter === 'ALL' && styles.manualFilterBtnTextActive,
+              ]}
+            >
+              All Members ({allMembers.length})
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         <FVEInput
           value={manualSearch}
           onChangeText={setManualSearch}
@@ -1108,8 +1433,9 @@ export function AttendanceScreen() {
           containerStyle={{ marginBottom: 12 }}
         />
         <ScrollView style={styles.manualList} showsVerticalScrollIndicator={false}>
-          {(allMembers || [])
+          {allMembers
             .filter(m => {
+              if (manualFilter === 'ACTIVE' && !m.isActive) return false;
               const term = manualSearch.trim().toLowerCase();
               if (!term) return true;
               return (
@@ -1121,17 +1447,57 @@ export function AttendanceScreen() {
             .map(m => (
               <TouchableOpacity
                 key={m.id}
-                onPress={() => handleManualCheckIn(m)}
+                onPress={() => {
+                  if (!m.isActive) {
+                    sounds.qrInvalid();
+                    haptics.warning();
+                    Alert.alert(
+                      'Attendance Restricted',
+                      `Only active members are permitted to mark attendance.\n\n${m.full_name}'s membership is ${m.isExpired ? 'expired' : 'inactive'}. Please renew their subscription before checking in.`
+                    );
+                    return;
+                  }
+                  handleManualCheckIn(m);
+                }}
                 disabled={manualLoading}
-                style={styles.manualMemberItem}
+                style={[
+                  styles.manualMemberItem,
+                  !m.isActive && styles.manualMemberItemDisabled,
+                ]}
+                activeOpacity={0.8}
               >
-                <View>
-                  <Text style={styles.manualMemberName}>{m.full_name}</Text>
-                  {m.member_id && (
-                    <Text style={styles.manualMemberId}>#{m.member_id}</Text>
-                  )}
+                <View style={{ flex: 1, marginRight: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text
+                      numberOfLines={1}
+                      style={[
+                        styles.manualMemberName,
+                        !m.isActive && { color: colors.textSecondary },
+                      ]}
+                    >
+                      {m.full_name}
+                    </Text>
+                    {m.member_id && (
+                      <Text style={styles.manualMemberId}>#{m.member_id}</Text>
+                    )}
+                  </View>
+                  <Text style={styles.manualMemberPlan}>
+                    {m.planName || 'Standard'} · {m.isActive ? 'Active' : m.isExpired ? 'Expired' : 'Inactive'}
+                  </Text>
                 </View>
-                <CheckCircle size={20} color={colors.gold} />
+
+                {m.isActive ? (
+                  <View style={styles.manualActiveCheckBtn}>
+                    <CheckCircle size={18} color={colors.gold} />
+                  </View>
+                ) : (
+                  <View style={styles.manualBlockedBadge}>
+                    <Ban size={12} color="#EF4444" />
+                    <Text style={styles.manualBlockedBadgeText}>
+                      {m.isExpired ? 'EXPIRED' : 'INACTIVE'}
+                    </Text>
+                  </View>
+                )}
               </TouchableOpacity>
             ))}
         </ScrollView>
@@ -1150,8 +1516,8 @@ export function AttendanceScreen() {
               <QRCode
                 value={selectedMemberForQR.qr_code || selectedMemberForQR.id}
                 size={180}
-                color={colors.gold}
-                backgroundColor="#0A0A0A"
+                color="#050505"
+                backgroundColor="#FFFFFF"
               />
             </View>
             <Text style={styles.qrModalCodeText}>
@@ -1197,10 +1563,10 @@ export function AttendanceScreen() {
         attendanceInfo={
           followUpMember
             ? {
-                checkedInToday: followUpMember.checkedInToday,
-                consecutiveAbsentDays: followUpMember.consecutiveAbsentDays,
-                lastCheckInDate: followUpMember.lastCheckInDate,
-              }
+              checkedInToday: followUpMember.checkedInToday,
+              consecutiveAbsentDays: followUpMember.consecutiveAbsentDays,
+              lastCheckInDate: followUpMember.lastCheckInDate,
+            }
             : null
         }
       />
@@ -1733,11 +2099,16 @@ const getAttendanceStyles = (colors: ThemeColors, isDark: boolean) =>
       borderColor: colors.borderDark,
       borderRadius: 14,
       padding: 12,
+      paddingBottom: 30,
       justifyContent: 'space-between',
     },
     monitorTileActiveGold: {
       borderColor: colors.gold,
       backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : 'rgba(217, 130, 0, 0.12)',
+    },
+    monitorTileActiveBlue: {
+      borderColor: '#00D4FF',
+      backgroundColor: isDark ? 'rgba(0, 212, 255, 0.12)' : 'rgba(0, 150, 255, 0.12)',
     },
     monitorTileActiveGreen: {
       borderColor: colors.success,
@@ -1776,6 +2147,18 @@ const getAttendanceStyles = (colors: ThemeColors, isDark: boolean) =>
       fontWeight: '800',
       fontFamily: typography.fonts.rajdhani,
     },
+    activePillBlue: {
+      backgroundColor: '#00D4FF',
+      paddingHorizontal: 5,
+      paddingVertical: 1,
+      borderRadius: 4,
+    },
+    activePillBlueText: {
+      color: '#050505',
+      fontSize: 9,
+      fontWeight: '800',
+      fontFamily: typography.fonts.rajdhani,
+    },
     activePillGreen: {
       backgroundColor: colors.success,
       paddingHorizontal: 5,
@@ -1796,6 +2179,18 @@ const getAttendanceStyles = (colors: ThemeColors, isDark: boolean) =>
     },
     activePillAmberText: {
       color: '#050505',
+      fontSize: 9,
+      fontWeight: '800',
+      fontFamily: typography.fonts.rajdhani,
+    },
+    activePillRed: {
+      backgroundColor: '#EF4444',
+      paddingHorizontal: 5,
+      paddingVertical: 1,
+      borderRadius: 4,
+    },
+    activePillRedText: {
+      color: '#FFFFFF',
       fontSize: 9,
       fontWeight: '800',
       fontFamily: typography.fonts.rajdhani,
@@ -1835,6 +2230,103 @@ const getAttendanceStyles = (colors: ThemeColors, isDark: boolean) =>
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.borderDark,
     },
+    rosterTabBarContainer: {
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+    },
+    rosterTabBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    rosterTabChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingVertical: 7,
+      paddingHorizontal: 12,
+      borderRadius: 20,
+      backgroundColor: colors.cardBackground,
+      borderWidth: 1,
+      borderColor: colors.borderDark,
+    },
+    rosterTabDot: {
+      width: 7,
+      height: 7,
+      borderRadius: 4,
+    },
+    rosterTabChipText: {
+      color: colors.textSecondary,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    rosterTabCountBadge: {
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+      borderRadius: 10,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)',
+    },
+    rosterTabCountText: {
+      color: colors.textPrimary,
+      fontSize: 10,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '800',
+    },
+    expiredPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: 'rgba(239, 68, 68, 0.15)',
+      borderWidth: 1,
+      borderColor: '#EF4444',
+      borderRadius: 20,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+    },
+    expiredPillText: {
+      color: '#EF4444',
+      fontSize: 9.5,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '800',
+      letterSpacing: 0.5,
+    },
+    inactivePill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: 'rgba(245, 158, 11, 0.15)',
+      borderWidth: 1,
+      borderColor: '#F59E0B',
+      borderRadius: 20,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+    },
+    inactivePillText: {
+      color: '#F59E0B',
+      fontSize: 9.5,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '800',
+      letterSpacing: 0.5,
+    },
+    monitorBlockedCheckInBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 5,
+      backgroundColor: isDark ? 'rgba(239, 68, 68, 0.12)' : 'rgba(239, 68, 68, 0.08)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 68, 68, 0.35)' : 'rgba(239, 68, 68, 0.25)',
+      borderRadius: 10,
+      paddingVertical: 8,
+    },
+    monitorBlockedCheckInBtnText: {
+      color: '#EF4444',
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '800',
+    },
     monitorFollowUpBtn: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -1865,6 +2357,68 @@ const getAttendanceStyles = (colors: ThemeColors, isDark: boolean) =>
     continuousAbsentPillText: {
       color: '#EF4444',
       fontSize: 9.5,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '800',
+      letterSpacing: 0.5,
+    },
+    manualFilterRow: {
+      flexDirection: 'row',
+      gap: 8,
+      marginBottom: 12,
+    },
+    manualFilterBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      paddingVertical: 8,
+      borderRadius: 10,
+      backgroundColor: colors.cardBackground,
+      borderWidth: 1,
+      borderColor: colors.borderDark,
+    },
+    manualFilterBtnActive: {
+      backgroundColor: colors.gold,
+      borderColor: colors.goldBright,
+    },
+    manualFilterBtnText: {
+      color: colors.textSecondary,
+      fontSize: 12,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    manualFilterBtnTextActive: {
+      color: '#050505',
+      fontWeight: '800',
+    },
+    manualMemberItemDisabled: {
+      opacity: 0.6,
+      borderColor: isDark ? 'rgba(239, 68, 68, 0.3)' : 'rgba(239, 68, 68, 0.2)',
+    },
+    manualMemberPlan: {
+      color: colors.textMuted,
+      fontSize: 11,
+      fontFamily: typography.fonts.inter,
+      marginTop: 2,
+    },
+    manualActiveCheckBtn: {
+      padding: 4,
+    },
+    manualBlockedBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 6,
+      backgroundColor: isDark ? 'rgba(239, 68, 68, 0.18)' : 'rgba(239, 68, 68, 0.12)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 68, 68, 0.4)' : 'rgba(239, 68, 68, 0.3)',
+    },
+    manualBlockedBadgeText: {
+      color: '#EF4444',
+      fontSize: 10,
       fontFamily: typography.fonts.rajdhani,
       fontWeight: '800',
       letterSpacing: 0.5,

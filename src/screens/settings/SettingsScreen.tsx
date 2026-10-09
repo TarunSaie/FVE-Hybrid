@@ -260,6 +260,9 @@ export function SettingsScreen() {
                     setTheme(opt.id);
                   }}
                   activeOpacity={0.8}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: isSelected }}
+                  accessibilityLabel={`${opt.label} theme`}
                   style={[
                     styles.themeOptionCard,
                     isSelected && styles.themeOptionCardActive,

@@ -457,6 +457,8 @@ export function PlanChangeModal({
       qc.invalidateQueries({ queryKey: ['mobile-plan-distribution'] });
       qc.invalidateQueries({ queryKey: ['payment-detail'] });
       qc.invalidateQueries({ queryKey: ['membership-for-payment'] });
+      qc.invalidateQueries({ queryKey: ['monitoring-attendance-members'] });
+      qc.invalidateQueries({ queryKey: ['manual-checkin-members'] });
 
       haptics.success();
 

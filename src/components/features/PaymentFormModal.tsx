@@ -320,6 +320,8 @@ export function PaymentFormModal({
       qc.invalidateQueries({ queryKey: ['member-payments', selectedMemberId] });
       qc.invalidateQueries({ queryKey: ['mobile-dashboard-stats'] });
       qc.invalidateQueries({ queryKey: ['expiring-memberships'] });
+      qc.invalidateQueries({ queryKey: ['monitoring-attendance-members'] });
+      qc.invalidateQueries({ queryKey: ['manual-checkin-members'] });
 
       // Insert in-app notifications
       try {

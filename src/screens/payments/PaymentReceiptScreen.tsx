@@ -531,8 +531,8 @@ export function PaymentReceiptScreen() {
                 <QRCode
                   value={memberQrCode}
                   size={110}
-                  color={colors.gold}
-                  backgroundColor="#0A0A0A"
+                  color="#050505"
+                  backgroundColor="#FFFFFF"
                 />
               </View>
               <Text style={styles.qrFooterText}>

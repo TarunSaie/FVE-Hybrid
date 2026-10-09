@@ -178,7 +178,7 @@ export function QRScannerScreen() {
           ? `Plan starts on ${formatDate(upPlan.start_date)}. Check-in not allowed yet.`
           : activeMs?.status === 'HOLD'
             ? 'Membership is on hold. Please visit reception desk.'
-            : 'Membership is inactive or expired. Please renew.';
+            : 'Attendance Restricted: Only active members are permitted to mark attendance. Membership is inactive or expired.';
 
         sounds.qrInvalid();
         haptics.warning();
@@ -256,6 +256,9 @@ export function QRScannerScreen() {
 
       // Invalidate attendance logs so dashboard and attendance lists update
       qc.invalidateQueries({ queryKey: ['mobile-attendance-log'] });
+      qc.invalidateQueries({ queryKey: ['monitoring-attendance-members'] });
+      qc.invalidateQueries({ queryKey: ['manual-checkin-members'] });
+      qc.invalidateQueries({ queryKey: ['all-members-attendance'] });
       qc.invalidateQueries({ queryKey: ['mobile-recent-attendance'] });
       qc.invalidateQueries({ queryKey: ['mobile-dashboard-stats'] });
 
@@ -532,9 +535,9 @@ const getScannerStyles = (colors: ThemeColors, isDark: boolean) =>
       gap: 10,
     },
     controlBtn: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
+      width: 44,
+      height: 44,
+      borderRadius: 22,
       backgroundColor: 'rgba(0, 0, 0, 0.6)',
       alignItems: 'center',
       justifyContent: 'center',

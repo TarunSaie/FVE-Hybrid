@@ -72,6 +72,8 @@ export const ROLE_ALLOWED_ROUTES: Record<UserRole, string[]> = {
     '/brand-studio',
     '/notifications',
     '/settings',
+    '/renewals',
+    '/plan-distribution',
   ],
   ADMIN: [
     '/',
@@ -87,8 +89,10 @@ export const ROLE_ALLOWED_ROUTES: Record<UserRole, string[]> = {
     '/brand-studio',
     '/notifications',
     '/settings',
+    '/renewals',
+    '/plan-distribution',
   ],
-  RECEPTIONIST: ['/members', '/plans', '/payments', '/payment-qr', '/daily-pass', '/attendance', '/scanner', '/notifications', '/settings'],
+  RECEPTIONIST: ['/members', '/plans', '/payments', '/payment-qr', '/daily-pass', '/attendance', '/scanner', '/notifications', '/settings', '/renewals'],
   TRAINER: ['/attendance', '/scanner', '/payment-qr', '/notifications', '/settings'],
   ATTENDANCE_SCANNER: ['/attendance', '/scanner'],
 };

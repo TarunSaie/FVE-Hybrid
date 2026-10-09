@@ -29,6 +29,7 @@ interface FVEButtonProps {
   textStyle?: StyleProp<TextStyle>;
   size?: 'sm' | 'md' | 'lg';
   haptic?: 'light' | 'medium' | 'heavy' | 'selection' | 'none';
+  accessibilityLabel?: string;
 }
 
 export function FVEButton({
@@ -43,7 +44,9 @@ export function FVEButton({
   textStyle,
   size = 'md',
   haptic = 'light',
+  accessibilityLabel,
 }: FVEButtonProps) {
+
   const { colors, isDark } = useTheme();
   const isInteractive = !disabled && !loading;
   const scale = useRef(new Animated.Value(1)).current;
@@ -91,6 +94,10 @@ export function FVEButton({
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
           disabled={!isInteractive}
+          accessibilityRole="button"
+          accessibilityLabel={accessibilityLabel || title}
+          accessibilityState={{ disabled: !isInteractive, busy: loading }}
+          hitSlop={size === 'sm' ? { top: 6, bottom: 6, left: 6, right: 6 } : undefined}
           android_ripple={{ color: 'rgba(0, 0, 0, 0.25)', borderless: false }}
           style={[styles.base, disabled && styles.disabled]}
         >
@@ -149,6 +156,10 @@ export function FVEButton({
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
           disabled={!isInteractive}
+          accessibilityRole="button"
+          accessibilityLabel={accessibilityLabel || title}
+          accessibilityState={{ disabled: !isInteractive, busy: loading }}
+          hitSlop={size === 'sm' ? { top: 6, bottom: 6, left: 6, right: 6 } : undefined}
           android_ripple={{ color: 'rgba(255, 255, 255, 0.25)', borderless: false }}
           style={[styles.base, disabled && styles.disabled]}
         >
@@ -205,6 +216,10 @@ export function FVEButton({
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
           disabled={!isInteractive}
+          accessibilityRole="button"
+          accessibilityLabel={accessibilityLabel || title}
+          accessibilityState={{ disabled: !isInteractive, busy: loading }}
+          hitSlop={size === 'sm' ? { top: 6, bottom: 6, left: 6, right: 6 } : undefined}
           android_ripple={{ color: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)', borderless: false }}
           style={[
             styles.base,
@@ -264,6 +279,10 @@ export function FVEButton({
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         disabled={!isInteractive}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel || title}
+        accessibilityState={{ disabled: !isInteractive, busy: loading }}
+        hitSlop={size === 'sm' ? { top: 6, bottom: 6, left: 6, right: 6 } : undefined}
         android_ripple={{
           color: variant === 'danger' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(239, 161, 0, 0.18)',
           borderless: false,
@@ -360,3 +379,6 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
 });
+
+export const Button = FVEButton;
+

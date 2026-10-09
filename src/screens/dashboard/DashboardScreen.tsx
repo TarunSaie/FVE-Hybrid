@@ -20,52 +20,74 @@ import {
   AlertTriangle,
   UserPlus,
   QrCode,
-  RotateCcw,
-  Share2,
-  Calendar,
   Award,
   DollarSign,
-  BarChart3,
-  Shield,
-  Bell,
-  ChevronRight,
-  ChevronLeft,
   TrendingUp,
-  Activity,
   Sun,
   Moon,
-  CheckCircle2,
   Sparkles,
   PauseCircle,
-  Layers,
-  MessageCircle,
-  Clock,
   Eye,
   EyeOff,
-  Lock,
+  ChevronRight,
+  Share2,
+  MessageCircle,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { MemberFormModal } from '@/components/features/MemberFormModal';
 import { PaymentFormModal } from '@/components/features/PaymentFormModal';
-import { WhatsAppQueueModal, ExpiringQueueItem } from '@/components/features/WhatsAppQueueModal';
 import { FVEBadge } from '@/components/common/FVEBadge';
 import { FVELogoLoader } from '@/components/common/FVELogoLoader';
-import { M3Switch } from '@/components/common/M3Switch';
 import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { supabase } from '@/api/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useBranding } from '@/contexts/BrandingContext';
-import { formatCurrency, openWhatsAppLink, buildExpiryReminderMessage } from '@/utils/format';
+import { formatCurrency, openWhatsAppLink } from '@/utils/format';
 import { getLocalDateStr, getLocalMonthStr, formatDate } from '@/utils/date';
 import { useRenewalAlerts } from '@/hooks/useRenewalAlerts';
 import { useMembershipSync } from '@/hooks/useMembershipSync';
 import { useBirthdayAlerts } from '@/hooks/useBirthdayAlerts';
 import { useRenewalMessagingStatus } from '@/utils/renewalMessaging';
-import { RenewalBatchSize } from '@/types';
 import { haptics } from '@/utils/haptics';
 import { RootStackParamList } from '@/navigation/types';
+import { Payment } from '@/types';
+
+interface ExpiringMemberItem {
+  id: string;
+  member_id: string;
+  expiry_date: string;
+  status: string;
+  members?: {
+    id?: string;
+    full_name?: string;
+    mobile?: string | null;
+    member_id?: string;
+    profile_photo?: string | null;
+  } | null;
+  membership_plans?: {
+    name?: string;
+  } | { name?: string }[] | null;
+}
+
+interface HoldMemberItem {
+  id: string;
+  member_id?: string;
+  full_name?: string;
+  mobile?: string | null;
+  profile_photo?: string | null;
+  plan_name?: string;
+  membership_expiry_date?: string;
+}
+
+type RecentPaymentPreview = Payment & {
+  members?: {
+    full_name?: string;
+    member_id?: string;
+    profile_photo?: string | null;
+  } | null;
+};
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -84,44 +106,15 @@ export function DashboardScreen() {
 
   const [showMemberModal, setShowMemberModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [showWhatsAppQueueModal, setShowWhatsAppQueueModal] = useState(false);
-  const [whatsAppQueue, setWhatsAppQueue] = useState<ExpiringQueueItem[]>([]);
   const [preselectedMemberId, setPreselectedMemberId] = useState<string | undefined>(undefined);
 
-  const { isSent, markSent, clearAll: clearRenewalSentRecords, version: renewalMapVersion } = useRenewalMessagingStatus();
-  const [renewalBatchSize, setRenewalBatchSize] = useState<RenewalBatchSize>(30);
-  const [expiringFilterTab, setExpiringFilterTab] = useState<'pending' | 'sent' | 'all'>('pending');
+  const { isSent, markSent } = useRenewalMessagingStatus();
 
   const todayStr = getLocalDateStr();
   const currentMonthStr = getLocalMonthStr();
 
-  const [filterMonth, setFilterMonth] = useState(() => getLocalMonthStr());
-  const [checkInDate, setCheckInDate] = useState(() => getLocalDateStr());
-
   // Confidential Data Visibility Toggle (Hidden by default for privacy)
   const [showConfidentialData, setShowConfidentialData] = useState(false);
-
-  const formattedMonthLabel = useMemo(() => {
-    if (!filterMonth) return '';
-    const [y, m] = filterMonth.split('-');
-    const d = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
-    return d.toLocaleString('en-IN', { month: 'short', year: 'numeric' });
-  }, [filterMonth]);
-
-  const handlePrevMonth = () => {
-    haptics.light();
-    const [y, m] = filterMonth.split('-').map(Number);
-    const d = new Date(y, m - 2, 1);
-    setFilterMonth(getLocalMonthStr(d));
-  };
-
-  const handleNextMonth = () => {
-    if (filterMonth >= currentMonthStr) return;
-    haptics.light();
-    const [y, m] = filterMonth.split('-').map(Number);
-    const d = new Date(y, m, 1);
-    setFilterMonth(getLocalMonthStr(d));
-  };
 
   // Dynamic greeting by time of day
   const greetingTime = useMemo(() => {
@@ -131,22 +124,20 @@ export function DashboardScreen() {
     return { text: 'Good Evening', icon: Moon };
   }, []);
 
-  // Fetch Dashboard Statistics
+  // Fetch Dashboard Statistics - EACH METRIC COMPUTED ONCE
   const { data: stats, isLoading, refetch } = useQuery({
-    queryKey: ['mobile-dashboard-stats', checkInDate, filterMonth],
+    queryKey: ['mobile-dashboard-stats', todayStr, currentMonthStr],
     queryFn: async () => {
-      const [year, month] = filterMonth.split('-');
+      const [year, month] = currentMonthStr.split('-');
       const lastDayOfMonth = new Date(parseInt(year, 10), parseInt(month, 10), 0).getDate();
-      const monthStart = `${filterMonth}-01`;
-      const monthEnd = `${filterMonth}-${String(lastDayOfMonth).padStart(2, '0')}`;
+      const monthStart = `${currentMonthStr}-01`;
+      const monthEnd = `${currentMonthStr}-${String(lastDayOfMonth).padStart(2, '0')}`;
 
       const [
         activeRes,
         todayAttRes,
         monthRevenueRes,
         expiringRes,
-        holdRes,
-        newMembersRes,
       ] = await Promise.all([
         supabase
           .from('memberships')
@@ -160,7 +151,7 @@ export function DashboardScreen() {
         supabase
           .from('attendance')
           .select('*', { count: 'exact', head: true })
-          .eq('date', checkInDate),
+          .eq('date', todayStr),
 
         supabase
           .from('payments')
@@ -171,20 +162,10 @@ export function DashboardScreen() {
         supabase
           .from('memberships')
           .select('*', { count: 'exact', head: true })
-          .gte('expiry_date', monthStart)
-          .lte('expiry_date', monthEnd)
-          .neq('status', 'CANCELLED'),
-
-        supabase
-          .from('memberships')
-          .select('*', { count: 'exact', head: true })
-          .eq('status', 'HOLD'),
-
-        supabase
-          .from('members')
-          .select('*', { count: 'exact', head: true })
-          .gte('joining_date', monthStart)
-          .lte('joining_date', monthEnd),
+          .gte('expiry_date', todayStr)
+          .lte('expiry_date', `${year}-${month}-${String(lastDayOfMonth).padStart(2, '0')}`)
+          .neq('status', 'CANCELLED')
+          .neq('status', 'HOLD'),
       ]);
 
       const totalRevenue = (monthRevenueRes.data || []).reduce(
@@ -197,15 +178,13 @@ export function DashboardScreen() {
         todayAttendance: todayAttRes.count || 0,
         monthRevenue: totalRevenue,
         expiringCount: expiringRes.count || 0,
-        holdCount: holdRes.count || 0,
-        newRegistrations: newMembersRes.count || 0,
       };
     },
   });
 
-  // Fetch expiring memberships (all eligible up to 500)
-  const { data: expiringList } = useQuery({
-    queryKey: ['mobile-expiring-memberships', todayStr],
+  // Fetch expiring memberships (Top 3 for preview)
+  const { data: expiringList = [] } = useQuery({
+    queryKey: ['mobile-expiring-memberships-preview', todayStr],
     queryFn: async () => {
       const futureDate = new Date();
       futureDate.setDate(futureDate.getDate() + 7);
@@ -218,70 +197,20 @@ export function DashboardScreen() {
         .lte('expiry_date', futureStr)
         .neq('status', 'HOLD')
         .order('expiry_date', { ascending: true })
-        .limit(500);
+        .limit(10);
 
       return data || [];
     },
   });
 
-  const { data: plansLookup } = useQuery({
-    queryKey: ['mobile-membership-plans-lookup-map'],
-    queryFn: async () => {
-      const { data } = await supabase.from('membership_plans').select('id, name');
-      const map: Record<string, string> = {};
-      (data || []).forEach((p: any) => {
-        if (p.id && p.name) map[p.id] = p.name;
-      });
-      return map;
-    },
-    staleTime: 1000 * 60 * 30,
-  });
+  // Top 3 preview items for Expiring Members
+  const topExpiringMembers = useMemo(() => {
+    return (expiringList || []).slice(0, 3);
+  }, [expiringList]);
 
-  const getMemberPlanName = (m: any): string => {
-    if (m?.plan_name && typeof m.plan_name === 'string' && m.plan_name.trim()) {
-      return m.plan_name.trim();
-    }
-    const rel = m?.membership_plans;
-    if (rel) {
-      if (Array.isArray(rel) && rel.length > 0 && rel[0]?.name) {
-        return rel[0].name.trim();
-      }
-      if (typeof rel === 'object' && rel.name) {
-        return rel.name.trim();
-      }
-    }
-    if (m?.plan_id && plansLookup && plansLookup[m.plan_id]) {
-      return plansLookup[m.plan_id].trim();
-    }
-    return 'Gym Membership';
-  };
-
-  // Partition into pending (unsent) and sent (processed), preserving earliest expiry date sort
-  const pendingExpiringList = useMemo(() => {
-    if (!expiringList) return [];
-    return expiringList.filter((m: any) => !isSent(m.id, m.expiry_date));
-  }, [expiringList, isSent, renewalMapVersion]);
-
-  const sentExpiringList = useMemo(() => {
-    if (!expiringList) return [];
-    return expiringList.filter((m: any) => isSent(m.id, m.expiry_date));
-  }, [expiringList, isSent, renewalMapVersion]);
-
-  // Displayed members: Unsent members always remain at the top of the list!
-  const displayedExpiringList = useMemo(() => {
-    if (expiringFilterTab === 'pending') {
-      return pendingExpiringList;
-    }
-    if (expiringFilterTab === 'sent') {
-      return sentExpiringList;
-    }
-    // 'all': unsent members first (sorted by earliest expiry), followed by sent members
-    return [...pendingExpiringList, ...sentExpiringList];
-  }, [expiringFilterTab, pendingExpiringList, sentExpiringList]);
-
-  // Fetch On-Hold Members
+  // Fetch On-Hold Members (Top 3 for preview)
   const { data: holdMembers = [] } = useQuery({
-    queryKey: ['mobile-hold-members'],
+    queryKey: ['mobile-hold-members-preview'],
     queryFn: async () => {
       try {
         const { data, error } = await supabase
@@ -289,7 +218,7 @@ export function DashboardScreen() {
           .select('id, member_id, full_name, mobile, profile_photo, plan_name, membership_expiry_date, membership_status')
           .eq('membership_status', 'HOLD')
           .order('membership_expiry_date', { ascending: false })
-          .limit(8);
+          .limit(5);
 
         if (!error && data && data.length > 0) {
           return data;
@@ -301,9 +230,22 @@ export function DashboardScreen() {
         .select('*, members(id, full_name, mobile, profile_photo, member_id), membership_plans(name)')
         .eq('status', 'HOLD')
         .order('expiry_date', { ascending: false })
-        .limit(8);
+        .limit(5);
 
-      return (data || []).map((m: any) => ({
+      return (data || []).map((m: {
+        id: string;
+        expiry_date: string;
+        members?: {
+          id: string;
+          full_name?: string;
+          mobile?: string | null;
+          profile_photo?: string | null;
+          member_id?: string;
+        } | null;
+        membership_plans?: {
+          name?: string;
+        } | null;
+      }) => ({
         id: m.members?.id || m.id,
         member_id: m.members?.member_id,
         full_name: m.members?.full_name || 'Member',
@@ -315,110 +257,27 @@ export function DashboardScreen() {
     },
   });
 
-  // Fetch Plan Distribution (matches exact active athlete criteria and month filter)
-  const { data: planDistribution = [] } = useQuery({
-    queryKey: ['mobile-plan-distribution', filterMonth],
-    queryFn: async () => {
-      const [year, month] = filterMonth.split('-');
-      const lastDayOfMonth = new Date(parseInt(year, 10), parseInt(month, 10), 0).getDate();
-      const monthStart = `${filterMonth}-01`;
-      const monthEnd = `${filterMonth}-${String(lastDayOfMonth).padStart(2, '0')}`;
+  // Top 3 preview items for On-Hold Members
+  const topHoldMembers = useMemo(() => {
+    return (holdMembers || []).slice(0, 3);
+  }, [holdMembers]);
 
-      // 1. Fetch plans for fallback name lookup
-      const { data: plans } = await supabase
-        .from('membership_plans')
-        .select('id, name');
-      const planMap = new Map<string, string>();
-      (plans || []).forEach((p) => {
-        if (p.id && p.name) planMap.set(p.id, p.name);
-      });
-
-      // 2. Fetch all active memberships matching the exact active athlete date window & status
-      const { data: memberships, error } = await supabase
-        .from('memberships')
-        .select('id, member_id, plan_id, start_date, expiry_date, status, created_at, membership_plans(id, name)')
-        .lte('start_date', monthEnd)
-        .gte('expiry_date', monthStart)
-        .neq('status', 'HOLD')
-        .limit(5000);
-
-      if (error) {
-        console.error('Error fetching plan distribution memberships:', error);
-        return [];
-      }
-
-      // Deduplicate by member_id (keep latest membership by expiry/created_at) so each active athlete is counted once
-      const latestByMember = new Map<string, (typeof memberships)[0]>();
-      for (const m of memberships || []) {
-        const key = m.member_id || m.id;
-        if (!key) continue;
-        const existing = latestByMember.get(key);
-        if (!existing) {
-          latestByMember.set(key, m);
-        } else {
-          const mExp = m.expiry_date || '';
-          const exExp = existing.expiry_date || '';
-          if (mExp > exExp || (mExp === exExp && (m.created_at || '') > (existing.created_at || ''))) {
-            latestByMember.set(key, m);
-          }
-        }
-      }
-
-      // Tally active athletes by plan name
-      const countsByPlan: Record<string, number> = {};
-      for (const m of latestByMember.values()) {
-        const planObj = Array.isArray(m.membership_plans)
-          ? m.membership_plans[0]
-          : m.membership_plans;
-        const planName =
-          planObj?.name ||
-          (m.plan_id ? planMap.get(m.plan_id) : null) ||
-          'Standard Plan';
-        countsByPlan[planName] = (countsByPlan[planName] || 0) + 1;
-      }
-
-      return Object.entries(countsByPlan)
-        .map(([name, count]) => ({ name, count }))
-        .sort((a, b) => b.count - a.count);
-    },
-  });
-
-  // Fetch recent payments
-  const { data: recentPayments } = useQuery({
-    queryKey: ['mobile-recent-payments'],
+  // Fetch recent payments (Top 3 for preview)
+  const { data: recentPayments = [] } = useQuery({
+    queryKey: ['mobile-recent-payments-preview'],
     queryFn: async () => {
       const { data } = await supabase
         .from('payments')
         .select('*, members(full_name, member_id, profile_photo)')
         .order('created_at', { ascending: false })
-        .limit(6);
+        .limit(3);
       return data || [];
     },
   });
 
-  // Fetch 7-day attendance trend
-  const { data: weeklyAttendance } = useQuery({
-    queryKey: ['mobile-weekly-attendance', todayStr],
-    queryFn: async () => {
-      const days = [];
-      const now = new Date();
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date(now);
-        d.setDate(d.getDate() - i);
-        const dStr = getLocalDateStr(d);
-        const { count } = await supabase
-          .from('attendance')
-          .select('*', { count: 'exact', head: true })
-          .eq('date', dStr);
-        days.push({
-          day: d.toLocaleDateString('en-IN', { weekday: 'short' }),
-          date: dStr,
-          count: count || 0,
-        });
-      }
-      return days;
-    },
-  });
+  const topRecentTransactions = useMemo(() => {
+    return (recentPayments || []).slice(0, 3);
+  }, [recentPayments]);
 
   // Unread notifications
   const { data: unreadNotifs } = useQuery({
@@ -440,13 +299,10 @@ export function DashboardScreen() {
   const onRefresh = useCallback(() => {
     haptics.light();
     qc.invalidateQueries({ queryKey: ['mobile-dashboard-stats'] });
-    qc.invalidateQueries({ queryKey: ['mobile-plan-distribution'] });
-    qc.invalidateQueries({ queryKey: ['mobile-expiring-memberships'] });
-    qc.invalidateQueries({ queryKey: ['mobile-recent-payments'] });
-    qc.invalidateQueries({ queryKey: ['mobile-weekly-attendance'] });
+    qc.invalidateQueries({ queryKey: ['mobile-expiring-memberships-preview'] });
+    qc.invalidateQueries({ queryKey: ['mobile-hold-members-preview'] });
+    qc.invalidateQueries({ queryKey: ['mobile-recent-payments-preview'] });
     qc.invalidateQueries({ queryKey: ['unread-notifications'] });
-    qc.invalidateQueries({ queryKey: ['unread-notifications-count'] });
-    qc.invalidateQueries({ queryKey: ['mobile-notifications'] });
   }, [qc]);
 
   const handleWhatsAppReminder = (
@@ -469,62 +325,7 @@ export function DashboardScreen() {
     markSent(membershipId, expiryDate, member.id);
   };
 
-  const handleNotifyBatch = (customSize?: RenewalBatchSize) => {
-    const sizeToUse = customSize || renewalBatchSize;
-    if (!pendingExpiringList?.length) {
-      Alert.alert('All Messaged', 'All eligible expiring members have already been messaged!');
-      return;
-    }
-    const withMobile = pendingExpiringList.filter((m: any) => {
-      const mob = m.members?.mobile;
-      return Boolean(mob?.trim());
-    });
-
-    if (withMobile.length === 0) {
-      Alert.alert('No Mobile Numbers', 'No pending expiring members have a valid mobile phone number recorded.');
-      return;
-    }
-
-    const batchCount = sizeToUse === 'all' ? withMobile.length : Math.min(Number(sizeToUse) || 30, withMobile.length);
-    const targetBatch = withMobile.slice(0, batchCount);
-
-    const gymName = brandConfig.gym_name || 'FitVerse Elite';
-    const queueItems: ExpiringQueueItem[] = targetBatch.map((m: any) => {
-      const member = m.members || {};
-      const memberName = member.full_name || 'Member';
-      const planName = getMemberPlanName(m);
-      const daysLeft = Math.ceil(
-        (new Date(m.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
-      );
-      const msg = buildExpiryReminderMessage(
-        memberName,
-        planName,
-        m.expiry_date,
-        daysLeft,
-        gymName
-      );
-
-      return {
-        id: m.id,
-        memberId: m.member_id,
-        memberName,
-        memberMobile: member.mobile || '',
-        planName,
-        expiryDate: m.expiry_date,
-        daysLeft,
-        message: msg,
-      };
-    });
-
-    setWhatsAppQueue(queueItems);
-    setShowWhatsAppQueueModal(true);
-  };
-
-  const handleNotifyAll = () => handleNotifyBatch('all');
-
   const isOwnerOrAdmin = user?.role === 'OWNER' || user?.role === 'ADMIN';
-  const isFinancialVisible = isOwnerOrAdmin;
-  const maxAttendance = Math.max(...(weeklyAttendance?.map((w) => w.count) || [1]), 1);
 
   if (isLoading && !stats) {
     return (
@@ -533,7 +334,7 @@ export function DashboardScreen() {
           onNotificationsPress={() => navigation.navigate('Notifications')}
           unreadCount={unreadNotifs || 0}
         />
-        <FVELogoLoader message="Syncing Dashboard..." fullScreen />
+        <FVELogoLoader message="Loading Dashboard..." fullScreen />
       </View>
     );
   }
@@ -557,133 +358,113 @@ export function DashboardScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
-        {/* ── HERO EXECUTIVE STATUS BANNER / OWNER CARD ── */}
-        <LinearGradient
-          colors={
-            isDark
-              ? ['#181D2A', '#10141E', '#0B0D13']
-              : ['#FFFFFF', '#FAF8F5', '#F5EFE6']
-          }
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.heroBanner}
-        >
-          {/* Top Gold Horizon Hairline */}
-          <LinearGradient
-            colors={['transparent', colors.goldBright, colors.gold, 'transparent']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.heroTopHighlight}
-          />
-
-          <View style={styles.heroContentRow}>
-            <View style={styles.heroLeft}>
-              <View style={styles.greetingRow}>
-                <View style={styles.greetingIconPill}>
-                  <greetingTime.icon size={13} color={colors.gold} />
-                  <Text style={styles.greetingTimeText}>{greetingTime.text.toUpperCase()}</Text>
-                </View>
-                {user?.role === 'OWNER' && (
-                  <View style={styles.ownerEliteBadge}>
-                    <Sparkles size={11} color={isDark ? colors.goldBright : colors.gold} />
-                    <Text style={styles.ownerEliteBadgeText}>EXECUTIVE OWNER</Text>
-                  </View>
-                )}
+        {/* ── ABOVE THE FOLD: 1. GREETING ── */}
+        <View style={styles.greetingContainer}>
+          <View style={styles.greetingTextCol}>
+            <View style={styles.greetingMetaRow}>
+              <View style={styles.greetingIconPill}>
+                <greetingTime.icon size={12} color={colors.gold} />
+                <Text style={styles.greetingTimeLabel}>{greetingTime.text.toUpperCase()}</Text>
               </View>
-
-              <Text numberOfLines={1} style={styles.heroUserName}>
-                {(user?.full_name || user?.username || 'Commander').toUpperCase()}
-              </Text>
-
-              {/* Pulsing Operations Beacon */}
-              <View style={styles.statusBeaconRow}>
-                <View style={styles.statusBeaconGlow}>
-                  <View style={styles.statusBeaconDot} />
-                </View>
-                <Text style={styles.statusBeaconText}>HQ OPERATIONS LIVE · COMMAND READY</Text>
-              </View>
-            </View>
-
-            <View style={styles.heroRight}>
-              {user?.avatar_url ? (
-                <View style={styles.avatarWrapper}>
-                  <Image
-                    source={{ uri: user.avatar_url }}
-                    style={styles.avatarImage}
-                    resizeMode="cover"
-                  />
-                  <View style={styles.avatarGoldRim} />
-                </View>
-              ) : (
-                <View style={styles.avatarRing}>
-                  <LinearGradient
-                    colors={
-                      isDark
-                        ? ['#2A3245', '#161A26', '#0E1018']
-                        : ['#FFFBEB', '#FEF3C7', '#FDE68A']
-                    }
-                    style={styles.avatarGradient}
-                  >
-                    <View style={styles.avatarInnerGlow} />
-                    <Text style={styles.avatarInitial}>
-                      {(user?.full_name?.trim()?.charAt(0) || user?.username?.trim()?.charAt(0) || 'O').toUpperCase()}
-                    </Text>
-                  </LinearGradient>
+              {user?.role === 'OWNER' && (
+                <View style={styles.ownerBadge}>
+                  <Sparkles size={10} color={colors.gold} />
+                  <Text style={styles.ownerBadgeText}>EXECUTIVE OWNER</Text>
                 </View>
               )}
-              <FVEBadge role={user?.role} size="sm" style={{ marginTop: 8 }} />
             </View>
-          </View>
-        </LinearGradient>
 
-        {/* ── QUICK ACTIONS BAR (HORIZONTAL PILLS) ── */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.quickActionsScroll}
+            <Text numberOfLines={1} style={styles.greetingUserName}>
+              {(user?.full_name || user?.username || 'Commander').toUpperCase()}
+            </Text>
+          </View>
+
+          <View style={styles.greetingRightCol}>
+            {/* Privacy Eye Toggle */}
+            {isOwnerOrAdmin && (
+              <TouchableOpacity
+                onPress={() => {
+                  haptics.selection();
+                  setShowConfidentialData((prev) => !prev);
+                }}
+                style={styles.privacyEyeBtn}
+                accessibilityRole="button"
+                accessibilityLabel={showConfidentialData ? 'Hide confidential numbers' : 'Show confidential numbers'}
+              >
+                {showConfidentialData ? (
+                  <Eye size={16} color={colors.gold} />
+                ) : (
+                  <EyeOff size={16} color={colors.textMuted} />
+                )}
+              </TouchableOpacity>
+            )}
+
+            {/* Profile Avatar / Initial */}
+            {user?.avatar_url ? (
+              <Image
+                source={{ uri: user.avatar_url }}
+                style={styles.userAvatarImage}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={styles.userAvatarInitialWrap}>
+                <Text style={styles.userAvatarInitial}>
+                  {(user?.full_name?.trim()?.charAt(0) || user?.username?.trim()?.charAt(0) || 'O').toUpperCase()}
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+
+        {/* ── ABOVE THE FOLD: 2. ONE PRIMARY ACTION ── */}
+        <TouchableOpacity
+          onPress={() => {
+            haptics.medium();
+            navigation.navigate('QRScanner');
+          }}
+          style={styles.primaryActionButton}
+          activeOpacity={0.88}
+          accessibilityRole="button"
+          accessibilityLabel="Quick Check-in: Scan Attendance QR Kiosk"
         >
+          <View style={styles.primaryActionIconBg}>
+            <QrCode size={20} color="#050505" strokeWidth={2.5} />
+          </View>
+          <View style={styles.primaryActionTextWrap}>
+            <Text style={styles.primaryActionTitle}>SCAN ATTENDANCE QR</Text>
+            <Text style={styles.primaryActionSubtitle}>Instant camera kiosk check-in</Text>
+          </View>
+          <ChevronRight size={18} color="#050505" strokeWidth={2.5} />
+        </TouchableOpacity>
+
+        {/* Quick Operations Strip (Secondary Accessible Actions) */}
+        <View style={styles.quickActionsStrip}>
           <TouchableOpacity
             onPress={() => {
-              haptics.medium();
+              haptics.light();
               setPreselectedMemberId(undefined);
               setShowMemberModal(true);
             }}
-            style={styles.actionPillPrimary}
-            activeOpacity={0.85}
+            style={styles.quickActionPill}
+            accessibilityRole="button"
+            accessibilityLabel="Add New Member"
           >
-            <View style={styles.actionPillIconGold}>
-              <UserPlus size={16} color="#050505" strokeWidth={2.5} />
-            </View>
-            <Text style={styles.actionPillPrimaryText}>+ Member</Text>
+            <UserPlus size={14} color={colors.gold} />
+            <Text style={styles.quickActionPillText}>+ Member</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             onPress={() => {
-              haptics.medium();
+              haptics.light();
               setPreselectedMemberId(undefined);
               setShowPaymentModal(true);
             }}
-            style={styles.actionPill}
-            activeOpacity={0.8}
+            style={styles.quickActionPill}
+            accessibilityRole="button"
+            accessibilityLabel="Add New Payment"
           >
-            <View style={styles.actionPillIconDark}>
-              <CreditCard size={16} color={colors.gold} />
-            </View>
-            <Text style={styles.actionPillText}>+ Payment</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => {
-              haptics.medium();
-              navigation.navigate('QRScanner');
-            }}
-            style={[styles.actionPill, styles.actionPillBlue]}
-            activeOpacity={0.8}
-          >
-            <View style={styles.actionPillIconBlue}>
-              <QrCode size={16} color={colors.blueLight} />
-            </View>
-            <Text style={[styles.actionPillText, { color: colors.blueLight }]}>Scan Kiosk</Text>
+            <CreditCard size={14} color={colors.gold} />
+            <Text style={styles.quickActionPillText}>+ Payment</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -691,13 +472,12 @@ export function DashboardScreen() {
               haptics.light();
               navigation.navigate('MembershipPlans');
             }}
-            style={styles.actionPill}
-            activeOpacity={0.8}
+            style={styles.quickActionPill}
+            accessibilityRole="button"
+            accessibilityLabel="Membership Plans"
           >
-            <View style={styles.actionPillIconDark}>
-              <Award size={16} color={colors.gold} />
-            </View>
-            <Text style={styles.actionPillText}>Plans</Text>
+            <Award size={14} color={colors.gold} />
+            <Text style={styles.quickActionPillText}>Plans</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -705,766 +485,366 @@ export function DashboardScreen() {
               haptics.light();
               navigation.navigate('Expenses');
             }}
-            style={styles.actionPill}
+            style={styles.quickActionPill}
+            accessibilityRole="button"
+            accessibilityLabel="Gym Expenses"
+          >
+            <DollarSign size={14} color="#22C55E" />
+            <Text style={styles.quickActionPillText}>Expenses</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* ── ABOVE THE FOLD: 3. FOUR KEY NUMBERS (SHOW EACH ONLY ONCE) ── */}
+        <View style={styles.metricsGrid}>
+          {/* Key Metric 1: Active Members */}
+          <TouchableOpacity
+            onPress={() => navigation.navigate('MainTabs', { screen: 'Members' })}
+            style={styles.metricCard}
             activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={`Active Members: ${stats?.activeMembers || 0}`}
           >
-            <View style={styles.actionPillIconDark}>
-              <DollarSign size={16} color="#22C55E" />
+            <View style={styles.metricCardHeader}>
+              <View style={[styles.metricIconWrap, { backgroundColor: 'rgba(34, 197, 94, 0.15)' }]}>
+                <Users size={16} color={colors.success} />
+              </View>
+              <Text style={styles.metricCardTag}>STRENGTH</Text>
             </View>
-            <Text style={styles.actionPillText}>Expenses</Text>
+            <Text style={styles.metricValue}>{stats?.activeMembers || 0}</Text>
+            <Text style={styles.metricLabel}>Active Members</Text>
           </TouchableOpacity>
-        </ScrollView>
 
-        {/* ── EXECUTIVE PERFORMANCE & OPERATIONS FILTER BAR ── */}
-        <View style={styles.execFilterBar}>
-          <View style={styles.execFilterLeft}>
-            <Text style={styles.execFilterHeading}>FILTER OPERATIONS</Text>
-            <View style={styles.execFilterMonthRow}>
-              <TouchableOpacity onPress={handlePrevMonth} style={styles.execMonthArrow}>
-                <ChevronLeft size={16} color={colors.gold} />
-              </TouchableOpacity>
-              <View style={styles.execMonthBadge}>
-                <Calendar size={12} color={colors.gold} style={{ marginRight: 4 }} />
-                <Text style={styles.execMonthText}>{formattedMonthLabel}</Text>
+          {/* Key Metric 2: Today's Check-ins */}
+          <TouchableOpacity
+            onPress={() => navigation.navigate('MainTabs', { screen: 'Attendance' })}
+            style={styles.metricCard}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={`Today's Check-ins: ${stats?.todayAttendance || 0}`}
+          >
+            <View style={styles.metricCardHeader}>
+              <View style={[styles.metricIconWrap, { backgroundColor: 'rgba(0, 102, 255, 0.15)' }]}>
+                <UserCheck size={16} color={colors.blueLight} />
               </View>
-              <TouchableOpacity
-                onPress={handleNextMonth}
-                disabled={filterMonth >= currentMonthStr}
-                style={[styles.execMonthArrow, filterMonth >= currentMonthStr && { opacity: 0.3 }]}
-              >
-                <ChevronRight size={16} color={filterMonth >= currentMonthStr ? colors.textMuted : colors.gold} />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <View style={styles.execFilterRight}>
-            <Text style={styles.execFilterHeading}>CHECK-IN DATE</Text>
-            <TouchableOpacity
-              onPress={() => {
-                haptics.selection();
-                setCheckInDate(todayStr);
-              }}
-              style={[
-                styles.execDatePill,
-                checkInDate === todayStr && styles.execDatePillActive,
-              ]}
-            >
-              <Clock size={11} color={checkInDate === todayStr ? '#050505' : colors.gold} />
-              <Text
-                style={[
-                  styles.execDatePillText,
-                  checkInDate === todayStr && styles.execDatePillTextActive,
-                ]}
-              >
-                {checkInDate === todayStr ? 'TODAY' : formatDate(checkInDate)}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* ── PRIVACY / CONFIDENTIAL DATA TOGGLE ── */}
-        {isOwnerOrAdmin && (
-          <View style={styles.privacyToggleCard}>
-            <View style={styles.privacyToggleLeft}>
-              <View
-                style={[
-                  styles.privacyIconBadge,
-                  showConfidentialData && styles.privacyIconBadgeActive,
-                ]}
-              >
-                {showConfidentialData ? (
-                  <Eye size={15} color={colors.gold} />
-                ) : (
-                  <EyeOff size={15} color={colors.textMuted} />
-                )}
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={[
-                    styles.privacyToggleTitle,
-                    showConfidentialData && { color: colors.gold },
-                  ]}
-                >
-                  Show Reports &amp; Stats
-                </Text>
-                <Text style={styles.privacyToggleSub}>
-                  {showConfidentialData
-                    ? 'Confidential figures visible'
-                    : 'Confidential figures hidden'}
-                </Text>
+              <View style={styles.liveIndicator}>
+                <View style={styles.liveDot} />
+                <Text style={styles.liveText}>TODAY</Text>
               </View>
             </View>
-            <M3Switch
-              value={showConfidentialData}
-              onValueChange={setShowConfidentialData}
-              accessibilityLabel="Show Reports and Stats"
-            />
-          </View>
-        )}
+            <Text style={[styles.metricValue, { color: colors.blueLight }]}>
+              {stats?.todayAttendance || 0}
+            </Text>
+            <Text style={styles.metricLabel}>Checked-In Today</Text>
+          </TouchableOpacity>
 
-        {/* ── BENTO METRICS ARCHITECTURE ── */}
+          {/* Key Metric 3: Expiring Soon */}
+          <TouchableOpacity
+            onPress={() =>
+              navigation.navigate('MainTabs', {
+                screen: 'Members',
+                params: { initialStatusFilter: 'EXPIRING_SOON' },
+              })
+            }
+            style={styles.metricCard}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={`Expiring Soon: ${stats?.expiringCount || 0}`}
+          >
+            <View style={styles.metricCardHeader}>
+              <View style={[styles.metricIconWrap, { backgroundColor: 'rgba(239, 161, 0, 0.15)' }]}>
+                <AlertTriangle size={16} color={colors.warning} />
+              </View>
+              <Text style={[styles.metricCardTag, { color: colors.warning }]}>30 DAYS</Text>
+            </View>
+            <Text style={[styles.metricValue, { color: colors.warning }]}>
+              {stats?.expiringCount || 0}
+            </Text>
+            <Text style={styles.metricLabel}>Expiring Soon</Text>
+          </TouchableOpacity>
 
-        {/* Primary Bento Hero: Month Revenue (or Total Strength) */}
-        {isFinancialVisible ? (
+          {/* Key Metric 4: Month Revenue */}
           <TouchableOpacity
             onPress={() => {
-              if (showConfidentialData) {
-                haptics.light();
+              if (isOwnerOrAdmin) {
                 navigation.navigate('Reports');
-              } else {
-                haptics.selection();
-                setShowConfidentialData(true);
               }
             }}
-            activeOpacity={0.9}
-            style={styles.bentoHeroCard}
+            style={styles.metricCard}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="Month Revenue"
           >
-            <LinearGradient
-              colors={
-                isDark
-                  ? ['#1E1606', '#12141A', '#0B0D12']
-                  : ['#FFFFFF', '#FCFBF8', '#F8FAFC']
-              }
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.bentoHeroGradient}
-            >
-              <View style={styles.bentoHeroTopRow}>
-                <View style={styles.bentoHeroTag}>
-                  <TrendingUp size={13} color={colors.gold} />
-                  <Text style={styles.bentoHeroTagText}>MONTH-TO-DATE REVENUE</Text>
-                </View>
-                <View style={styles.bentoHeroBadge}>
-                  <Text style={styles.bentoHeroBadgeText}>
-                    {showConfidentialData
-                      ? `${new Date().toLocaleString('en-US', { month: 'short' }).toUpperCase()} PERFORMANCE`
-                      : 'CONFIDENTIAL'}
-                  </Text>
-                </View>
+            <View style={styles.metricCardHeader}>
+              <View style={[styles.metricIconWrap, { backgroundColor: 'rgba(239, 161, 0, 0.15)' }]}>
+                <TrendingUp size={16} color={colors.gold} />
               </View>
-
-              <Text style={[styles.bentoHeroAmount, { color: colors.textPrimary }]}>
-                {showConfidentialData
-                  ? formatCurrency(stats?.monthRevenue || 0)
-                  : '••••••'}
-              </Text>
-
-              <View style={styles.bentoHeroFooter}>
-                <View style={styles.bentoHeroMetaItem}>
-                  <Text style={styles.bentoHeroMetaLabel}>Active Members</Text>
-                  <Text style={styles.bentoHeroMetaVal}>{stats?.activeMembers || 0}</Text>
-                </View>
-                <View style={styles.bentoHeroDivider} />
-                <View style={styles.bentoHeroMetaItem}>
-                  <Text style={styles.bentoHeroMetaLabel}>New Joins</Text>
-                  <Text style={styles.bentoHeroMetaVal}>+{stats?.newRegistrations || 0}</Text>
-                </View>
-                <View style={styles.bentoHeroDivider} />
-                <View style={styles.bentoHeroMetaItem}>
-                  <Text style={styles.bentoHeroMetaLabel}>Today's Log</Text>
-                  <Text style={[styles.bentoHeroMetaVal, { color: colors.blue }]}>
-                    {stats?.todayAttendance || 0}
-                  </Text>
-                </View>
-              </View>
-            </LinearGradient>
-          </TouchableOpacity>
-        ) : (
-          /* Non-owner hero: Gym Strength */
-          <View style={styles.bentoHeroCard}>
-            <LinearGradient
-              colors={isDark ? ['#141720', '#0E1116'] : ['#FFFFFF', '#F8FAFC']}
-              style={styles.bentoHeroGradient}
-            >
-              <View style={styles.bentoHeroTopRow}>
-                <View style={styles.bentoHeroTag}>
-                  <Users size={13} color={colors.gold} />
-                  <Text style={styles.bentoHeroTagText}>ACTIVE GYM STRENGTH</Text>
-                </View>
-                <Text style={styles.bentoHeroBadgeText}>LIVE ROSTER</Text>
-              </View>
-              <Text style={[styles.bentoHeroAmount, { color: colors.textPrimary }]}>{stats?.activeMembers || 0} Athletes</Text>
-            </LinearGradient>
-          </View>
-        )}
-
-        {/* Bento Row 2: Today Check-Ins & Expiring This Week */}
-        <View style={styles.bentoRow}>
-          {/* Today Check-ins */}
-          <TouchableOpacity
-            onPress={() => {
-              haptics.light();
-              navigation.navigate('MainTabs', { screen: 'Attendance' });
-            }}
-            style={[styles.bentoCard, styles.bentoCardBlue]}
-            activeOpacity={0.85}
-          >
-            <View style={styles.bentoIconHeader}>
-              <View style={[styles.bentoIconWrap, { backgroundColor: 'rgba(0, 102, 255, 0.15)' }]}>
-                <UserCheck size={18} color={colors.blueLight} />
-              </View>
-              <View style={styles.bentoLiveBadge}>
-                <View style={styles.bentoLiveDot} />
-                <Text style={styles.bentoLiveText}>TODAY</Text>
-              </View>
+              <Text style={styles.metricCardTag}>REVENUE</Text>
             </View>
-            <Text style={styles.bentoValue}>{stats?.todayAttendance || 0}</Text>
-            <Text style={styles.bentoLabel}>Checked-in Today</Text>
-          </TouchableOpacity>
-
-          {/* Expiring Soon */}
-          <TouchableOpacity
-            onPress={() => {
-              haptics.light();
-              navigation.navigate('MainTabs', { screen: 'Members' });
-            }}
-            style={[styles.bentoCard, styles.bentoCardAmber]}
-            activeOpacity={0.85}
-          >
-            <View style={styles.bentoIconHeader}>
-              <View style={[styles.bentoIconWrap, { backgroundColor: 'rgba(239, 68, 68, 0.15)' }]}>
-                <AlertTriangle size={18} color={colors.warning} />
-              </View>
-              <Text style={styles.bentoAlertCount}>{stats?.expiringCount || 0}</Text>
-            </View>
-            <Text style={styles.bentoValue}>{stats?.expiringCount || 0}</Text>
-            <Text style={styles.bentoLabel}>Expiring in 30 Days</Text>
+            <Text numberOfLines={1} style={[styles.metricValue, { color: colors.gold, fontSize: 18 }]}>
+              {showConfidentialData
+                ? formatCurrency(stats?.monthRevenue || 0)
+                : '••••••'}
+            </Text>
+            <Text style={styles.metricLabel}>This Month</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Bento Row 3: 3-Pill Secondary Stat Strip */}
-        <View style={styles.pillStatStrip}>
-          <View style={styles.pillStatItem}>
-            <RotateCcw size={13} color={colors.textMuted} />
-            <Text style={styles.pillStatNum}>{stats?.holdCount || 0}</Text>
-            <Text style={styles.pillStatLabel}>On Hold</Text>
-          </View>
-          <View style={styles.pillStatDivider} />
-          <View style={styles.pillStatItem}>
-            <UserPlus size={13} color={colors.gold} />
-            <Text style={[styles.pillStatNum, { color: colors.gold }]}>
-              {stats?.newRegistrations || 0}
-            </Text>
-            <Text style={styles.pillStatLabel}>Joined</Text>
-          </View>
-          <View style={styles.pillStatDivider} />
-          <View style={styles.pillStatItem}>
-            <Users size={13} color={colors.success} />
-            <Text style={[styles.pillStatNum, { color: colors.success }]}>
-              {stats?.activeMembers || 0}
-            </Text>
-            <Text style={styles.pillStatLabel}>Active</Text>
-          </View>
-        </View>
-
-        {/* ── EXPIRING MEMBERS CAROUSEL ── */}
-        <View style={styles.sectionContainer}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleRow}>
-              <AlertTriangle size={16} color={colors.warning} />
+        {/* ── SECTION 1: EXPIRING MEMBERS (TOP 3 PREVIEW) ── */}
+        <View style={styles.previewSection}>
+          <View style={styles.sectionHeaderRow}>
+            <View style={styles.sectionTitleLeft}>
+              <AlertTriangle size={15} color={colors.warning} />
               <Text style={styles.sectionTitle}>EXPIRING THIS WEEK</Text>
+              <View style={styles.countBadge}>
+                <Text style={styles.countBadgeText}>{expiringList.length}</Text>
+              </View>
             </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-              <Text style={[styles.sectionBadge, { color: colors.warning, borderColor: 'rgba(239, 161, 0, 0.35)' }]}>
-                {pendingExpiringList.length} Pending
-              </Text>
-              <Text style={[styles.sectionBadge, { color: '#25D366', borderColor: 'rgba(37, 211, 102, 0.35)' }]}>
-                {sentExpiringList.length} Sent
-              </Text>
-              <Text style={styles.sectionBadge}>
-                {expiringList?.length || 0} Total
-              </Text>
+
+            <View style={styles.sectionHeaderActions}>
+              <TouchableOpacity
+                onPress={() => navigation.navigate('RenewalBatch')}
+                style={styles.batchRemindersPill}
+                accessibilityRole="button"
+                accessibilityLabel="Open Batch Reminders"
+              >
+                <MessageCircle size={12} color={colors.gold} />
+                <Text style={styles.batchRemindersPillText}>Batch</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() =>
+                  navigation.navigate('MainTabs', {
+                    screen: 'Members',
+                    params: { initialStatusFilter: 'EXPIRING_SOON' },
+                  })
+                }
+                accessibilityRole="button"
+                accessibilityLabel="View all expiring members"
+              >
+                <Text style={styles.viewAllLink}>View all ❯</Text>
+              </TouchableOpacity>
             </View>
           </View>
 
-          {/* Batch Selector & Action Row */}
-          {expiringList && expiringList.length > 0 && (
-            <View style={styles.batchRow}>
-              {pendingExpiringList.length > 0 ? (
-                <>
-                  {/* Batch Pills */}
-                  <View style={styles.batchSelectorPills}>
-                    <Text style={{ fontSize: 10, fontFamily: typography.fonts.rajdhani, color: colors.textMuted, marginRight: 2 }}>
-                      Batch:
-                    </Text>
-                    {([10, 30, 50, 'all'] as const).map((size) => (
-                      <TouchableOpacity
-                        key={String(size)}
-                        onPress={() => {
-                          haptics.selection();
-                          setRenewalBatchSize(size);
-                        }}
-                        style={[
-                          styles.batchPill,
-                          renewalBatchSize === size && styles.batchPillActive,
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.batchPillText,
-                            renewalBatchSize === size && styles.batchPillTextActive,
-                          ]}
-                        >
-                          {size === 'all' ? 'All' : size}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-
-                  {/* Notify Batch Button */}
-                  <TouchableOpacity
-                    onPress={() => handleNotifyBatch()}
-                    style={styles.notifyAllBtn}
-                    activeOpacity={0.8}
-                  >
-                    <MessageCircle size={12} color="#050505" />
-                    <Text style={styles.notifyAllBtnText}>
-                      Notify Batch ({Math.min(renewalBatchSize === 'all' ? pendingExpiringList.length : Number(renewalBatchSize), pendingExpiringList.length)})
-                    </Text>
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                  <View style={styles.allMessagedBadge}>
-                    <CheckCircle2 size={12} color="#25D366" />
-                    <Text style={styles.allMessagedBadgeText}>All Eligible Members Messaged</Text>
-                  </View>
-                  <TouchableOpacity
-                    onPress={() => {
-                      Alert.alert(
-                        'Reset Messaged Status',
-                        'Reset messaged status for all expiring members? This will move them back to Pending.',
-                        [
-                          { text: 'Cancel', style: 'cancel' },
-                          {
-                            text: 'Reset',
-                            style: 'destructive',
-                            onPress: () => {
-                              clearRenewalSentRecords();
-                              haptics.success();
-                            },
-                          },
-                        ]
-                      );
-                    }}
-                    style={styles.resetSentBtn}
-                    activeOpacity={0.7}
-                  >
-                    <RotateCcw size={11} color={colors.textSecondary} />
-                    <Text style={styles.resetSentBtnText}>Reset</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-          )}
-
-          {/* Filter Tabs Bar */}
-          {expiringList && expiringList.length > 0 && (
-            <View style={styles.expiringFilterRow}>
-              <TouchableOpacity
-                onPress={() => {
-                  haptics.selection();
-                  setExpiringFilterTab('pending');
-                }}
-                style={[
-                  styles.expiringFilterTab,
-                  expiringFilterTab === 'pending' && styles.expiringFilterTabActive,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.expiringFilterTabText,
-                    expiringFilterTab === 'pending' && styles.expiringFilterTabTextActive,
-                  ]}
-                >
-                  Pending ({pendingExpiringList.length})
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => {
-                  haptics.selection();
-                  setExpiringFilterTab('sent');
-                }}
-                style={[
-                  styles.expiringFilterTab,
-                  expiringFilterTab === 'sent' && styles.expiringFilterTabActive,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.expiringFilterTabText,
-                    expiringFilterTab === 'sent' && styles.expiringFilterTabTextActive,
-                  ]}
-                >
-                  Messaged ({sentExpiringList.length})
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => {
-                  haptics.selection();
-                  setExpiringFilterTab('all');
-                }}
-                style={[
-                  styles.expiringFilterTab,
-                  expiringFilterTab === 'all' && styles.expiringFilterTabActive,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.expiringFilterTabText,
-                    expiringFilterTab === 'all' && styles.expiringFilterTabTextActive,
-                  ]}
-                >
-                  All (Unsent First) ({expiringList?.length || 0})
-                </Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {(!expiringList || expiringList.length === 0) ? (
-            <View style={styles.emptyCard}>
-              <CheckCircle2 size={24} color={colors.success} style={{ marginBottom: 6 }} />
-              <Text style={styles.emptyText}>All memberships healthy for the next 7 days.</Text>
-            </View>
-          ) : displayedExpiringList.length === 0 ? (
-            <View style={styles.emptyCard}>
-              <CheckCircle2 size={24} color={colors.success} style={{ marginBottom: 6 }} />
-              <Text style={styles.emptyText}>
-                {expiringFilterTab === 'pending'
-                  ? 'All eligible members have been messaged!'
-                  : 'No members in this tab.'}
-              </Text>
+          {topExpiringMembers.length === 0 ? (
+            <View style={styles.emptyRow}>
+              <Text style={styles.emptyRowText}>No memberships expiring in the next 7 days.</Text>
             </View>
           ) : (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.expiringCarousel}
-            >
-              {displayedExpiringList.map((item: any) => {
-                const member = item.members as {
-                  id?: string;
-                  full_name?: string;
-                  mobile?: string | null;
-                  member_id?: string | null;
-                  profile_photo?: string | null;
-                } | null;
-                const planName = getMemberPlanName(item);
+            <View style={styles.rowsContainer}>
+              {topExpiringMembers.map((item: ExpiringMemberItem, idx: number) => {
+                const member = item.members || {};
+                const planObj = item.membership_plans;
+                const planName = (Array.isArray(planObj) ? planObj[0]?.name : planObj?.name) || 'Standard Plan';
                 const daysLeft = Math.ceil(
                   (new Date(item.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
                 );
-                const alreadySent = isSent(item.id, item.expiry_date);
+                const isAlreadySent = isSent(item.id, item.expiry_date);
 
                 return (
-                  <View key={item.id} style={styles.expiringCard}>
-                    <View style={styles.expiringCardTop}>
-                      <View style={styles.expiringAvatar}>
-                        <Text style={styles.expiringAvatarInitial}>
-                          {member?.full_name?.charAt(0) || 'M'}
-                        </Text>
-                      </View>
-                      <View
-                        style={[
-                          styles.daysLeftPill,
-                          daysLeft <= 1 && styles.daysLeftPillUrgent,
-                        ]}
-                      >
-                        <Text style={styles.daysLeftPillText}>
-                          {daysLeft <= 0 ? 'Expires Today' : `${daysLeft}d Left`}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <Text numberOfLines={1} style={styles.expiringCardName}>
-                      {member?.full_name || 'Member'}
-                    </Text>
-                    <Text numberOfLines={1} style={styles.expiringCardPlan}>
-                      {planName}
-                    </Text>
-                    <Text style={styles.expiringCardDate}>
-                      Expires {formatDate(item.expiry_date)}
-                    </Text>
-
-                    {/* Processed Status Badge */}
-                    <View
-                      style={[
-                        styles.statusBadgePill,
-                        alreadySent ? styles.statusBadgePillSent : styles.statusBadgePillPending,
-                      ]}
-                    >
-                      {alreadySent ? (
-                        <>
-                          <CheckCircle2 size={9} color="#25D366" />
-                          <Text style={styles.statusBadgeTextSent}>Messaged</Text>
-                        </>
-                      ) : (
-                        <>
-                          <Clock size={9} color={colors.warning} />
-                          <Text style={styles.statusBadgeTextPending}>Pending</Text>
-                        </>
-                      )}
-                    </View>
-
-                    <View style={styles.expiringCardActions}>
-                      <TouchableOpacity
-                        onPress={() => {
-                          haptics.light();
-                          if (member?.id) {
-                            setPreselectedMemberId(member.id);
-                            setShowPaymentModal(true);
-                          }
-                        }}
-                        style={styles.cardRenewBtn}
-                      >
-                        <Text style={styles.cardRenewBtnText}>Renew</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        onPress={() =>
-                          handleWhatsAppReminder(member || {}, item.expiry_date, item.id, planName)
-                        }
-                        style={[
-                          styles.cardWaBtn,
-                          alreadySent && { backgroundColor: isDark ? '#143823' : '#DCFCE7', borderColor: '#25D366', borderWidth: 1 },
-                        ]}
-                        activeOpacity={0.7}
-                      >
-                        {alreadySent ? (
-                          <RotateCcw size={13} color="#25D366" />
-                        ) : (
-                          <Share2 size={13} color="#050505" />
-                        )}
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                );
-              })}
-            </ScrollView>
-          )}
-        </View>
-
-        {/* ── ON-HOLD ATHLETES CAROUSEL ── */}
-        <View style={styles.sectionContainer}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleRow}>
-              <PauseCircle size={16} color="#FBBF24" />
-              <Text style={styles.sectionTitle}>ON-HOLD ATHLETES</Text>
-            </View>
-            <Text style={[styles.sectionBadge, { backgroundColor: 'rgba(251, 191, 36, 0.12)', color: '#FBBF24', borderColor: 'rgba(251, 191, 36, 0.3)' }]}>
-              {holdMembers?.length || 0} Paused
-            </Text>
-          </View>
-
-          {(!holdMembers || holdMembers.length === 0) ? (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>No memberships currently on hold.</Text>
-            </View>
-          ) : (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.expiringCarousel}
-            >
-              {holdMembers.map((item: any) => (
-                <TouchableOpacity
-                  key={item.id}
-                  onPress={() => {
-                    haptics.light();
-                    navigation.navigate('MemberDetail', { memberId: item.id });
-                  }}
-                  style={styles.holdCard}
-                  activeOpacity={0.85}
-                >
-                  <View style={styles.expiringCardTop}>
-                    <View style={[styles.expiringAvatar, { borderColor: 'rgba(251, 191, 36, 0.4)' }]}>
-                      <Text style={[styles.expiringAvatarInitial, { color: '#FBBF24' }]}>
-                        {item.full_name?.charAt(0) || 'M'}
+                  <View
+                    key={item.id}
+                    style={[
+                      styles.plainRow,
+                      idx === topExpiringMembers.length - 1 && styles.plainRowLast,
+                    ]}
+                  >
+                    <View style={styles.plainRowAvatar}>
+                      <Text style={styles.plainRowAvatarText}>
+                        {(member.full_name || 'M').charAt(0).toUpperCase()}
                       </Text>
                     </View>
-                    <View style={styles.holdBadgePill}>
-                      <Text style={styles.holdBadgeText}>ON HOLD</Text>
+
+                    <View style={styles.plainRowContent}>
+                      <View style={styles.plainRowNameLine}>
+                        <Text numberOfLines={1} style={styles.plainRowTitle}>
+                          {member.full_name || 'Member'}
+                        </Text>
+                        <View
+                          style={[
+                            styles.plainRowTag,
+                            daysLeft <= 1 && styles.plainRowTagUrgent,
+                          ]}
+                        >
+                          <Text style={styles.plainRowTagText}>
+                            {daysLeft <= 0 ? 'Expires Today' : `${daysLeft}d left`}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text numberOfLines={1} style={styles.plainRowSub}>
+                        {planName} · Expires {formatDate(item.expiry_date)}
+                      </Text>
                     </View>
-                  </View>
 
-                  <Text numberOfLines={1} style={styles.expiringCardName}>
-                    {item.full_name}
-                  </Text>
-                  <Text numberOfLines={1} style={styles.expiringCardPlan}>
-                    {item.plan_name || 'Standard'}
-                  </Text>
-                  <Text style={styles.expiringCardDate}>
-                    {item.membership_expiry_date ? `Expiry: ${formatDate(item.membership_expiry_date)}` : 'Paused'}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          )}
-        </View>
-
-        {/* ── 7-DAY ATTENDANCE TREND (NATIVE VISUALIZER) ── */}
-        <View style={styles.sectionContainer}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleRow}>
-              <Activity size={16} color={colors.blueLight} />
-              <Text style={styles.sectionTitle}>7-DAY ATTENDANCE TREND</Text>
-            </View>
-            <Text style={styles.sectionBadge}>
-              Peak: {maxAttendance} visits
-            </Text>
-          </View>
-
-          <View style={styles.trendCard}>
-            <View style={styles.chartBarsRow}>
-              {(weeklyAttendance || []).map((w) => {
-                const heightPercent = Math.max((w.count / maxAttendance) * 100, 10);
-                const isToday = w.date === todayStr;
-                return (
-                  <View key={w.date} style={styles.barColumn}>
-                    <Text style={[styles.barCountText, isToday && styles.barTodayCount]}>
-                      {w.count}
-                    </Text>
-                    <View style={styles.barTrack}>
-                      <LinearGradient
-                        colors={
-                          isToday
-                            ? [colors.goldBright, colors.gold, colors.goldDark]
-                            : ['#0077FF', '#0055CC', '#003388']
-                        }
-                        style={[styles.barFill, { height: `${heightPercent}%` }]}
-                      />
-                    </View>
-                    <Text style={[styles.barDayLabel, isToday && styles.barTodayLabel]}>
-                      {w.day}
-                    </Text>
+                    <TouchableOpacity
+                      onPress={() =>
+                        handleWhatsAppReminder(member, item.expiry_date, item.id, planName)
+                      }
+                      style={[
+                        styles.plainRowActionIconBtn,
+                        isAlreadySent && styles.plainRowActionIconBtnSent,
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Send renewal reminder to ${member.full_name}`}
+                    >
+                      <Share2 size={14} color={isAlreadySent ? '#25D366' : '#050505'} />
+                    </TouchableOpacity>
                   </View>
                 );
               })}
             </View>
-          </View>
+          )}
         </View>
 
-        {/* ── RECENT TRANSACTIONS FEED (NATIVE LIST) ── */}
-        <View style={styles.sectionContainer}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleRow}>
-              <CreditCard size={16} color={colors.gold} />
+        {/* ── SECTION 2: RECENT TRANSACTIONS (TOP 3 PREVIEW) ── */}
+        <View style={styles.previewSection}>
+          <View style={styles.sectionHeaderRow}>
+            <View style={styles.sectionTitleLeft}>
+              <CreditCard size={15} color={colors.gold} />
               <Text style={styles.sectionTitle}>RECENT TRANSACTIONS</Text>
             </View>
+
             <TouchableOpacity
               onPress={() => navigation.navigate('MainTabs', { screen: 'Payments' })}
+              accessibilityRole="button"
+              accessibilityLabel="View all transactions"
             >
-              <Text style={styles.seeAllText}>See All ❯</Text>
+              <Text style={styles.viewAllLink}>View all ❯</Text>
             </TouchableOpacity>
           </View>
 
-          {(!recentPayments || recentPayments.length === 0) ? (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>No recent payments recorded.</Text>
+          {topRecentTransactions.length === 0 ? (
+            <View style={styles.emptyRow}>
+              <Text style={styles.emptyRowText}>No recent payments recorded.</Text>
             </View>
           ) : (
-            recentPayments.map((p) => {
-              const memberName = p.members?.full_name || 'Member';
-              const photoUrl = (p.members as { profile_photo?: string | null } | undefined)?.profile_photo;
-              const initial = memberName.trim().charAt(0).toUpperCase();
-              return (
-                <TouchableOpacity
-                  key={p.id}
-                  onPress={() => navigation.navigate('PaymentReceipt', { payment: p })}
-                  style={styles.recentPayRow}
-                  activeOpacity={0.7}
-                >
-                  {photoUrl ? (
-                    <Image
-                      source={{ uri: photoUrl }}
-                      style={styles.payAvatarImage}
-                      resizeMode="cover"
-                    />
-                  ) : (
-                    <View style={styles.payAvatarFallback}>
-                      <Text style={styles.payAvatarInitial}>{initial}</Text>
+            <View style={styles.rowsContainer}>
+              {topRecentTransactions.map((p: RecentPaymentPreview, idx: number) => {
+                const memberName = p.members?.full_name || 'Member';
+                const photoUrl = p.members?.profile_photo;
+                const initial = memberName.charAt(0).toUpperCase();
+
+                return (
+                  <TouchableOpacity
+                    key={p.id}
+                    onPress={() => {
+                      haptics.light();
+                      navigation.navigate('PaymentReceipt', { payment: p });
+                    }}
+                    style={[
+                      styles.plainRow,
+                      idx === topRecentTransactions.length - 1 && styles.plainRowLast,
+                    ]}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Payment receipt for ${memberName}: ${formatCurrency(p.amount)}`}
+                  >
+                    {photoUrl ? (
+                      <Image source={{ uri: photoUrl }} style={styles.payAvatarImg} />
+                    ) : (
+                      <View style={styles.plainRowAvatar}>
+                        <Text style={styles.plainRowAvatarText}>{initial}</Text>
+                      </View>
+                    )}
+
+                    <View style={styles.plainRowContent}>
+                      <Text numberOfLines={1} style={styles.plainRowTitle}>
+                        {memberName}
+                      </Text>
+                      <Text style={styles.plainRowSub}>
+                        #{p.receipt_number || 'N/A'} · {p.payment_method} · {formatDate(p.payment_date || p.created_at)}
+                      </Text>
                     </View>
-                  )}
 
-                  <View style={styles.payMiddleCol}>
-                    <Text numberOfLines={1} style={styles.payMemberName}>
-                      {memberName}
-                    </Text>
-                    <Text style={styles.payMeta}>
-                      #{p.receipt_number || 'N/A'} · {p.payment_method} · {formatDate(p.payment_date || p.created_at)}
-                    </Text>
-                  </View>
-
-                  <View style={styles.payRightCol}>
-                    <Text style={styles.payAmountText}>
-                      {showConfidentialData ? formatCurrency(p.amount) : '••••••'}
-                    </Text>
-                    <Text style={styles.payStatusSuccess}>PAID</Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })
+                    <View style={styles.plainRowRightAmount}>
+                      <Text style={styles.plainRowAmountText}>
+                        {showConfidentialData ? formatCurrency(p.amount) : '••••••'}
+                      </Text>
+                      <Text style={styles.paidBadge}>PAID</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           )}
         </View>
 
-        {/* ── PLAN DISTRIBUTION BREAKDOWN ── */}
-        {planDistribution && planDistribution.length > 0 && (
-          <View style={styles.sectionContainer}>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionTitleRow}>
-                <Layers size={16} color={colors.gold} />
-                <Text style={styles.sectionTitle}>PLAN DISTRIBUTION</Text>
+        {/* ── SECTION 3: ON-HOLD MEMBERS (TOP 3 PREVIEW) ── */}
+        <View style={styles.previewSection}>
+          <View style={styles.sectionHeaderRow}>
+            <View style={styles.sectionTitleLeft}>
+              <PauseCircle size={15} color="#FBBF24" />
+              <Text style={styles.sectionTitle}>ON-HOLD MEMBERS</Text>
+              <View style={[styles.countBadge, { backgroundColor: 'rgba(251, 191, 36, 0.15)' }]}>
+                <Text style={[styles.countBadgeText, { color: '#FBBF24' }]}>
+                  {holdMembers.length}
+                </Text>
               </View>
-              <Text style={styles.sectionBadge}>
-                {planDistribution.reduce((s, p) => s + p.count, 0)} Active Athletes
-              </Text>
             </View>
 
-            <View style={styles.planDistributionGrid}>
-              {planDistribution.map((plan, idx) => (
-                <View key={plan.name} style={styles.planDistItem}>
-                  <View style={styles.planDistHeader}>
-                    <Text numberOfLines={1} style={styles.planDistName}>
-                      {plan.name}
-                    </Text>
-                    <Text style={styles.planDistCount}>{plan.count} athletes</Text>
-                  </View>
-                  <View style={styles.planDistBarBg}>
-                    <View
-                      style={[
-                        styles.planDistBarFill,
-                        {
-                          width: `${Math.min(
-                            100,
-                            Math.max(
-                              12,
-                              (plan.count /
-                                Math.max(...planDistribution.map((p) => p.count), 1)) *
-                                100
-                            )
-                          )}%`,
-                          backgroundColor: [
-                            colors.gold,
-                            colors.blueLight,
-                            colors.success,
-                            colors.warning,
-                            '#A855F7',
-                            '#EC4899',
-                            '#06B6D4',
-                          ][idx % 7],
-                        },
-                      ]}
-                    />
-                  </View>
-                </View>
-              ))}
-            </View>
+            <TouchableOpacity
+              onPress={() =>
+                navigation.navigate('MainTabs', {
+                  screen: 'Members',
+                  params: { initialStatusFilter: 'HOLD' },
+                })
+              }
+              accessibilityRole="button"
+              accessibilityLabel="View all on-hold members"
+            >
+              <Text style={styles.viewAllLink}>View all ❯</Text>
+            </TouchableOpacity>
           </View>
-        )}
 
-        {/* Bottom padding for tabbar float */}
-        <View style={{ height: 50 }} />
+          {topHoldMembers.length === 0 ? (
+            <View style={styles.emptyRow}>
+              <Text style={styles.emptyRowText}>No members currently on hold.</Text>
+            </View>
+          ) : (
+            <View style={styles.rowsContainer}>
+              {topHoldMembers.map((item: HoldMemberItem, idx: number) => {
+                const initial = (item.full_name || 'M').charAt(0).toUpperCase();
+
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    onPress={() => {
+                      haptics.light();
+                      navigation.navigate('MemberDetail', { memberId: item.id });
+                    }}
+                    style={[
+                      styles.plainRow,
+                      idx === topHoldMembers.length - 1 && styles.plainRowLast,
+                    ]}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={`View on-hold member ${item.full_name}`}
+                  >
+                    <View style={[styles.plainRowAvatar, { backgroundColor: 'rgba(251, 191, 36, 0.15)' }]}>
+                      <Text style={[styles.plainRowAvatarText, { color: '#FBBF24' }]}>{initial}</Text>
+                    </View>
+
+                    <View style={styles.plainRowContent}>
+                      <Text numberOfLines={1} style={styles.plainRowTitle}>
+                        {item.full_name}
+                      </Text>
+                      <Text style={styles.plainRowSub}>
+                        {item.plan_name || 'Standard Plan'} · {item.membership_expiry_date ? `Expiry: ${formatDate(item.membership_expiry_date)}` : 'Paused'}
+                      </Text>
+                    </View>
+
+                    <View style={styles.holdBadgePill}>
+                      <Text style={styles.holdBadgeText}>PAUSED</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+        </View>
+
+        {/* Bottom padding for tab bar */}
+        <View style={{ height: 40 }} />
       </ScrollView>
 
       {/* Member Form Modal */}
@@ -1484,27 +864,6 @@ export function DashboardScreen() {
         }}
         onSaved={onRefresh}
       />
-
-      {/* WhatsApp Fast-Queue Modal */}
-      <WhatsAppQueueModal
-        visible={showWhatsAppQueueModal}
-        onClose={() => setShowWhatsAppQueueModal(false)}
-        queue={whatsAppQueue}
-        onMemberSent={(item) => {
-          markSent(item.id, item.expiryDate, item.memberId);
-        }}
-        batchInfo={{
-          batchSize: renewalBatchSize,
-          totalPending: pendingExpiringList.length,
-          remainingAfterBatch: Math.max(0, pendingExpiringList.length - whatsAppQueue.length),
-        }}
-        onProceedNextBatch={() => {
-          setShowWhatsAppQueueModal(false);
-          setTimeout(() => {
-            handleNotifyBatch();
-          }, 200);
-        }}
-      />
     </View>
   );
 }
@@ -1518,1076 +877,420 @@ const getDashboardStyles = (colors: ThemeColors, isDark: boolean) =>
     scrollContent: {
       paddingHorizontal: 16,
       paddingTop: 12,
-      paddingBottom: 110,
+      paddingBottom: 60,
     },
-    privacyToggleCard: {
+    greetingContainer: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
       marginBottom: 14,
-      paddingHorizontal: 14,
-      paddingVertical: 10,
-      backgroundColor: isDark ? '#11141A' : colors.cardBackground,
-      borderRadius: 14,
-      borderWidth: 1,
-      borderColor: isDark ? 'rgba(239, 161, 0, 0.25)' : colors.border,
     },
-    privacyToggleLeft: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 10,
+    greetingTextCol: {
       flex: 1,
-      marginRight: 8,
+      marginRight: 12,
     },
-    privacyIconBadge: {
-      width: 32,
-      height: 32,
-      borderRadius: 16,
-      backgroundColor: isDark ? '#1C202B' : '#F1F5F9',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    privacyIconBadgeActive: {
-      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.15)' : '#FEF3C7',
-    },
-    privacyToggleTitle: {
-      fontFamily: typography.fonts.rajdhani,
-      fontWeight: '700',
-      fontSize: 14,
-      color: colors.textPrimary,
-      textTransform: 'uppercase',
-      letterSpacing: 0.5,
-    },
-    privacyToggleSub: {
-      fontFamily: typography.fonts.inter,
-      fontSize: 11,
-      color: colors.textMuted,
-      marginTop: 1,
-    },
-    heroBanner: {
-      position: 'relative',
-      borderRadius: 22,
-      padding: 18,
-      marginBottom: 16,
-      borderWidth: 1.5,
-      borderColor: isDark ? 'rgba(239, 161, 0, 0.35)' : 'rgba(217, 119, 6, 0.25)',
-      backgroundColor: colors.card,
-      shadowColor: isDark ? colors.gold : '#000000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: isDark ? 0.25 : 0.08,
-      shadowRadius: 12,
-      elevation: 6,
-      overflow: 'hidden',
-    },
-    heroTopHighlight: {
-      position: 'absolute',
-      top: 0,
-      left: 24,
-      right: 24,
-      height: 2,
-      borderRadius: 1,
-    },
-    heroContentRow: {
+    greetingMetaRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
-    },
-    heroLeft: {
-      flex: 1,
-      marginRight: 14,
-    },
-    greetingRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      flexWrap: 'wrap',
       gap: 8,
       marginBottom: 4,
     },
     greetingIconPill: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 5,
-      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : 'rgba(217, 119, 6, 0.10)',
+      gap: 4,
+      backgroundColor: isDark ? '#1C202B' : '#FEF3C7',
       paddingHorizontal: 8,
-      paddingVertical: 3.5,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: isDark ? 'rgba(239, 161, 0, 0.25)' : 'rgba(217, 119, 6, 0.25)',
+      paddingVertical: 3,
+      borderRadius: 12,
     },
-    greetingTimeText: {
-      color: colors.gold,
+    greetingTimeLabel: {
+      fontFamily: typography.fonts.rajdhani,
       fontSize: 10,
-      fontFamily: typography.fonts.orbitron,
       fontWeight: '700',
-      letterSpacing: 0.8,
+      color: colors.gold,
+      letterSpacing: 0.5,
     },
-    ownerEliteBadge: {
+    ownerBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.15)' : '#FFFBEB',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.3)' : '#FDE68A',
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 8,
+    },
+    ownerBadgeText: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 9,
+      fontWeight: '700',
+      color: colors.gold,
+      letterSpacing: 0.5,
+    },
+    greetingUserName: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 22,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      letterSpacing: 0.5,
+    },
+    greetingRightCol: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    privacyEyeBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: isDark ? '#161922' : '#F1F5F9',
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    userAvatarImage: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      borderWidth: 1.5,
+      borderColor: colors.gold,
+    },
+    userAvatarInitialWrap: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: isDark ? '#1C202B' : '#FEF3C7',
+      borderWidth: 1.5,
+      borderColor: colors.gold,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    userAvatarInitial: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 20,
+      fontWeight: '700',
+      color: colors.gold,
+    },
+    primaryActionButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.gold,
+      borderRadius: 14,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      marginBottom: 12,
+      minHeight: 52,
+    },
+    primaryActionIconBg: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: 'rgba(255, 255, 255, 0.4)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: 12,
+    },
+    primaryActionTextWrap: {
+      flex: 1,
+    },
+    primaryActionTitle: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 15,
+      fontWeight: '700',
+      color: '#050505',
+      letterSpacing: 0.5,
+    },
+    primaryActionSubtitle: {
+      fontFamily: typography.fonts.inter,
+      fontSize: 11,
+      color: '#262626',
+      marginTop: 1,
+    },
+    quickActionsStrip: {
+      flexDirection: 'row',
+      gap: 8,
+      marginBottom: 16,
+    },
+    quickActionPill: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 4,
+      backgroundColor: isDark ? '#11141A' : colors.cardBackground,
+      borderRadius: 10,
+      paddingVertical: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      minHeight: 44,
+    },
+    quickActionPillText: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.textSecondary,
+    },
+    metricsGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 10,
+      marginBottom: 20,
+    },
+    metricCard: {
+      width: '48.5%',
+      backgroundColor: isDark ? '#11141A' : colors.cardBackground,
+      borderRadius: 14,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      minHeight: 96,
+    },
+    metricCardHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 8,
+    },
+    metricIconWrap: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    metricCardTag: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 9,
+      fontWeight: '700',
+      color: colors.textMuted,
+      letterSpacing: 0.5,
+    },
+    liveIndicator: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 4,
-      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.18)' : 'rgba(217, 119, 6, 0.14)',
-      borderWidth: 1,
-      borderColor: isDark ? 'rgba(239, 161, 0, 0.45)' : 'rgba(217, 119, 6, 0.35)',
-      paddingHorizontal: 8,
-      paddingVertical: 3.5,
-      borderRadius: 8,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+      backgroundColor: 'rgba(0, 102, 255, 0.12)',
     },
-    ownerEliteBadgeText: {
-      color: isDark ? colors.goldBright : colors.gold,
-      fontSize: 9.5,
-      fontFamily: typography.fonts.orbitron,
-      fontWeight: '800',
-      letterSpacing: 0.8,
+    liveDot: {
+      width: 5,
+      height: 5,
+      borderRadius: 2.5,
+      backgroundColor: colors.blueLight,
     },
-    heroUserName: {
+    liveText: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 9,
+      fontWeight: '700',
+      color: colors.blueLight,
+    },
+    metricValue: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 24,
+      fontWeight: '700',
       color: colors.textPrimary,
-      fontSize: 21,
-      fontFamily: typography.fonts.orbitron,
-      fontWeight: '900',
-      letterSpacing: 0.5,
-      marginTop: 4,
-      ...(isDark
-        ? {
-            textShadowColor: 'rgba(0, 0, 0, 0.8)',
-            textShadowOffset: { width: 0, height: 2 },
-            textShadowRadius: 4,
-          }
-        : {
-            textShadowColor: 'rgba(217, 119, 6, 0.12)',
-            textShadowOffset: { width: 0, height: 1 },
-            textShadowRadius: 2,
-          }),
     },
-    statusBeaconRow: {
+    metricLabel: {
+      fontFamily: typography.fonts.inter,
+      fontSize: 11,
+      color: colors.textMuted,
+      marginTop: 2,
+    },
+    previewSection: {
+      marginBottom: 20,
+    },
+    sectionHeaderRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 8,
-      marginTop: 8,
+      justifyContent: 'space-between',
+      marginBottom: 10,
     },
-    statusBeaconGlow: {
-      width: 14,
-      height: 14,
-      borderRadius: 7,
-      backgroundColor: isDark ? 'rgba(34, 197, 94, 0.20)' : 'rgba(22, 163, 74, 0.15)',
+    sectionTitleLeft: {
+      flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'center',
+      gap: 6,
     },
-    statusBeaconDot: {
-      width: 7,
-      height: 7,
-      borderRadius: 3.5,
-      backgroundColor: colors.success,
-    },
-    statusBeaconText: {
-      color: isDark ? colors.success : '#15803D',
-      fontSize: 9.5,
+    sectionTitle: {
       fontFamily: typography.fonts.rajdhani,
+      fontSize: 13,
       fontWeight: '700',
-      letterSpacing: 0.8,
+      color: colors.textPrimary,
+      letterSpacing: 0.5,
     },
-    heroRight: {
+    countBadge: {
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+      borderRadius: 8,
+      backgroundColor: 'rgba(239, 161, 0, 0.15)',
+    },
+    countBadgeText: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 10,
+      fontWeight: '700',
+      color: colors.warning,
+    },
+    sectionHeaderActions: {
+      flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'center',
+      gap: 10,
     },
-    avatarWrapper: {
-      position: 'relative',
-      width: 64,
-      height: 64,
+    batchRemindersPill: {
+      flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'center',
+      gap: 4,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 6,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : '#FEF3C7',
     },
-    avatarImage: {
-      width: 60,
-      height: 60,
-      borderRadius: 30,
+    batchRemindersPillText: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.gold,
     },
-    avatarGoldRim: {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      borderRadius: 32,
-      borderWidth: 2,
-      borderColor: colors.gold,
-      shadowColor: colors.gold,
-      shadowOffset: { width: 0, height: 0 },
-      shadowOpacity: isDark ? 0.6 : 0.25,
-      shadowRadius: 8,
+    viewAllLink: {
+      fontFamily: typography.fonts.inter,
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.gold,
     },
-    avatarRing: {
-      width: 64,
-      height: 64,
-      borderRadius: 32,
-      padding: 2.5,
-      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.45)' : 'rgba(217, 119, 6, 0.35)',
-      shadowColor: isDark ? colors.gold : '#000000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: isDark ? 0.65 : 0.15,
-      shadowRadius: 10,
-      elevation: 6,
-    },
-    avatarGradient: {
-      flex: 1,
-      borderRadius: 29,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderWidth: 1.5,
-      borderColor: colors.gold,
+    rowsContainer: {
+      backgroundColor: isDark ? '#11141A' : colors.cardBackground,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
       overflow: 'hidden',
     },
-    avatarInnerGlow: {
-      position: 'absolute',
-      width: 48,
-      height: 48,
-      borderRadius: 24,
-      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.20)' : 'rgba(217, 119, 6, 0.15)',
+    plainRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+      minHeight: 56,
     },
-    avatarInitial: {
-      color: isDark ? colors.goldBright : colors.gold,
-      fontSize: 28,
-      fontFamily: typography.fonts.orbitron,
-      fontWeight: '900',
+    plainRowLast: {
+      borderBottomWidth: 0,
+    },
+    plainRowAvatar: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: isDark ? '#1C202B' : '#E2E8F0',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: 12,
+    },
+    plainRowAvatarText: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 15,
+      fontWeight: '700',
+      color: colors.gold,
+    },
+    payAvatarImg: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      marginRight: 12,
+    },
+    plainRowContent: {
+      flex: 1,
+      marginRight: 10,
+    },
+    plainRowNameLine: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    plainRowTitle: {
+      fontFamily: typography.fonts.inter,
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.textPrimary,
+      flexShrink: 1,
+    },
+    plainRowSub: {
+      fontFamily: typography.fonts.inter,
+      fontSize: 11,
+      color: colors.textMuted,
+      marginTop: 2,
+    },
+    plainRowTag: {
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+      borderRadius: 4,
+      backgroundColor: 'rgba(239, 161, 0, 0.15)',
+    },
+    plainRowTagUrgent: {
+      backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    },
+    plainRowTagText: {
+      fontFamily: typography.fonts.inter,
+      fontSize: 9,
+      fontWeight: '600',
+      color: colors.warning,
+    },
+    plainRowActionIconBtn: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: colors.gold,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    plainRowActionIconBtnSent: {
+      backgroundColor: isDark ? '#143823' : '#DCFCE7',
+      borderWidth: 1,
+      borderColor: '#25D366',
+    },
+    plainRowRightAmount: {
+      alignItems: 'flex-end',
+    },
+    plainRowAmountText: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 15,
+      fontWeight: '700',
+      color: colors.textPrimary,
+    },
+    paidBadge: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 9,
+      fontWeight: '700',
+      color: colors.success,
+      marginTop: 1,
+    },
+    holdBadgePill: {
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 6,
+      backgroundColor: 'rgba(251, 191, 36, 0.15)',
+    },
+    holdBadgeText: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 10,
+      fontWeight: '700',
+      color: '#FBBF24',
+    },
+    emptyRow: {
+      backgroundColor: isDark ? '#11141A' : colors.cardBackground,
+      borderRadius: 12,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    emptyRowText: {
+      fontFamily: typography.fonts.inter,
+      fontSize: 12,
+      color: colors.textMuted,
       textAlign: 'center',
-      includeFontPadding: false,
-      textShadowColor: isDark ? 'rgba(239, 161, 0, 0.6)' : 'rgba(217, 119, 6, 0.25)',
-      textShadowOffset: { width: 0, height: 1 },
-      textShadowRadius: 6,
     },
-  quickActionsScroll: {
-    flexDirection: 'row',
-    gap: 10,
-    paddingBottom: 16,
-  },
-  actionPillPrimary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: colors.gold,
-    borderRadius: 24,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    shadowColor: colors.gold,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  actionPillIconGold: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0, 0, 0, 0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionPillPrimaryText: {
-    color: '#050505',
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-    letterSpacing: 0.4,
-  },
-  actionPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: isDark ? '#11141A' : colors.cardBackground,
-    borderWidth: 1,
-    borderColor: colors.borderDark,
-    borderRadius: 24,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-  },
-  actionPillBlue: {
-    borderColor: colors.blueBorder,
-    backgroundColor: isDark ? '#0C121E' : colors.blueMuted,
-  },
-  actionPillIconDark: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: colors.goldMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionPillIconBlue: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: colors.blueMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionPillText: {
-    color: colors.textPrimary,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    letterSpacing: 0.4,
-  },
-  bentoHeroCard: {
-    borderRadius: 20,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
-    marginBottom: 12,
-    shadowColor: colors.shadowColor,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    elevation: 4,
-  },
-  bentoHeroGradient: {
-    padding: 20,
-  },
-  bentoHeroTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  bentoHeroTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  bentoHeroTagText: {
-    color: colors.gold,
-    fontSize: 10,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
-  bentoHeroBadge: {
-    backgroundColor: colors.goldMuted,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  bentoHeroBadgeText: {
-    color: colors.gold,
-    fontSize: 9,
-    fontFamily: typography.fonts.orbitron,
-    fontWeight: '700',
-  },
-  bentoHeroAmount: {
-    fontSize: 34,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
-  bentoHeroFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 16,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderDark,
-  },
-  bentoHeroMetaItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  bentoHeroMetaLabel: {
-    color: colors.textMuted,
-    fontSize: 10,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '600',
-  },
-  bentoHeroMetaVal: {
-    color: colors.textPrimary,
-    fontSize: 14,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-    marginTop: 2,
-  },
-  bentoHeroDivider: {
-    width: 1,
-    height: 24,
-    backgroundColor: colors.borderDark,
-  },
-  bentoRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 12,
-  },
-  bentoCard: {
-    flex: 1,
-    backgroundColor: colors.cardBackground,
-    borderWidth: 1,
-    borderColor: colors.borderDark,
-    borderRadius: 18,
-    padding: 16,
-    shadowColor: colors.shadowColor,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  bentoCardBlue: {
-    borderColor: colors.blueBorder,
-  },
-  bentoCardAmber: {
-    borderColor: colors.goldBorder,
-  },
-  bentoIconHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  bentoIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bentoLiveBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: colors.blueMuted,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  bentoLiveDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: colors.blue,
-  },
-  bentoLiveText: {
-    color: colors.blue,
-    fontSize: 9,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-  },
-  bentoAlertCount: {
-    color: colors.warning,
-    fontSize: 10,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-    backgroundColor: colors.warningMuted,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  bentoValue: {
-    color: colors.textPrimary,
-    fontSize: 26,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-  },
-  bentoLabel: {
-    color: colors.textSecondary,
-    fontSize: 11,
-    fontFamily: typography.fonts.inter,
-    marginTop: 2,
-  },
-  pillStatStrip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: isDark ? '#0B0E13' : colors.surfaceLight,
-    borderWidth: 1,
-    borderColor: colors.borderDark,
-    borderRadius: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    marginBottom: 20,
-  },
-  pillStatItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  pillStatNum: {
-    color: colors.textPrimary,
-    fontSize: 13,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-  },
-  pillStatLabel: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '600',
-  },
-  pillStatDivider: {
-    width: 1,
-    height: 18,
-    backgroundColor: colors.borderDark,
-  },
-  sectionContainer: {
-    marginBottom: 22,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  sectionTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  sectionTitle: {
-    color: colors.textPrimary,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-  },
-  sectionBadge: {
-    color: colors.textMuted,
-    fontSize: 10,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  seeAllText: {
-    color: colors.gold,
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  expiringCarousel: {
-    paddingRight: 16,
-    gap: 12,
-  },
-  expiringCard: {
-    width: 175,
-    backgroundColor: colors.cardBackground,
-    borderWidth: 1,
-    borderColor: colors.borderDark,
-    borderRadius: 18,
-    padding: 14,
-    shadowColor: colors.shadowColor,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  expiringCardTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  expiringAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: isDark ? '#161B22' : '#EDF2F7',
-    borderWidth: 1,
-    borderColor: colors.gold,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  expiringAvatarInitial: {
-    color: colors.gold,
-    fontSize: 13,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  daysLeftPill: {
-    backgroundColor: colors.goldMuted,
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  daysLeftPillUrgent: {
-    backgroundColor: colors.errorMuted,
-  },
-  daysLeftPillText: {
-    color: colors.gold,
-    fontSize: 9.5,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-  },
-  expiringCardName: {
-    color: colors.textPrimary,
-    fontSize: typography.sizes.base,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  expiringCardPlan: {
-    color: colors.textSecondary,
-    fontSize: 11,
-    fontFamily: typography.fonts.inter,
-    marginTop: 1,
-  },
-  expiringCardDate: {
-    color: colors.textMuted,
-    fontSize: 10,
-    fontFamily: typography.fonts.inter,
-    marginTop: 3,
-    marginBottom: 10,
-  },
-  expiringCardActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  cardRenewBtn: {
-    flex: 1,
-    backgroundColor: colors.goldMuted,
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
-    borderRadius: 8,
-    paddingVertical: 6,
-    alignItems: 'center',
-  },
-  cardRenewBtnText: {
-    color: colors.gold,
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  cardWaBtn: {
-    backgroundColor: colors.gold,
-    borderRadius: 8,
-    padding: 7,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  trendCard: {
-    backgroundColor: colors.cardBackground,
-    borderWidth: 1,
-    borderColor: colors.borderDark,
-    borderRadius: 20,
-    padding: 18,
-    shadowColor: colors.shadowColor,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  chartBarsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    height: 130,
-    paddingTop: 10,
-  },
-  barColumn: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  barCountText: {
-    color: colors.textMuted,
-    fontSize: 10,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    marginBottom: 6,
-  },
-  barTodayCount: {
-    color: colors.gold,
-    fontWeight: '800',
-  },
-  barTrack: {
-    width: 14,
-    height: 85,
-    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : '#E2E8F0',
-    borderRadius: 7,
-    justifyContent: 'flex-end',
-    overflow: 'hidden',
-  },
-  barFill: {
-    width: '100%',
-    borderRadius: 7,
-  },
-  barDayLabel: {
-    color: colors.textMuted,
-    fontSize: 10,
-    fontFamily: typography.fonts.inter,
-    marginTop: 8,
-  },
-  barTodayLabel: {
-    color: colors.gold,
-    fontWeight: '700',
-  },
-  recentPayRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.cardBackground,
-    borderWidth: 1,
-    borderColor: colors.borderDark,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 8,
-    shadowColor: colors.shadowColor,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  payAvatarImage: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: colors.goldBorder,
-    marginRight: 12,
-  },
-  payAvatarFallback: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.goldMuted,
-    borderWidth: 1.5,
-    borderColor: colors.goldBorder,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  payAvatarInitial: {
-    color: colors.gold,
-    fontSize: 16,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    lineHeight: 20,
-  },
-  payMiddleCol: {
-    flex: 1,
-  },
-  payMemberName: {
-    color: colors.textPrimary,
-    fontSize: typography.sizes.base,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  payMeta: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontFamily: typography.fonts.inter,
-    marginTop: 2,
-  },
-  payRightCol: {
-    alignItems: 'flex-end',
-  },
-  payAmountText: {
-    color: colors.gold,
-    fontSize: typography.sizes.base,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  payStatusSuccess: {
-    color: colors.success,
-    fontSize: 9,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-    marginTop: 2,
-  },
-  emptyCard: {
-    backgroundColor: isDark ? '#0D1014' : colors.surfaceLight,
-    borderWidth: 1,
-    borderColor: colors.borderDark,
-    borderRadius: 14,
-    padding: 20,
-    alignItems: 'center',
-  },
-  emptyText: {
-    color: colors.textMuted,
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.fonts.inter,
-  },
-  execFilterBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: isDark ? '#0C0F14' : colors.surfaceLight,
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
-    borderRadius: 14,
-    marginHorizontal: 16,
-    marginBottom: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  execFilterLeft: {
-    flex: 1,
-  },
-  execFilterRight: {
-    alignItems: 'flex-end',
-  },
-  execFilterHeading: {
-    color: colors.textMuted,
-    fontSize: 9,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-    marginBottom: 4,
-  },
-  execFilterMonthRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  execMonthArrow: {
-    padding: 4,
-    borderRadius: 6,
-    backgroundColor: colors.goldMuted,
-  },
-  execMonthBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.goldMuted,
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  execMonthText: {
-    color: colors.gold,
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  execDatePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: isDark ? '#141820' : colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderDark,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  execDatePillActive: {
-    backgroundColor: colors.gold,
-    borderColor: colors.goldBright,
-  },
-  execDatePillText: {
-    color: colors.gold,
-    fontSize: 10,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  execDatePillTextActive: {
-    color: '#050505',
-  },
-  notifyAllBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#25D366',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    shadowColor: '#25D366',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  notifyAllBtnText: {
-    color: '#050505',
-    fontSize: 11,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  batchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 8,
-    marginBottom: 8,
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  batchSelectorPills: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)',
-    padding: 3,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.borderDark,
-  },
-  batchPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  batchPillActive: {
-    backgroundColor: colors.gold,
-  },
-  batchPillText: {
-    fontSize: 10.5,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-    color: colors.textSecondary,
-  },
-  batchPillTextActive: {
-    color: '#050505',
-  },
-  expiringFilterRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 10,
-  },
-  expiringFilterTab: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.borderDark,
-    backgroundColor: colors.cardBackground,
-  },
-  expiringFilterTabActive: {
-    borderColor: colors.gold,
-    backgroundColor: isDark ? 'rgba(239, 161, 0, 0.15)' : 'rgba(239, 161, 0, 0.1)',
-  },
-  expiringFilterTabText: {
-    fontSize: 10.5,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-    color: colors.textSecondary,
-  },
-  expiringFilterTabTextActive: {
-    color: colors.gold,
-    fontWeight: '800',
-  },
-  statusBadgePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    marginTop: 4,
-    alignSelf: 'flex-start',
-  },
-  statusBadgePillSent: {
-    backgroundColor: 'rgba(37, 211, 102, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(37, 211, 102, 0.35)',
-  },
-  statusBadgePillPending: {
-    backgroundColor: 'rgba(239, 161, 0, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 161, 0, 0.35)',
-  },
-  statusBadgeTextSent: {
-    color: '#25D366',
-    fontSize: 9,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-  },
-  statusBadgeTextPending: {
-    color: colors.warning,
-    fontSize: 9,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-  },
-  allMessagedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(37, 211, 102, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(37, 211, 102, 0.35)',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  allMessagedBadgeText: {
-    color: '#25D366',
-    fontSize: 10,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-  },
-  resetSentBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: colors.borderDark,
-    backgroundColor: colors.surfaceLight,
-  },
-  resetSentBtnText: {
-    color: colors.textSecondary,
-    fontSize: 10,
-    fontFamily: typography.fonts.interMedium,
-  },
-  holdCard: {
-    width: 170,
-    backgroundColor: colors.cardBackground,
-    borderWidth: 1,
-    borderColor: 'rgba(251, 191, 36, 0.35)',
-    borderRadius: 14,
-    padding: 12,
-    marginRight: 10,
-    shadowColor: colors.shadowColor,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  holdBadgePill: {
-    backgroundColor: 'rgba(251, 191, 36, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(251, 191, 36, 0.4)',
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  holdBadgeText: {
-    color: '#FBBF24',
-    fontSize: 9,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  planDistributionGrid: {
-    backgroundColor: isDark ? '#0E1116' : colors.surfaceLight,
-    borderWidth: 1,
-    borderColor: colors.borderDark,
-    borderRadius: 14,
-    padding: 14,
-    gap: 12,
-  },
-  planDistItem: {
-    gap: 4,
-  },
-  planDistHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  planDistName: {
-    color: colors.textPrimary,
-    fontSize: 12,
-    fontFamily: typography.fonts.rajdhani,
-    fontWeight: '700',
-  },
-  planDistCount: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontFamily: typography.fonts.inter,
-  },
-  planDistBarBg: {
-    height: 6,
-    backgroundColor: isDark ? '#1A1E26' : '#E2E8F0',
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  planDistBarFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-});
+  });

@@ -64,6 +64,9 @@ export function PaymentQRScreen() {
             onPress={handleShareUPI}
             style={styles.headerShareBtn}
             activeOpacity={0.75}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityRole="button"
+            accessibilityLabel="Share UPI details"
           >
             <Share2 size={16} color={colors.gold} />
           </TouchableOpacity>

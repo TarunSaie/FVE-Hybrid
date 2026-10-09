@@ -19,6 +19,7 @@ import {
   XCircle,
   Trash2,
   Cake,
+  MessageCircle,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEEmptyState } from '@/components/common/FVEEmptyState';
@@ -30,9 +31,13 @@ import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { formatDateTime } from '@/utils/date';
 import { haptics } from '@/utils/haptics';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '@/navigation/types';
+
+type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export function NotificationsScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<NavigationProp>();
   const { colors, isDark } = useTheme();
   const styles = React.useMemo(() => getNotificationsStyles(colors, isDark), [colors, isDark]);
   const { user } = useAuth();
@@ -220,6 +225,28 @@ export function NotificationsScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Quick Access to Renewal WhatsApp Batch */}
+      <View style={{ paddingHorizontal: 16, paddingTop: 10 }}>
+        <TouchableOpacity
+          onPress={() => navigation.navigate('RenewalBatch')}
+          style={styles.batchBanner}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Launch Renewal Reminders & WhatsApp Batch"
+        >
+          <View style={styles.batchBannerLeft}>
+            <View style={styles.batchBannerIconPill}>
+              <MessageCircle size={15} color={colors.gold} />
+            </View>
+            <View>
+              <Text style={styles.batchBannerTitle}>RENEWAL REMINDERS</Text>
+              <Text style={styles.batchBannerSub}>Launch batch WhatsApp expiry queue</Text>
+            </View>
+          </View>
+          <Text style={styles.batchBannerArrow}>❯</Text>
+        </TouchableOpacity>
+      </View>
+
       <FlatList
         data={filteredNotifications}
         keyExtractor={item => item.id}
@@ -309,6 +336,7 @@ const getNotificationsStyles = (colors: ThemeColors, isDark: boolean) =>
     tabBtn: {
       flex: 1,
       paddingVertical: 8,
+      minHeight: 44,
       borderRadius: 8,
       backgroundColor: colors.bgTertiary,
       borderWidth: 1,
@@ -358,6 +386,50 @@ const getNotificationsStyles = (colors: ThemeColors, isDark: boolean) =>
       color: colors.textMuted,
       fontSize: 11,
       fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    batchBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: isDark ? '#141824' : '#FFFBEB',
+      borderRadius: 12,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.25)' : '#FDE68A',
+      marginBottom: 6,
+      minHeight: 48,
+    },
+    batchBannerLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    batchBannerIconPill: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.15)' : '#FEF3C7',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    batchBannerTitle: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.gold,
+      letterSpacing: 0.5,
+    },
+    batchBannerSub: {
+      fontFamily: typography.fonts.inter,
+      fontSize: 11,
+      color: colors.textMuted,
+      marginTop: 1,
+    },
+    batchBannerArrow: {
+      fontSize: 14,
+      color: colors.gold,
       fontWeight: '700',
     },
     listContent: {

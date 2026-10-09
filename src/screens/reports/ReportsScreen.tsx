@@ -450,6 +450,7 @@ const getReportsStyles = (colors: ThemeColors, isDark: boolean) =>
       borderWidth: 1,
       borderColor: colors.borderDefault,
       paddingVertical: 10,
+      minHeight: 44,
       borderRadius: 10,
       alignItems: 'center',
       justifyContent: 'center',

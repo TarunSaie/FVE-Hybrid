@@ -272,6 +272,9 @@ export function StaffScreen() {
                       setShowModal(true);
                     }}
                     style={styles.actionIconBtn}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Edit ${item.full_name || item.username}`}
                   >
                     <Edit size={14} color={colors.gold} />
                   </TouchableOpacity>
@@ -279,6 +282,9 @@ export function StaffScreen() {
                   <TouchableOpacity
                     onPress={() => handleDeleteStaff(item)}
                     style={[styles.actionIconBtn, styles.deleteActionBtn]}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Delete ${item.full_name || item.username}`}
                   >
                     <Trash2 size={14} color={colors.error} />
                   </TouchableOpacity>

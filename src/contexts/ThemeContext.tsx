@@ -26,7 +26,7 @@ function getSystemColorScheme(): ResolvedTheme {
 }
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [theme, setThemeState] = useState<ThemeMode>('dark');
+  const [theme, setThemeState] = useState<ThemeMode>('system');
   const [systemScheme, setSystemScheme] = useState<ResolvedTheme>(getSystemColorScheme);
   const [isLoaded, setIsLoaded] = useState(false);
   const { brandConfig } = useBranding();
@@ -42,7 +42,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           setThemeState(brandConfig.theme_mode);
         }
       } catch {
-        // Fallback to default dark
+        // Fallback to default system
       } finally {
         setIsLoaded(true);
       }

@@ -150,6 +150,7 @@ export const FVEInput = forwardRef<TextInput, FVEInputProps>(function FVEInput(
         <TextInput
           ref={setCombinedRef}
           editable={editable}
+          accessibilityLabel={rest.accessibilityLabel || label || rest.placeholder}
           placeholderTextColor={colors.textSubtle}
           selectionColor={colors.gold}
           cursorColor={colors.gold}
@@ -245,3 +246,6 @@ const styles = StyleSheet.create({
     marginLeft: 2,
   },
 });
+
+export const Input = FVEInput;
+

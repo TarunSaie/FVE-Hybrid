@@ -30,6 +30,7 @@ import {
   CreditCard,
   Ban,
   CheckCircle2,
+  Layers,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { PlanFormModal } from '@/components/features/PlanFormModal';
@@ -284,6 +285,9 @@ export function MembershipPlansScreen() {
                 }
               }}
               style={styles.addBtn}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityRole="button"
+              accessibilityLabel={activeTab === 'membership' ? 'Add New Membership Plan' : 'Add New Personal Training Plan'}
             >
               <Plus size={16} color={colors.gold} />
               <Text style={styles.addBtnText}>
@@ -357,6 +361,21 @@ export function MembershipPlansScreen() {
           keyboardShouldPersistTaps="handled"
           refreshControl={
             <RefreshControl refreshing={plansLoading} onRefresh={onRefresh} tintColor={colors.gold} />
+          }
+          ListHeaderComponent={
+            <TouchableOpacity
+              onPress={() => navigation.navigate('PlanDistribution')}
+              style={styles.distributionHeaderBtn}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="View Plan Distribution Analytics"
+            >
+              <View style={styles.distributionHeaderLeft}>
+                <Layers size={14} color={colors.gold} />
+                <Text style={styles.distributionHeaderText}>VIEW PLAN DISTRIBUTION BREAKDOWN</Text>
+              </View>
+              <Text style={styles.distributionHeaderArrow}>❯</Text>
+            </TouchableOpacity>
           }
           renderItem={({ item }) => {
             const features = parseFeatures(item.features);
@@ -897,6 +916,36 @@ const getPlansStyles = (colors: ThemeColors, isDark: boolean) =>
     listContent: {
       padding: 16,
       paddingBottom: 40,
+    },
+    distributionHeaderBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: isDark ? '#141824' : '#FFFBEB',
+      borderRadius: 12,
+      paddingVertical: 11,
+      paddingHorizontal: 14,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.25)' : '#FDE68A',
+      marginBottom: 14,
+      minHeight: 48,
+    },
+    distributionHeaderLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    distributionHeaderText: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.gold,
+      letterSpacing: 0.5,
+    },
+    distributionHeaderArrow: {
+      fontSize: 13,
+      color: colors.gold,
+      fontWeight: '700',
     },
     planCard: {
       backgroundColor: colors.cardBackground,

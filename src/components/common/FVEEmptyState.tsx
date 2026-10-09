@@ -41,25 +41,33 @@ export function FVEEmptyState({
   );
 }
 
+export const EmptyState = FVEEmptyState;
+
 const getStyles = (colors: ThemeColors, isDark: boolean) =>
   StyleSheet.create({
     container: {
-      padding: 32,
+      paddingVertical: 36,
+      paddingHorizontal: 24,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: colors.cardBackground,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.02)' : 'rgba(15, 23, 42, 0.02)',
       borderWidth: 1,
-      borderColor: isDark ? 'rgba(239, 161, 0, 0.2)' : 'rgba(217, 130, 0, 0.2)',
-      borderRadius: 14,
+      borderColor: colors.borderDark,
+      borderRadius: 16,
       marginVertical: 12,
     },
     iconContainer: {
-      marginBottom: 14,
-      opacity: 0.6,
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.08)' : 'rgba(217, 130, 0, 0.08)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 16,
     },
     title: {
       color: colors.textPrimary,
-      fontSize: typography.sizes.md,
+      fontSize: typography.sizes.lg,
       fontFamily: typography.fonts.rajdhani,
       fontWeight: '700',
       textAlign: 'center',
@@ -71,10 +79,11 @@ const getStyles = (colors: ThemeColors, isDark: boolean) =>
       fontFamily: typography.fonts.inter,
       textAlign: 'center',
       marginTop: 6,
-      lineHeight: 18,
-      maxWidth: 280,
+      lineHeight: 20,
+      maxWidth: 300,
     },
     button: {
       marginTop: 18,
     },
   });
+

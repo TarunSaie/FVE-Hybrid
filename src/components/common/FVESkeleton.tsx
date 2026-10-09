@@ -39,7 +39,10 @@ export function SkeletonBox({ width = '100%', height = 16, borderRadius = 8, sty
   );
 }
 
+export const FVESkeleton = SkeletonBox;
+
 // ── Pre-built skeleton layouts ─────────────────────────────────────────────
+
 
 export function SkeletonMemberCard() {
   return (
