@@ -160,6 +160,8 @@ export function WhatsAppQueueModal({
     setSkippedMap({});
   };
 
+  if (!visible) return null;
+
   return (
     <Modal
       visible={visible}

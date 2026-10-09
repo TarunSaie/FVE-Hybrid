@@ -153,6 +153,8 @@ export function FVEDatePickerModal({
     return `${selectedDay} ${mName} ${selectedYear}`;
   }, [selectedYear, selectedMonth, selectedDay]);
 
+  if (!visible) return null;
+
   return (
     <Modal
       visible={visible}

@@ -12,7 +12,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, CreditCard, Filter, X, QrCode, Ticket, CheckCircle2, Clock, XCircle } from 'lucide-react-native';
+import { Plus, Search, CreditCard, Filter, X, QrCode, Ticket, CheckCircle2, Clock, XCircle, Share2, Trash2, FileText } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEInput } from '@/components/common/FVEInput';
@@ -21,6 +21,7 @@ import { PaymentFormModal } from '@/components/features/PaymentFormModal';
 import { DailyPassFormModal } from '@/components/features/DailyPassFormModal';
 import { UPIQRCodeModal } from '@/components/features/UPIQRCodeModal';
 import { ProfilePhotoModal } from '@/components/features/ProfilePhotoModal';
+import { FVEModal } from '@/components/common/FVEModal';
 import { FVEEmptyState } from '@/components/common/FVEEmptyState';
 import { FVELogoLoader } from '@/components/common/FVELogoLoader';
 import { M3Switch } from '@/components/common/M3Switch';
@@ -67,6 +68,7 @@ export function PaymentsScreen() {
     full_name: string;
     member_id?: string | null;
   } | null>(null);
+  const [actionMenuPayment, setActionMenuPayment] = useState<Payment | null>(null);
 
   // 1. Query Membership Payments with Joined Members
   const { data: payments = [], isLoading: isPaymentsLoading } = useQuery({
@@ -513,8 +515,7 @@ export function PaymentsScreen() {
             <PaymentItem
               payment={item}
               onPress={() => navigation.navigate('PaymentReceipt', { payment: item })}
-              onShareWhatsApp={() => handleShareWhatsApp(item)}
-              onDelete={() => handleDeletePayment(item)}
+              onMenuPress={(p) => setActionMenuPayment(p)}
               onAvatarPress={(p) => {
                 if (p.members) {
                   setPreviewMember({
@@ -650,6 +651,96 @@ export function PaymentsScreen() {
         memberName={previewMember?.full_name || 'Member'}
         memberId={previewMember?.member_id}
       />
+
+      {/* Payment Action Menu Modal */}
+      <FVEModal
+        visible={!!actionMenuPayment}
+        onClose={() => setActionMenuPayment(null)}
+        title={actionMenuPayment ? `Receipt #${actionMenuPayment.receipt_number || 'N/A'}` : 'Receipt Options'}
+        subtitle={
+          actionMenuPayment
+            ? `${actionMenuPayment.members?.full_name || 'Member'} · ${formatCurrency(actionMenuPayment.amount)}`
+            : undefined
+        }
+      >
+        {actionMenuPayment && (
+          <View style={styles.menuModalContent}>
+            <TouchableOpacity
+              onPress={() => {
+                const target = actionMenuPayment;
+                setActionMenuPayment(null);
+                haptics.medium();
+                handleShareWhatsApp(target);
+              }}
+              style={[styles.menuModalItem, { borderColor: colors.borderDark }]}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Share receipt on WhatsApp"
+            >
+              <View style={[styles.menuModalIconWrap, { backgroundColor: isDark ? 'rgba(37, 211, 102, 0.15)' : '#DCFCE7' }]}>
+                <Share2 size={18} color="#25D366" />
+              </View>
+              <View style={styles.menuModalTextWrap}>
+                <Text style={[styles.menuModalTitle, { color: colors.textPrimary }]}>
+                  Share Receipt on WhatsApp
+                </Text>
+                <Text style={[styles.menuModalDesc, { color: colors.textMuted }]}>
+                  Send official receipt confirmation to member phone
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => {
+                const target = actionMenuPayment;
+                setActionMenuPayment(null);
+                haptics.light();
+                navigation.navigate('PaymentReceipt', { payment: target });
+              }}
+              style={[styles.menuModalItem, { borderColor: colors.borderDark }]}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="View receipt details"
+            >
+              <View style={[styles.menuModalIconWrap, { backgroundColor: colors.goldMuted }]}>
+                <FileText size={18} color={colors.gold} />
+              </View>
+              <View style={styles.menuModalTextWrap}>
+                <Text style={[styles.menuModalTitle, { color: colors.textPrimary }]}>
+                  View Receipt Details
+                </Text>
+                <Text style={[styles.menuModalDesc, { color: colors.textMuted }]}>
+                  Full transaction breakdown and subscription summary
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => {
+                const target = actionMenuPayment;
+                setActionMenuPayment(null);
+                handleDeletePayment(target);
+              }}
+              style={[styles.menuModalItem, { borderColor: colors.borderDark, borderBottomWidth: 0 }]}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Delete payment record"
+            >
+              <View style={[styles.menuModalIconWrap, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEE2E2' }]}>
+                <Trash2 size={18} color="#EF4444" />
+              </View>
+              <View style={styles.menuModalTextWrap}>
+                <Text style={[styles.menuModalTitle, { color: colors.error }]}>
+                  Delete Payment Record
+                </Text>
+                <Text style={[styles.menuModalDesc, { color: colors.textMuted }]}>
+                  Revert membership extension and remove transaction
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        )}
+      </FVEModal>
     </View>
   );
 }
@@ -1005,5 +1096,38 @@ const getPaymentsStyles = (colors: ThemeColors, isDark: boolean) =>
       borderRadius: 29,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    menuModalContent: {
+      paddingVertical: 4,
+    },
+    menuModalItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 13,
+      paddingHorizontal: 4,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      gap: 12,
+      minHeight: 52,
+    },
+    menuModalIconWrap: {
+      width: 38,
+      height: 38,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    menuModalTextWrap: {
+      flex: 1,
+    },
+    menuModalTitle: {
+      fontSize: 14,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 0.3,
+    },
+    menuModalDesc: {
+      fontSize: 12,
+      fontFamily: typography.fonts.inter,
+      marginTop: 2,
     },
   });

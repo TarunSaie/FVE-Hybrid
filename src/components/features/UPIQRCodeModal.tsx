@@ -52,6 +52,8 @@ export function UPIQRCodeModal({
     }
   };
 
+  if (!visible) return null;
+
   return (
     <Modal
       visible={visible}

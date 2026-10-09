@@ -9,11 +9,27 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Search, Users, Filter, X, ArrowUpDown, AlertCircle, Check, ChevronDown, UserCheck, SlidersHorizontal, RotateCcw } from 'lucide-react-native';
+import {
+  Search,
+  Users,
+  Filter,
+  X,
+  ArrowUpDown,
+  AlertCircle,
+  Check,
+  ChevronDown,
+  UserCheck,
+  SlidersHorizontal,
+  RotateCcw,
+  FileText,
+  ChevronRight,
+  Phone,
+} from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEInput } from '@/components/common/FVEInput';
 import { MemberCard } from '@/components/features/MemberCard';
@@ -113,6 +129,7 @@ export function MembersScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [previewMember, setPreviewMember] = useState<MemberWithMembership | null>(null);
   const [sharingMemberId, setSharingMemberId] = useState<string | null>(null);
+  const [actionMenuMember, setActionMenuMember] = useState<MemberWithMembership | null>(null);
 
   // Debounce search 400ms
   useEffect(() => {
@@ -573,6 +590,7 @@ export function MembersScreen() {
               onWhatsAppAlert={handleSendWhatsAppAlert}
               onChat={handleChat}
               onAvatarPress={(m) => setPreviewMember(m)}
+              onMenuPress={(m) => setActionMenuMember(m)}
             />
           )}
         contentContainerStyle={styles.listContent}
@@ -640,6 +658,104 @@ export function MembersScreen() {
         memberName={previewMember?.full_name || ''}
         memberId={previewMember?.member_id}
       />
+
+      {/* Athlete Action Menu Modal */}
+      <FVEModal
+        visible={!!actionMenuMember}
+        onClose={() => setActionMenuMember(null)}
+        title={actionMenuMember?.full_name || 'Athlete Options'}
+        subtitle={actionMenuMember?.member_id ? `Athlete ID: ${actionMenuMember.member_id}` : 'Athlete Options'}
+      >
+        {actionMenuMember && (
+          <View style={styles.menuModalContent}>
+            <TouchableOpacity
+              onPress={() => {
+                const target = actionMenuMember;
+                setActionMenuMember(null);
+                haptics.light();
+                handleShareMember(target);
+              }}
+              disabled={sharingMemberId === actionMenuMember.id}
+              style={[styles.menuModalItem, { borderColor: colors.borderDark }]}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Generate athlete pass PDF"
+            >
+              <View style={[styles.menuModalIconWrap, { backgroundColor: colors.goldMuted, minWidth: 40 }]}>
+                {sharingMemberId === actionMenuMember.id ? (
+                  <ActivityIndicator size={16} color={colors.gold} />
+                ) : (
+                  <FileText size={18} color={colors.gold} />
+                )}
+              </View>
+              <View style={styles.menuModalTextWrap}>
+                <Text style={[styles.menuModalTitle, { color: colors.textPrimary }]}>
+                  Athlete Pass PDF
+                </Text>
+                <Text style={[styles.menuModalDesc, { color: colors.textMuted }]}>
+                  Generate official gym ID pass & share to WhatsApp
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            {actionMenuMember.mobile ? (
+              <TouchableOpacity
+                onPress={() => {
+                  const target = actionMenuMember;
+                  setActionMenuMember(null);
+                  haptics.selection();
+                  const cleanPhone = target.mobile?.replace(/\D/g, '');
+                  if (cleanPhone) Linking.openURL(`tel:${cleanPhone}`);
+                }}
+                style={[styles.menuModalItem, { borderColor: colors.borderDark }]}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`Call ${actionMenuMember.full_name}`}
+              >
+                <View style={[styles.menuModalIconWrap, { backgroundColor: isDark ? 'rgba(34, 197, 94, 0.15)' : '#DCFCE7' }]}>
+                  <Phone size={18} color="#22C55E" />
+                </View>
+                <View style={styles.menuModalTextWrap}>
+                  <Text style={[styles.menuModalTitle, { color: colors.textPrimary }]}>
+                    Call Athlete
+                  </Text>
+                  <Text style={[styles.menuModalDesc, { color: colors.textMuted }]}>
+                    {actionMenuMember.mobile}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            ) : null}
+
+            <TouchableOpacity
+              onPress={() => {
+                const target = actionMenuMember;
+                setActionMenuMember(null);
+                haptics.light();
+                navigation.navigate('MemberDetail', {
+                  memberId: target.id,
+                  initialMember: target,
+                });
+              }}
+              style={[styles.menuModalItem, { borderColor: colors.borderDark, borderBottomWidth: 0 }]}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="View athlete full profile"
+            >
+              <View style={[styles.menuModalIconWrap, { backgroundColor: isDark ? 'rgba(59, 130, 246, 0.15)' : '#DBEAFE' }]}>
+                <ChevronRight size={18} color="#3B82F6" />
+              </View>
+              <View style={styles.menuModalTextWrap}>
+                <Text style={[styles.menuModalTitle, { color: colors.textPrimary }]}>
+                  View Full Profile
+                </Text>
+                <Text style={[styles.menuModalDesc, { color: colors.textMuted }]}>
+                  Membership status, payment receipts & attendance history
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        )}
+      </FVEModal>
 
       {/* Filter & Sort Sheet Modal */}
       <FVEModal
@@ -1063,5 +1179,38 @@ const getMembersStyles = (colors: ThemeColors, isDark: boolean) =>
       borderRadius: 29,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    menuModalContent: {
+      paddingVertical: 4,
+    },
+    menuModalItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 13,
+      paddingHorizontal: 4,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      gap: 12,
+      minHeight: 52,
+    },
+    menuModalIconWrap: {
+      width: 38,
+      height: 38,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    menuModalTextWrap: {
+      flex: 1,
+    },
+    menuModalTitle: {
+      fontSize: 14,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 0.3,
+    },
+    menuModalDesc: {
+      fontSize: 12,
+      fontFamily: typography.fonts.inter,
+      marginTop: 2,
     },
   });

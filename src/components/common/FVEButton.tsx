@@ -97,11 +97,12 @@ export function FVEButton({
           accessibilityRole="button"
           accessibilityLabel={accessibilityLabel || title}
           accessibilityState={{ disabled: !isInteractive, busy: loading }}
-          hitSlop={size === 'sm' ? { top: 6, bottom: 6, left: 6, right: 6 } : undefined}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           android_ripple={{ color: 'rgba(0, 0, 0, 0.25)', borderless: false }}
           style={[styles.base, disabled && styles.disabled]}
         >
           <LinearGradient
+            pointerEvents="none"
             colors={
               disabled
                 ? isDark ? ['#3A3428', '#2A241C'] : ['#E2E8F0', '#CBD5E1']
@@ -159,11 +160,12 @@ export function FVEButton({
           accessibilityRole="button"
           accessibilityLabel={accessibilityLabel || title}
           accessibilityState={{ disabled: !isInteractive, busy: loading }}
-          hitSlop={size === 'sm' ? { top: 6, bottom: 6, left: 6, right: 6 } : undefined}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           android_ripple={{ color: 'rgba(255, 255, 255, 0.25)', borderless: false }}
           style={[styles.base, disabled && styles.disabled]}
         >
           <LinearGradient
+            pointerEvents="none"
             colors={
               disabled
                 ? isDark ? ['#1A2535', '#101722'] : ['#E2E8F0', '#CBD5E1']
@@ -219,7 +221,7 @@ export function FVEButton({
           accessibilityRole="button"
           accessibilityLabel={accessibilityLabel || title}
           accessibilityState={{ disabled: !isInteractive, busy: loading }}
-          hitSlop={size === 'sm' ? { top: 6, bottom: 6, left: 6, right: 6 } : undefined}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           android_ripple={{ color: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)', borderless: false }}
           style={[
             styles.base,
@@ -237,7 +239,7 @@ export function FVEButton({
           {loading ? (
             <ActivityIndicator size="small" color={colors.textPrimary} />
           ) : (
-            <View style={styles.contentRow}>
+            <View pointerEvents="none" style={styles.contentRow}>
               {icon && iconPosition === 'left' && (
                 <View style={styles.iconLeft}>{icon}</View>
               )}
@@ -282,7 +284,7 @@ export function FVEButton({
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel || title}
         accessibilityState={{ disabled: !isInteractive, busy: loading }}
-        hitSlop={size === 'sm' ? { top: 6, bottom: 6, left: 6, right: 6 } : undefined}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         android_ripple={{
           color: variant === 'danger' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(239, 161, 0, 0.18)',
           borderless: false,
@@ -303,7 +305,7 @@ export function FVEButton({
         {loading ? (
           <ActivityIndicator size="small" color={outlineTextColor} />
         ) : (
-          <View style={styles.contentRow}>
+          <View pointerEvents="none" style={styles.contentRow}>
             {icon && iconPosition === 'left' && (
               <View style={styles.iconLeft}>{icon}</View>
             )}

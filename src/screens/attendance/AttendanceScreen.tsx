@@ -956,23 +956,11 @@ export function AttendanceScreen() {
                 const initial = item.full_name.charAt(0).toUpperCase();
                 return (
                   <View style={styles.monitorCard}>
-                    <TouchableOpacity
-                      activeOpacity={0.8}
-                      onPress={() => {
-                        haptics.light();
-                        setSelectedMemberForCalendar({
-                          id: item.id,
-                          full_name: item.full_name,
-                          member_id: item.member_id,
-                        });
-                      }}
-                      style={styles.monitorCardTop}
-                    >
+                    <View style={styles.monitorCardTop}>
                       <TouchableOpacity
                         activeOpacity={0.75}
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        onPress={e => {
-                          e?.stopPropagation?.();
+                        onPress={() => {
                           haptics.light();
                           setPreviewPhotoMember({
                             profile_photo: item.profile_photo,
@@ -991,6 +979,21 @@ export function AttendanceScreen() {
                           </View>
                         )}
                       </TouchableOpacity>
+
+                      <TouchableOpacity
+                        activeOpacity={0.8}
+                        onPress={() => {
+                          haptics.light();
+                          setSelectedMemberForCalendar({
+                            id: item.id,
+                            full_name: item.full_name,
+                            member_id: item.member_id,
+                          });
+                        }}
+                        style={styles.monitorBodyTouchable}
+                        accessibilityRole="button"
+                        accessibilityLabel={`View calendar for ${item.full_name}`}
+                      >
 
                       <View style={styles.monitorDetails}>
                         <View style={styles.monitorNameRow}>
@@ -1055,6 +1058,7 @@ export function AttendanceScreen() {
                         )}
                       </View>
                     </TouchableOpacity>
+                  </View>
 
                     {/* Action Buttons Row */}
                     <View style={styles.monitorActionsRow}>
@@ -1751,6 +1755,12 @@ const getAttendanceStyles = (colors: ThemeColors, isDark: boolean) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: 12,
+    },
+    monitorBodyTouchable: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
     },
     monitorAvatar: {
       width: 44,

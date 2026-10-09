@@ -86,6 +86,8 @@ export function FVEMonthPickerModal({
     onClose();
   };
 
+  if (!visible) return null;
+
   return (
     <Modal
       visible={visible}

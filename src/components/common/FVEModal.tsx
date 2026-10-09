@@ -250,6 +250,8 @@ export function FVEModal({
   const handleBg = isDark ? 'rgba(255, 255, 255, 0.25)' : 'rgba(15, 23, 42, 0.2)';
   const closeBtnBg = isDark ? 'rgba(255, 255, 255, 0.07)' : 'rgba(15, 23, 42, 0.06)';
 
+  if (!visible) return null;
+
   return (
     <Modal
       visible={visible}

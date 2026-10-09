@@ -42,10 +42,7 @@ export function AttendanceItem({ item, onPress, onAvatarPress }: AttendanceItemP
 
   return (
     <Animated.View style={{ transform: [{ scale }] }}>
-      <Pressable
-        onPress={handlePress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
+      <View
         style={[
           styles.container,
           {
@@ -54,34 +51,41 @@ export function AttendanceItem({ item, onPress, onAvatarPress }: AttendanceItemP
             shadowColor: colors.shadowColor,
           },
         ]}
-        android_ripple={{ color: colors.goldMuted, borderless: false }}
       >
-        <View style={styles.leftRow}>
-          <TouchableOpacity
-            activeOpacity={0.75}
-            onPress={(e) => handleAvatarPress(e)}
-            disabled={!onAvatarPress}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            accessibilityRole="button"
-            accessibilityLabel={`View profile photo of ${memberName}`}
-          >
-            {photo ? (
-              <Image source={{ uri: photo }} style={[styles.avatar, { borderColor: colors.goldBorder }]} />
-            ) : (
-              <View
-                style={[
-                  styles.fallbackAvatar,
-                  {
-                    backgroundColor: isDark ? '#181C24' : '#EDF2F7',
-                    borderColor: colors.goldBorder,
-                  },
-                ]}
-              >
-                <Text style={[styles.fallbackText, { color: colors.gold }]}>{initial}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
+        <TouchableOpacity
+          activeOpacity={0.75}
+          onPress={(e) => handleAvatarPress(e)}
+          disabled={!onAvatarPress}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={`View profile photo of ${memberName}`}
+        >
+          {photo ? (
+            <Image source={{ uri: photo }} style={[styles.avatar, { borderColor: colors.goldBorder }]} />
+          ) : (
+            <View
+              style={[
+                styles.fallbackAvatar,
+                {
+                  backgroundColor: isDark ? '#181C24' : '#EDF2F7',
+                  borderColor: colors.goldBorder,
+                },
+              ]}
+            >
+              <Text style={[styles.fallbackText, { color: colors.gold }]}>{initial}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
 
+        <Pressable
+          onPress={handlePress}
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
+          style={styles.bodyPressable}
+          android_ripple={{ color: colors.goldMuted, borderless: false }}
+          accessibilityRole="button"
+          accessibilityLabel={`View attendance details for ${memberName}`}
+        >
           <View style={styles.details}>
             <View style={styles.nameRow}>
               <Text numberOfLines={1} style={[styles.name, { color: colors.textPrimary }]}>
@@ -101,31 +105,31 @@ export function AttendanceItem({ item, onPress, onAvatarPress }: AttendanceItemP
               </Text>
             </View>
           </View>
-        </View>
 
-        {/* Check-in Method Badge: Only display QR SCAN badge; MANUAL badge removed per guidelines */}
-        {isQR && (
-          <View
-            style={[
-              styles.methodBadge,
-              {
-                backgroundColor: colors.goldMuted,
-                borderColor: colors.goldBorder,
-              },
-            ]}
-          >
-            <QrCode size={12} color={colors.gold} style={styles.methodIcon} />
-            <Text
+          {/* Check-in Method Badge */}
+          {isQR && (
+            <View
               style={[
-                styles.methodText,
-                { color: colors.gold },
+                styles.methodBadge,
+                {
+                  backgroundColor: colors.goldMuted,
+                  borderColor: colors.goldBorder,
+                },
               ]}
             >
-              QR SCAN
-            </Text>
-          </View>
-        )}
-      </Pressable>
+              <QrCode size={12} color={colors.gold} style={styles.methodIcon} />
+              <Text
+                style={[
+                  styles.methodText,
+                  { color: colors.gold },
+                ]}
+              >
+                QR SCAN
+              </Text>
+            </View>
+          )}
+        </Pressable>
+      </View>
     </Animated.View>
   );
 }
@@ -143,6 +147,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 2,
+  },
+  bodyPressable: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   leftRow: {
     flexDirection: 'row',
