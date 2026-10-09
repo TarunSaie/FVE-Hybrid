@@ -13,7 +13,7 @@ import {
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Search, UserPlus, Users, Filter, X, ArrowUpDown, AlertCircle, Check, ChevronDown, UserCheck } from 'lucide-react-native';
+import { Search, Users, Filter, X, ArrowUpDown, AlertCircle, Check, ChevronDown, UserCheck, SlidersHorizontal, RotateCcw } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEInput } from '@/components/common/FVEInput';
 import { MemberCard } from '@/components/features/MemberCard';
@@ -109,7 +109,7 @@ export function MembersScreen() {
     }
   }, [route.params?.initialStatusFilter]);
   const [sortBy, setSortBy] = useState<MemberSortOption>('expiry_asc');
-  const [showSortModal, setShowSortModal] = useState(false);
+  const [showFilterModal, setShowFilterModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [previewMember, setPreviewMember] = useState<MemberWithMembership | null>(null);
   const [sharingMemberId, setSharingMemberId] = useState<string | null>(null);
@@ -338,15 +338,25 @@ export function MembersScreen() {
 
     setSharingMemberId(member.id);
     haptics.medium();
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error('Athlete pass PDF generation timed out. Please try again.'));
+      }, 12000);
+    });
+
     try {
       const memberMessage = buildMemberSubscriptionClipboardText(member);
       const pdfData = buildMemberPdfData(member);
-      await shareMemberPassPdfToWhatsApp(pdfData, member.mobile, memberMessage);
+      await Promise.race([
+        shareMemberPassPdfToWhatsApp(pdfData, member.mobile, memberMessage),
+        timeoutPromise,
+      ]);
     } catch (err: unknown) {
       const msg = (err as Error)?.message || '';
       if (!msg.includes('Another share request')) {
         haptics.error();
-        Alert.alert('Share on WhatsApp', msg || 'Failed to open the member WhatsApp chat.');
+        Alert.alert('Pass PDF Error', msg || 'Failed to open the member WhatsApp chat.');
       }
     } finally {
       setSharingMemberId(null);
@@ -358,11 +368,6 @@ export function MembersScreen() {
   const handleStatusSelect = (status: string) => {
     haptics.selection();
     setStatusFilter(status);
-  };
-
-  const handleSortPress = () => {
-    haptics.selection();
-    setShowSortModal(true);
   };
 
   const todayStr = getLocalDateStr();
@@ -424,13 +429,18 @@ export function MembersScreen() {
         rightAction={
           <TouchableOpacity
             onPress={() => {
-              haptics.light();
-              setShowAddModal(true);
+              haptics.selection();
+              setShowFilterModal(true);
             }}
-            style={styles.addHeaderBtn}
+            style={styles.filterHeaderBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Filter and sort athletes"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <UserPlus size={16} color={colors.gold} />
-            <Text style={styles.addHeaderBtnText}>Add</Text>
+            <SlidersHorizontal size={17} color={colors.gold} />
+            {(genderFilter !== 'ALL' || sortBy !== 'expiry_asc') && (
+              <View style={styles.filterActiveDot} />
+            )}
           </TouchableOpacity>
         }
       />
@@ -496,66 +506,6 @@ export function MembersScreen() {
             );
           })}
         </ScrollView>
-
-        {/* Gender Filter Chips */}
-        <View style={styles.genderRow}>
-          <Text style={styles.genderLabel}>GENDER:</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.genderScrollContent}
-          >
-            {[
-              { id: 'ALL', label: 'All Gender' },
-              { id: 'Male', label: 'Male' },
-              { id: 'Female', label: 'Female' },
-              { id: 'Other', label: 'Other' },
-            ].map((g) => {
-              const isSelected = genderFilter === g.id;
-              return (
-                <TouchableOpacity
-                  key={g.id}
-                  onPress={() => {
-                    haptics.selection();
-                    setGenderFilter(g.id);
-                  }}
-                  style={[
-                    styles.genderChip,
-                    isSelected && styles.genderChipSelected,
-                  ]}
-                  activeOpacity={0.7}
-                >
-                  <Text
-                    style={[
-                      styles.genderChipText,
-                      isSelected && styles.genderChipTextSelected,
-                    ]}
-                  >
-                    {g.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-
-        {/* Sort Controls */}
-        <View style={styles.sortRow}>
-          <View style={styles.sortLeft}>
-            <ArrowUpDown size={13} color={colors.gold} />
-            <Text style={styles.sortLabel}>SORT BY:</Text>
-          </View>
-          <TouchableOpacity
-            onPress={handleSortPress}
-            style={styles.sortBtn}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.sortBtnText}>
-              {SORT_OPTIONS.find(o => o.id === sortBy)?.label || 'Soonest Expiry First'}
-            </Text>
-            <ChevronDown size={13} color={colors.gold} />
-          </TouchableOpacity>
-        </View>
       </View>
 
       {/* Expiring Soon Alert Banner */}
@@ -691,53 +641,124 @@ export function MembersScreen() {
         memberId={previewMember?.member_id}
       />
 
-      {/* Sort Options Modal */}
+      {/* Filter & Sort Sheet Modal */}
       <FVEModal
-        visible={showSortModal}
-        onClose={() => setShowSortModal(false)}
-        title="SORT ATHLETES"
-        subtitle="Select sorting criteria matching web dashboard"
+        visible={showFilterModal}
+        onClose={() => setShowFilterModal(false)}
+        title="FILTER & SORT ATHLETES"
+        subtitle="Customize gender filter and athlete display order"
       >
-        <View style={styles.sortModalScroll}>
-          {SORT_OPTIONS.map((opt) => {
-            const isSelected = sortBy === opt.id;
-            return (
-              <TouchableOpacity
-                key={opt.id}
-                onPress={() => {
-                  haptics.selection();
-                  setSortBy(opt.id);
-                  setShowSortModal(false);
-                }}
-                style={[
-                  styles.sortOptionItem,
-                  isSelected && styles.sortOptionItemActive,
-                ]}
-                activeOpacity={0.7}
-              >
-                <View style={styles.sortOptionTextContainer}>
+        <ScrollView style={styles.filterModalScroll} showsVerticalScrollIndicator={false}>
+          {/* Section 1: Gender Filter */}
+          <Text style={[styles.filterSectionTitle, { color: colors.gold }]}>GENDER FILTER</Text>
+          <View style={styles.filterGenderGrid}>
+            {[
+              { id: 'ALL', label: 'All Genders' },
+              { id: 'Male', label: 'Male' },
+              { id: 'Female', label: 'Female' },
+              { id: 'Other', label: 'Other' },
+            ].map((g) => {
+              const isSelected = genderFilter === g.id;
+              return (
+                <TouchableOpacity
+                  key={g.id}
+                  onPress={() => {
+                    haptics.selection();
+                    setGenderFilter(g.id);
+                  }}
+                  style={[
+                    styles.filterModalGenderBtn,
+                    isSelected && {
+                      borderColor: colors.gold,
+                      backgroundColor: colors.goldMuted,
+                    },
+                  ]}
+                  activeOpacity={0.7}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: isSelected }}
+                >
                   <Text
                     style={[
-                      styles.sortOptionTitle,
-                      isSelected && styles.sortOptionTitleActive,
+                      styles.filterModalGenderBtnText,
+                      { color: isSelected ? colors.gold : colors.textSecondary },
                     ]}
                   >
-                    {opt.label}
+                    {g.label}
                   </Text>
-                  <Text style={styles.sortOptionDesc}>{opt.desc}</Text>
-                </View>
-                <View
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Section 2: Sort By */}
+          <Text style={[styles.filterSectionTitle, { color: colors.gold, marginTop: 16 }]}>SORT ORDER</Text>
+          <View style={styles.sortModalScroll}>
+            {SORT_OPTIONS.map((opt) => {
+              const isSelected = sortBy === opt.id;
+              return (
+                <TouchableOpacity
+                  key={opt.id}
+                  onPress={() => {
+                    haptics.selection();
+                    setSortBy(opt.id);
+                  }}
                   style={[
-                    styles.sortRadioCircle,
-                    isSelected && styles.sortRadioCircleActive,
+                    styles.sortOptionItem,
+                    isSelected && styles.sortOptionItemActive,
                   ]}
+                  activeOpacity={0.7}
                 >
-                  {isSelected && <Check size={14} color="#050505" strokeWidth={3} />}
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+                  <View style={styles.sortOptionTextContainer}>
+                    <Text
+                      style={[
+                        styles.sortOptionTitle,
+                        isSelected && styles.sortOptionTitleActive,
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                    <Text style={styles.sortOptionDesc}>{opt.desc}</Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.sortRadioCircle,
+                      isSelected && styles.sortRadioCircleActive,
+                    ]}
+                  >
+                    {isSelected && <Check size={14} color="#050505" strokeWidth={3} />}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Action Row */}
+          <View style={styles.filterModalActions}>
+            <TouchableOpacity
+              onPress={() => {
+                haptics.medium();
+                setGenderFilter('ALL');
+                setSortBy('expiry_asc');
+              }}
+              style={styles.filterModalResetBtn}
+              activeOpacity={0.7}
+            >
+              <RotateCcw size={14} color={colors.textMuted} />
+              <Text style={[styles.filterModalResetBtnText, { color: colors.textMuted }]}>Reset</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => {
+                haptics.light();
+                setShowFilterModal(false);
+              }}
+              style={[styles.filterModalApplyBtn, { backgroundColor: colors.gold }]}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.filterModalApplyBtnText}>Apply</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
       </FVEModal>
     </View>
   );
@@ -749,22 +770,25 @@ const getMembersStyles = (colors: ThemeColors, isDark: boolean) =>
       flex: 1,
       backgroundColor: colors.background,
     },
-    addHeaderBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
+    filterHeaderBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
       backgroundColor: colors.goldMuted,
       borderWidth: 1,
       borderColor: colors.goldBorder,
-      borderRadius: 8,
-      paddingHorizontal: 10,
-      paddingVertical: 6,
+      alignItems: 'center',
+      justifyContent: 'center',
+      position: 'relative',
     },
-    addHeaderBtnText: {
-      color: colors.gold,
-      fontSize: typography.sizes.xs,
-      fontFamily: typography.fonts.rajdhani,
-      fontWeight: '700',
+    filterActiveDot: {
+      position: 'absolute',
+      top: 6,
+      right: 6,
+      width: 7,
+      height: 7,
+      borderRadius: 3.5,
+      backgroundColor: colors.gold,
     },
     searchSection: {
       paddingHorizontal: 16,
@@ -894,84 +918,78 @@ const getMembersStyles = (colors: ThemeColors, isDark: boolean) =>
     expiringCountBadgeText: {
       color: isDark ? '#FBBF24' : '#B45309',
     },
-    genderRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingVertical: 6,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: colors.borderDark,
+    filterModalScroll: {
+      maxHeight: 460,
     },
-    genderLabel: {
-      color: colors.textMuted,
-      fontSize: 10,
+    filterSectionTitle: {
+      fontSize: 12,
       fontFamily: typography.fonts.rajdhani,
       fontWeight: '700',
-      letterSpacing: 0.5,
-      marginRight: 8,
+      letterSpacing: 0.8,
+      marginBottom: 10,
     },
-    genderScrollContent: {
+    filterGenderGrid: {
       flexDirection: 'row',
-      gap: 6,
-      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: 8,
     },
-    genderChip: {
+    filterModalGenderBtn: {
+      flex: 1,
+      minWidth: '45%',
+      paddingVertical: 10,
       paddingHorizontal: 12,
-      paddingVertical: 4,
-      borderRadius: 14,
-      backgroundColor: isDark ? '#11141A' : colors.surfaceLight,
+      borderRadius: 10,
+      backgroundColor: isDark ? '#11141A' : colors.cardBackground,
       borderWidth: 1,
       borderColor: colors.borderDark,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
-    genderChipSelected: {
-      backgroundColor: colors.goldMuted,
-      borderColor: colors.gold,
-    },
-    genderChipText: {
-      fontSize: 11,
+    filterModalGenderBtnText: {
+      fontSize: 13,
       fontFamily: typography.fonts.rajdhani,
-      fontWeight: '600',
-      color: colors.textSecondary,
-    },
-    genderChipTextSelected: {
-      color: colors.gold,
       fontWeight: '700',
+      letterSpacing: 0.3,
     },
-    sortRow: {
+    filterModalActions: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingVertical: 8,
+      marginTop: 20,
+      paddingTop: 14,
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.borderDark,
+      gap: 12,
     },
-    sortLeft: {
+    filterModalResetBtn: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
-    },
-    sortLabel: {
-      color: colors.textMuted,
-      fontSize: 10,
-      fontFamily: typography.fonts.rajdhani,
-      fontWeight: '700',
-      letterSpacing: 0.5,
-    },
-    sortBtn: {
-      backgroundColor: isDark ? '#11141A' : colors.surfaceLight,
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      borderRadius: 10,
       borderWidth: 1,
       borderColor: colors.borderDark,
-      borderRadius: 12,
-      paddingHorizontal: 10,
-      paddingVertical: 5,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.04)',
     },
-    sortBtnText: {
-      color: colors.gold,
-      fontSize: 11,
+    filterModalResetBtnText: {
+      fontSize: 13,
       fontFamily: typography.fonts.rajdhani,
       fontWeight: '700',
+    },
+    filterModalApplyBtn: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 11,
+      borderRadius: 10,
+    },
+    filterModalApplyBtnText: {
+      color: '#050505',
+      fontSize: 13,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '800',
+      letterSpacing: 0.5,
     },
     sortModalScroll: {
       marginBottom: 4,

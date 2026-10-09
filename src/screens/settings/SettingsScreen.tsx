@@ -213,12 +213,6 @@ export function SettingsScreen() {
               <Text numberOfLines={1} style={styles.userName}>
                 {(user?.full_name || user?.username || 'User').toUpperCase()}
               </Text>
-              {user?.role === 'OWNER' && (
-                <View style={styles.ownerPill}>
-                  <Sparkles size={9} color={isDark ? colors.goldBright : colors.gold} />
-                  <Text style={styles.ownerPillText}>PRIMARY OWNER</Text>
-                </View>
-              )}
             </View>
             <Text style={styles.userEmail}>{user?.email || 'System User'}</Text>
             <FVEBadge role={user?.role} size="sm" style={{ marginTop: 6 }} />
@@ -247,7 +241,8 @@ export function SettingsScreen() {
             Customize how FitVerse Elite looks on your device. Choose between Dark luxury or Light Pearl aesthetics.
           </Text>
 
-          <View style={styles.themeGrid}>
+          {/* Compact Segmented Theme Picker */}
+          <View style={styles.compactThemeRow}>
             {themeOptions.map((opt) => {
               const isSelected = theme === opt.id;
               const IconComp = opt.icon;
@@ -264,39 +259,21 @@ export function SettingsScreen() {
                   accessibilityState={{ selected: isSelected }}
                   accessibilityLabel={`${opt.label} theme`}
                   style={[
-                    styles.themeOptionCard,
-                    isSelected && styles.themeOptionCardActive,
+                    styles.compactThemeBtn,
+                    isSelected && styles.compactThemeBtnActive,
                   ]}
                 >
-                  <View style={styles.themeOptionHeader}>
-                    <View
-                      style={[
-                        styles.themeOptionIcon,
-                        isSelected && styles.themeOptionIconActive,
-                      ]}
-                    >
-                      <IconComp
-                        size={15}
-                        color={isSelected ? '#050505' : colors.textPrimary}
-                      />
-                    </View>
-                    {isSelected && (
-                      <View style={styles.checkCircle}>
-                        <Check size={10} color="#050505" strokeWidth={3} />
-                      </View>
-                    )}
-                  </View>
+                  <IconComp
+                    size={14}
+                    color={isSelected ? '#050505' : colors.textSecondary}
+                  />
                   <Text
-                    numberOfLines={1}
                     style={[
-                      styles.themeOptionLabel,
-                      isSelected && styles.themeOptionLabelActive,
+                      styles.compactThemeBtnText,
+                      isSelected && styles.compactThemeBtnTextActive,
                     ]}
                   >
                     {opt.label}
-                  </Text>
-                  <Text numberOfLines={1} style={styles.themeOptionDesc}>
-                    {opt.desc}
                   </Text>
                 </TouchableOpacity>
               );
@@ -663,24 +640,6 @@ const getSettingsStyles = (colors: ThemeColors, isDark: boolean) =>
       letterSpacing: 0.5,
       flexShrink: 1,
     },
-    ownerPill: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 3,
-      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.18)' : 'rgba(217, 119, 6, 0.12)',
-      borderWidth: 1,
-      borderColor: isDark ? 'rgba(239, 161, 0, 0.45)' : 'rgba(217, 119, 6, 0.35)',
-      paddingHorizontal: 7,
-      paddingVertical: 2.5,
-      borderRadius: 6,
-    },
-    ownerPillText: {
-      color: isDark ? colors.goldBright : colors.gold,
-      fontSize: 8.5,
-      fontFamily: typography.fonts.orbitron,
-      fontWeight: '800',
-      letterSpacing: 0.6,
-    },
     userEmail: {
       color: colors.textSecondary,
       fontSize: typography.sizes.xs,
@@ -718,78 +677,40 @@ const getSettingsStyles = (colors: ThemeColors, isDark: boolean) =>
       fontFamily: typography.fonts.rajdhani,
       fontWeight: '800',
     },
-    themeGrid: {
+    compactThemeRow: {
       flexDirection: 'row',
-      gap: 8,
-    },
-    themeOptionCard: {
-      flex: 1,
-      borderRadius: 14,
-      borderWidth: 1.5,
-      padding: 10,
-      minHeight: 88,
-      justifyContent: 'space-between',
-      backgroundColor: colors.cardBackground,
-      borderColor: colors.borderDark,
-    },
-    themeOptionCardActive: {
-      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : 'rgba(217, 119, 6, 0.08)',
-      borderColor: colors.gold,
-    },
-    themeOptionHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      marginBottom: 6,
-    },
-    themeOptionIcon: {
-      width: 28,
-      height: 28,
-      borderRadius: 8,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(15, 23, 42, 0.05)',
-    },
-    themeOptionIconActive: {
-      backgroundColor: colors.gold,
-    },
-    checkCircle: {
-      width: 16,
-      height: 16,
-      borderRadius: 8,
-      backgroundColor: colors.gold,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    themeOptionLabel: {
-      color: colors.textPrimary,
-      fontSize: 11.5,
-      fontFamily: typography.fonts.rajdhani,
-      fontWeight: '700',
-      letterSpacing: 0.3,
-    },
-    themeOptionLabelActive: {
-      color: colors.gold,
-      fontWeight: '800',
-    },
-    themeOptionDesc: {
-      color: colors.textSecondary,
-      fontSize: 9.5,
-      fontFamily: typography.fonts.inter,
-      marginTop: 2,
-    },
-    menuSection: {
-      backgroundColor: colors.cardBackground,
+      gap: 6,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.04)',
+      borderRadius: 12,
+      padding: 4,
       borderWidth: 1,
       borderColor: colors.borderDark,
-      borderRadius: 18,
-      padding: 16,
-      marginBottom: 16,
-      shadowColor: '#000000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: isDark ? 0.3 : 0.05,
-      shadowRadius: 6,
-      elevation: 2,
+    },
+    compactThemeBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      paddingVertical: 9,
+      borderRadius: 9,
+    },
+    compactThemeBtnActive: {
+      backgroundColor: colors.gold,
+    },
+    compactThemeBtnText: {
+      color: colors.textSecondary,
+      fontSize: 12,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    compactThemeBtnTextActive: {
+      color: '#050505',
+      fontWeight: '800',
+    },
+    menuSection: {
+      marginBottom: 20,
+      paddingHorizontal: 2,
     },
     sectionHeader: {
       color: colors.textSecondary,
@@ -797,13 +718,15 @@ const getSettingsStyles = (colors: ThemeColors, isDark: boolean) =>
       fontFamily: typography.fonts.rajdhani,
       fontWeight: '700',
       letterSpacing: 0.8,
-      marginBottom: 12,
+      marginBottom: 8,
+      paddingHorizontal: 4,
     },
     menuItem: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingVertical: 13,
+      paddingVertical: 14,
+      paddingHorizontal: 6,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: colors.borderDark,
     },

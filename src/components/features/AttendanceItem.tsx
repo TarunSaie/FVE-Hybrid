@@ -98,36 +98,33 @@ export function AttendanceItem({ item, onPress, onAvatarPress }: AttendanceItemP
               <Clock size={12} color={colors.textMuted} />
               <Text numberOfLines={1} style={[styles.timeText, { color: colors.textSecondary }]}>
                 {formatTime(item.check_in_time)}
-                {item.date ? ` · ${item.date}` : ''}
               </Text>
             </View>
           </View>
         </View>
 
-        {/* Check-in Method Badge */}
-        <View
-          style={[
-            styles.methodBadge,
-            {
-              backgroundColor: isQR ? colors.goldMuted : colors.blueMuted,
-              borderColor: isQR ? colors.goldBorder : colors.blueBorder,
-            },
-          ]}
-        >
-          {isQR ? (
-            <QrCode size={12} color={colors.gold} style={styles.methodIcon} />
-          ) : (
-            <UserCheck size={12} color={colors.blue} style={styles.methodIcon} />
-          )}
-          <Text
+        {/* Check-in Method Badge: Only display QR SCAN badge; MANUAL badge removed per guidelines */}
+        {isQR && (
+          <View
             style={[
-              styles.methodText,
-              { color: isQR ? colors.gold : colors.blue },
+              styles.methodBadge,
+              {
+                backgroundColor: colors.goldMuted,
+                borderColor: colors.goldBorder,
+              },
             ]}
           >
-            {isQR ? 'QR SCAN' : 'MANUAL'}
-          </Text>
-        </View>
+            <QrCode size={12} color={colors.gold} style={styles.methodIcon} />
+            <Text
+              style={[
+                styles.methodText,
+                { color: colors.gold },
+              ]}
+            >
+              QR SCAN
+            </Text>
+          </View>
+        )}
       </Pressable>
     </Animated.View>
   );

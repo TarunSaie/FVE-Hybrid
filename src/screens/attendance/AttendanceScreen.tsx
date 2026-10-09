@@ -34,6 +34,7 @@ import {
   MessageCircle,
   Clock,
   Ban,
+  MoreVertical,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEInput } from '@/components/common/FVEInput';
@@ -116,6 +117,7 @@ export function AttendanceScreen() {
     member_id?: string | null;
   } | null>(null);
   const [selectedMemberForQR, setSelectedMemberForQR] = useState<Member | MonitoringMember | null>(null);
+  const [rowMenuMember, setRowMenuMember] = useState<MonitoringMember | null>(null);
   const [exporting, setExporting] = useState(false);
 
   // Debounce search 400ms to avoid excessive filtering
@@ -328,27 +330,6 @@ export function AttendanceScreen() {
       (m.mobile || '').includes(term)
     );
   }, [monitoringMembers, monitorSearch, monitoringFilter]);
-
-  const totalPreview = useMemo(
-    () => monitoringMembers.slice(0, 2).map(m => m.full_name),
-    [monitoringMembers]
-  );
-  const activePreview = useMemo(
-    () => monitoringMembers.filter(m => m.isActive).slice(0, 2).map(m => m.full_name),
-    [monitoringMembers]
-  );
-  const presentPreview = useMemo(
-    () => monitoringMembers.filter(m => m.checkedInToday).slice(0, 2).map(m => m.full_name),
-    [monitoringMembers]
-  );
-  const absentPreview = useMemo(
-    () => monitoringMembers.filter(m => m.isActive && !m.checkedInToday).slice(0, 2).map(m => m.full_name),
-    [monitoringMembers]
-  );
-  const expiredPreview = useMemo(
-    () => monitoringMembers.filter(m => m.isExpired).slice(0, 2).map(m => m.full_name),
-    [monitoringMembers]
-  );
 
   // Fetch all members with memberships for manual check-in modal to enforce Active Rule
   const { data: allMembers = [] } = useQuery({
@@ -645,8 +626,8 @@ export function AttendanceScreen() {
         title="ATTENDANCE"
         subtitle={
           mode === 'LOG'
-            ? `${selectedDate === todayStr ? 'Today' : formatDate(selectedDate)} · ${logs?.length || 0} checked in`
-            : `Live Roster · ${presentCount} present, ${absentCount} absent · ${activeCount} active`
+            ? `${selectedDate === todayStr ? 'Today' : formatDate(selectedDate)} · ${logs?.length || 0} check-ins`
+            : `${presentCount} Present · ${activeCount} Active`
         }
         rightAction={
           <TouchableOpacity
@@ -875,163 +856,6 @@ export function AttendanceScreen() {
          ───────────────────────────────────────────────────────────── */}
       {mode === 'MONITORING' && (
         <View style={{ flex: 1 }}>
-          {/* 5 Attendance Status Tiles */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.monitorTilesContainer}
-          >
-            {/* Tile 1: All Members */}
-            <TouchableOpacity
-              onPress={() => {
-                haptics.selection();
-                setMonitoringFilter('ALL');
-              }}
-              style={[
-                styles.monitorTile,
-                monitoringFilter === 'ALL' && styles.monitorTileActiveGold,
-              ]}
-              activeOpacity={0.8}
-            >
-              <View style={styles.monitorTileHeader}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <Users size={13} color={colors.gold} />
-                  <Text style={styles.monitorTileTitle}>ALL MEMBERS</Text>
-                </View>
-                {/* {monitoringFilter === 'ALL' && (
-                  <View style={styles.activePillGold}>
-                    <Text style={styles.activePillGoldText}>Active</Text>
-                  </View>
-                )} */}
-              </View>
-              <Text style={styles.monitorTileCount}>{totalCount}</Text>
-              <Text style={styles.monitorTileSubtitle}>Total athletes</Text>
-              <Text numberOfLines={1} style={styles.monitorTilePreview}>
-                {totalPreview.length > 0 ? totalPreview.join(', ') : 'No members'}
-              </Text>
-            </TouchableOpacity>
-
-            {/* Tile 2: Active Members */}
-            <TouchableOpacity
-              onPress={() => {
-                haptics.selection();
-                setMonitoringFilter('ACTIVE');
-              }}
-              style={[
-                styles.monitorTile,
-                monitoringFilter === 'ACTIVE' && styles.monitorTileActiveBlue,
-              ]}
-              activeOpacity={0.8}
-            >
-              <View style={styles.monitorTileHeader}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <UserCheck size={13} color="#00D4FF" />
-                  <Text style={[styles.monitorTileTitle, { color: '#00D4FF' }]}>ACTIVE</Text>
-                </View>
-                {monitoringFilter === 'ACTIVE' && (
-                  <View style={styles.activePillBlue}>
-                    <Text style={styles.activePillBlueText}>Active</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={[styles.monitorTileCount, { color: '#00D4FF' }]}>{activeCount}</Text>
-              <Text style={styles.monitorTileSubtitle}>Valid memberships</Text>
-              <Text numberOfLines={1} style={styles.monitorTilePreview}>
-                {activePreview.length > 0 ? activePreview.join(', ') : 'No active members'}
-              </Text>
-            </TouchableOpacity>
-
-            {/* Tile 3: Present Today */}
-            <TouchableOpacity
-              onPress={() => {
-                haptics.selection();
-                setMonitoringFilter('PRESENT');
-              }}
-              style={[
-                styles.monitorTile,
-                monitoringFilter === 'PRESENT' && styles.monitorTileActiveGreen,
-              ]}
-              activeOpacity={0.8}
-            >
-              <View style={styles.monitorTileHeader}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <CheckCircle size={13} color={colors.success} />
-                  <Text style={[styles.monitorTileTitle, { color: colors.success }]}>PRESENT</Text>
-                </View>
-                {monitoringFilter === 'PRESENT' && (
-                  <View style={styles.activePillGreen}>
-                    <Text style={styles.activePillGreenText}>Active</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={[styles.monitorTileCount, { color: colors.success }]}>{presentCount}</Text>
-              <Text style={styles.monitorTileSubtitle}>Marked present today</Text>
-              <Text numberOfLines={1} style={styles.monitorTilePreview}>
-                {presentPreview.length > 0 ? presentPreview.join(', ') : 'No check-ins yet'}
-              </Text>
-            </TouchableOpacity>
-
-            {/* Tile 4: Absent Today */}
-            <TouchableOpacity
-              onPress={() => {
-                haptics.selection();
-                setMonitoringFilter('ABSENT');
-              }}
-              style={[
-                styles.monitorTile,
-                monitoringFilter === 'ABSENT' && styles.monitorTileActiveAmber,
-              ]}
-              activeOpacity={0.8}
-            >
-              <View style={styles.monitorTileHeader}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <UserX size={13} color="#F59E0B" />
-                  <Text style={[styles.monitorTileTitle, { color: '#F59E0B' }]}>ABSENT</Text>
-                </View>
-                {monitoringFilter === 'ABSENT' && (
-                  <View style={styles.activePillAmber}>
-                    <Text style={styles.activePillAmberText}>Active</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={[styles.monitorTileCount, { color: '#F59E0B' }]}>{absentCount}</Text>
-              <Text style={styles.monitorTileSubtitle}>Active not checked in</Text>
-              <Text numberOfLines={1} style={styles.monitorTilePreview}>
-                {absentPreview.length > 0 ? absentPreview.join(', ') : 'Everyone present'}
-              </Text>
-            </TouchableOpacity>
-
-            {/* Tile 5: Expired Memberships */}
-            <TouchableOpacity
-              onPress={() => {
-                haptics.selection();
-                setMonitoringFilter('EXPIRED');
-              }}
-              style={[
-                styles.monitorTile,
-                monitoringFilter === 'EXPIRED' && styles.monitorTileActiveRed,
-              ]}
-              activeOpacity={0.8}
-            >
-              <View style={styles.monitorTileHeader}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <AlertTriangle size={13} color="#EF4444" />
-                  <Text style={[styles.monitorTileTitle, { color: '#EF4444' }]}>EXPIRED</Text>
-                </View>
-                {monitoringFilter === 'EXPIRED' && (
-                  <View style={styles.activePillRed}>
-                    <Text style={styles.activePillRedText}>Active</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={[styles.monitorTileCount, { color: '#EF4444' }]}>{expiredCount}</Text>
-              <Text style={styles.monitorTileSubtitle}>Expired memberships</Text>
-              <Text numberOfLines={1} style={[styles.monitorTilePreview, { color: '#FCA5A5' }]}>
-                {expiredPreview.length > 0 ? expiredPreview.join(', ') : 'No expired members'}
-              </Text>
-            </TouchableOpacity>
-          </ScrollView>
-
           {/* Dedicated Tab Chip Row */}
           <View style={styles.rosterTabBarContainer}>
             <ScrollView
@@ -1279,43 +1103,25 @@ export function AttendanceScreen() {
                         </View>
                       )}
 
+                      {/* Row Menu Button (Follow Up, Calendar, QR) */}
                       <TouchableOpacity
                         onPress={() => {
-                          haptics.medium();
-                          setFollowUpMember(item);
+                          haptics.selection();
+                          setRowMenuMember(item);
                         }}
-                        style={styles.monitorFollowUpBtn}
-                        activeOpacity={0.85}
+                        style={[
+                          styles.monitorMenuBtn,
+                          {
+                            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)',
+                            borderColor: colors.borderDark,
+                          },
+                        ]}
+                        activeOpacity={0.75}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Options for ${item.full_name}`}
                       >
-                        <MessageCircle size={13} color="#FFFFFF" />
-                        <Text style={styles.monitorFollowUpBtnText}>Follow Up</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        onPress={() => {
-                          haptics.light();
-                          setSelectedMemberForCalendar({
-                            id: item.id,
-                            full_name: item.full_name,
-                            member_id: item.member_id,
-                          });
-                        }}
-                        style={styles.monitorCalendarBtn}
-                        activeOpacity={0.8}
-                      >
-                        <Calendar size={13} color={colors.gold} />
-                        <Text style={styles.monitorCalendarBtnText}>Calendar</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        onPress={() => {
-                          haptics.light();
-                          setSelectedMemberForQR(item);
-                        }}
-                        style={styles.monitorQrBtn}
-                        activeOpacity={0.8}
-                      >
-                        <QrCode size={14} color={colors.gold} />
+                        <MoreVertical size={16} color={colors.textSecondary} />
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -1571,14 +1377,88 @@ export function AttendanceScreen() {
         }
       />
 
-      {/* Full-Size Profile Photo Modal */}
-      <ProfilePhotoModal
-        visible={!!previewPhotoMember}
-        onClose={() => setPreviewPhotoMember(null)}
-        photoUrl={previewPhotoMember?.profile_photo}
-        memberName={previewPhotoMember?.full_name || 'Member'}
-        memberId={previewPhotoMember?.member_id}
-      />
+      {/* Athlete Row Action Menu Modal (Follow Up, Calendar, QR) */}
+      <FVEModal
+        visible={!!rowMenuMember}
+        onClose={() => setRowMenuMember(null)}
+        title={rowMenuMember?.full_name || 'Member Options'}
+        subtitle={rowMenuMember?.member_id ? `Athlete ID: ${rowMenuMember.member_id}` : 'Attendance & Follow-up'}
+      >
+        <View style={styles.rowMenuModalContent}>
+          <TouchableOpacity
+            onPress={() => {
+              const target = rowMenuMember;
+              setRowMenuMember(null);
+              if (target) {
+                haptics.medium();
+                setFollowUpMember(target);
+              }
+            }}
+            style={[styles.rowMenuItem, { borderColor: colors.borderDark }]}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={`Follow up with ${rowMenuMember?.full_name}`}
+          >
+            <View style={[styles.rowMenuIconWrap, { backgroundColor: isDark ? 'rgba(37, 211, 102, 0.15)' : '#DCFCE7' }]}>
+              <MessageCircle size={18} color="#25D366" />
+            </View>
+            <View style={styles.rowMenuTextWrap}>
+              <Text style={[styles.rowMenuTitle, { color: colors.textPrimary }]}>Send Follow-Up Message</Text>
+              <Text style={[styles.rowMenuDesc, { color: colors.textMuted }]}>Custom WhatsApp alert & absentee check-in</Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => {
+              const target = rowMenuMember;
+              setRowMenuMember(null);
+              if (target) {
+                haptics.light();
+                setSelectedMemberForCalendar({
+                  id: target.id,
+                  full_name: target.full_name,
+                  member_id: target.member_id,
+                });
+              }
+            }}
+            style={[styles.rowMenuItem, { borderColor: colors.borderDark }]}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="View attendance calendar"
+          >
+            <View style={[styles.rowMenuIconWrap, { backgroundColor: colors.goldMuted }]}>
+              <Calendar size={18} color={colors.gold} />
+            </View>
+            <View style={styles.rowMenuTextWrap}>
+              <Text style={[styles.rowMenuTitle, { color: colors.textPrimary }]}>Attendance Calendar</Text>
+              <Text style={[styles.rowMenuDesc, { color: colors.textMuted }]}>View monthly check-in history & streak</Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => {
+              const target = rowMenuMember;
+              setRowMenuMember(null);
+              if (target) {
+                haptics.light();
+                setSelectedMemberForQR(target);
+              }
+            }}
+            style={[styles.rowMenuItem, { borderColor: colors.borderDark, borderBottomWidth: 0 }]}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="View athlete QR code"
+          >
+            <View style={[styles.rowMenuIconWrap, { backgroundColor: isDark ? 'rgba(0, 212, 255, 0.15)' : '#E0F2FE' }]}>
+              <QrCode size={18} color="#00D4FF" />
+            </View>
+            <View style={styles.rowMenuTextWrap}>
+              <Text style={[styles.rowMenuTitle, { color: colors.textPrimary }]}>View Athlete QR Code</Text>
+              <Text style={[styles.rowMenuDesc, { color: colors.textMuted }]}>Digital check-in badge & pass</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      </FVEModal>
     </View>
   );
 }
@@ -2032,6 +1912,47 @@ const getAttendanceStyles = (colors: ThemeColors, isDark: boolean) =>
       padding: 8,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    monitorMenuBtn: {
+      width: 38,
+      height: 36,
+      borderRadius: 10,
+      borderWidth: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    rowMenuModalContent: {
+      paddingVertical: 4,
+    },
+    rowMenuItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 13,
+      paddingHorizontal: 4,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      gap: 12,
+      minHeight: 52,
+    },
+    rowMenuIconWrap: {
+      width: 38,
+      height: 38,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    rowMenuTextWrap: {
+      flex: 1,
+    },
+    rowMenuTitle: {
+      fontSize: 14,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 0.3,
+    },
+    rowMenuDesc: {
+      fontSize: 12,
+      fontFamily: typography.fonts.inter,
+      marginTop: 2,
     },
     // QR Modal Styles
     qrModalBody: {

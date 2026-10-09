@@ -379,7 +379,7 @@ export function PaymentsScreen() {
         <View style={styles.summaryTopRow}>
           <View style={styles.summaryLeft}>
             <Text style={styles.summaryLabel}>
-              {includeDailyPasses
+              {includeDailyPasses && activeTab === 'memberships'
                 ? 'TOTAL COMBINED REVENUE'
                 : activeTab === 'memberships'
                   ? 'MEMBERSHIP REVENUE'
@@ -389,36 +389,33 @@ export function PaymentsScreen() {
               {formatCurrency(displayTotalRevenue)}
             </Text>
           </View>
-          <View style={styles.recordCountBox}>
-            <Text style={styles.recordCountText}>
-              {displayTotalRecords} Records
-            </Text>
-          </View>
         </View>
 
-        {/* Daily Pass Combine M3 Switch */}
-        <View style={styles.m3ToggleCard}>
-          <View style={styles.m3ToggleLeft}>
-            <View style={[styles.m3ToggleIconBox, includeDailyPasses && styles.m3ToggleIconBoxActive]}>
-              <Ticket size={16} color={includeDailyPasses ? colors.gold : colors.textMuted} />
+        {/* Daily Pass Combine M3 Switch (Only shown on Membership tab) */}
+        {activeTab === 'memberships' && (
+          <View style={styles.m3ToggleCard}>
+            <View style={styles.m3ToggleLeft}>
+              <View style={[styles.m3ToggleIconBox, includeDailyPasses && styles.m3ToggleIconBoxActive]}>
+                <Ticket size={16} color={includeDailyPasses ? colors.gold : colors.textMuted} />
+              </View>
+              <View style={styles.m3ToggleTextBox}>
+                <Text style={[styles.m3ToggleTitle, includeDailyPasses && styles.m3ToggleTitleActive]}>
+                  Combine Daily Pass Revenue
+                </Text>
+                <Text style={styles.m3ToggleSubtitle}>
+                  {includeDailyPasses
+                    ? `Includes +₹${formatCurrency(dailyPassRevenue)} from day pass receipts`
+                    : 'Toggle to merge daily pass sales into total'}
+                </Text>
+              </View>
             </View>
-            <View style={styles.m3ToggleTextBox}>
-              <Text style={[styles.m3ToggleTitle, includeDailyPasses && styles.m3ToggleTitleActive]}>
-                Combine Daily Pass Revenue
-              </Text>
-              <Text style={styles.m3ToggleSubtitle}>
-                {includeDailyPasses
-                  ? `Includes +₹${formatCurrency(dailyPassRevenue)} from day pass receipts`
-                  : 'Toggle to merge daily pass sales into total'}
-              </Text>
-            </View>
+            <M3Switch
+              value={includeDailyPasses}
+              onValueChange={setIncludeDailyPasses}
+              accessibilityLabel="Combine Daily Pass Revenue"
+            />
           </View>
-          <M3Switch
-            value={includeDailyPasses}
-            onValueChange={setIncludeDailyPasses}
-            accessibilityLabel="Combine Daily Pass Revenue"
-          />
-        </View>
+        )}
       </View>
 
       {/* Segmented Tab Switcher */}
@@ -866,7 +863,7 @@ const getPaymentsStyles = (colors: ThemeColors, isDark: boolean) =>
     },
     listContent: {
       padding: 16,
-      paddingBottom: 130,
+      paddingBottom: 160,
     },
 
     // Daily Pass Card Styles
