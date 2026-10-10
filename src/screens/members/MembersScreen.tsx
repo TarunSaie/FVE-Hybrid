@@ -303,7 +303,7 @@ export function MembersScreen() {
     if (isExpiringSoon && member.membership_expiry_date) {
       const daysLeft = Math.ceil(
         (new Date(member.membership_expiry_date).getTime() - new Date().getTime()) /
-          (1000 * 60 * 60 * 24)
+        (1000 * 60 * 60 * 24)
       );
       message = buildExpiryReminderMessage(
         member.full_name,
@@ -455,7 +455,7 @@ export function MembersScreen() {
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <SlidersHorizontal size={17} color={colors.gold} />
-            {(genderFilter !== 'ALL' || sortBy !== 'expiry_asc') && (
+            {(genderFilter !== 'ALL' || sortBy !== 'expiry_asc' || statusFilter !== 'ALL') && (
               <View style={styles.filterActiveDot} />
             )}
           </TouchableOpacity>
@@ -489,8 +489,8 @@ export function MembersScreen() {
             const displayStatus = status === 'ACTIVE'
               ? 'ACTIVE'
               : status === 'UPCOMING'
-              ? 'ADVANCE QUEUED'
-              : status.replace('_', ' ');
+                ? 'ADVANCE QUEUED'
+                : status.replace('_', ' ');
             const label = `${displayStatus} (${count})`;
 
             return (
@@ -593,37 +593,37 @@ export function MembersScreen() {
               onMenuPress={(m) => setActionMenuMember(m)}
             />
           )}
-        contentContainerStyle={styles.listContent}
-        keyboardDismissMode="on-drag"
-        keyboardShouldPersistTaps="handled"
-        initialNumToRender={12}
-        maxToRenderPerBatch={10}
-        windowSize={5}
-        removeClippedSubviews={true}
-        refreshControl={
-          <RefreshControl
-            refreshing={isLoading}
-            onRefresh={onRefresh}
-            tintColor={colors.gold}
-            colors={[colors.gold]}
-          />
-        }
-        ListEmptyComponent={
-          !isLoading ? (
-            <FVEEmptyState
-              icon={<Users size={40} color={colors.gold} />}
-              title="No Members Found"
-              description={
-                search
-                  ? `No members matching "${search}"`
-                  : 'Start by registering your first gym member.'
-              }
-              actionTitle="+ Register Member"
-              onAction={() => setShowAddModal(true)}
+          contentContainerStyle={styles.listContent}
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
+          initialNumToRender={12}
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          removeClippedSubviews={true}
+          refreshControl={
+            <RefreshControl
+              refreshing={isLoading}
+              onRefresh={onRefresh}
+              tintColor={colors.gold}
+              colors={[colors.gold]}
             />
-          ) : null
-        }
-      />
+          }
+          ListEmptyComponent={
+            !isLoading ? (
+              <FVEEmptyState
+                icon={<Users size={40} color={colors.gold} />}
+                title="No Members Found"
+                description={
+                  search
+                    ? `No members matching "${search}"`
+                    : 'Start by registering your first gym member.'
+                }
+                actionTitle="+ Register Member"
+                onAction={() => setShowAddModal(true)}
+              />
+            ) : null
+          }
+        />
       )}
 
       {/* Native Floating Action Button (FAB) */}
@@ -762,53 +762,266 @@ export function MembersScreen() {
         visible={showFilterModal}
         onClose={() => setShowFilterModal(false)}
         title="FILTER & SORT ATHLETES"
-        subtitle="Customize gender filter and athlete display order"
+        subtitle="Customize status, gender, and display order"
+        footer={
+          <View style={styles.filterModalActions}>
+            <TouchableOpacity
+              onPress={() => {
+                haptics.medium();
+                handleStatusSelect('ALL');
+                setGenderFilter('ALL');
+                setSortBy('expiry_asc');
+              }}
+              style={styles.filterModalResetBtn}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Reset all filters"
+            >
+              <RotateCcw size={14} color={colors.textMuted} />
+              <Text style={[styles.filterModalResetBtnText, { color: colors.textMuted }]}>Reset All</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => {
+                haptics.light();
+                setShowFilterModal(false);
+              }}
+              style={[styles.filterModalApplyBtn, { backgroundColor: colors.gold }]}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Apply filters and sort order"
+            >
+              <Text style={styles.filterModalApplyBtnText}>Apply Filters</Text>
+            </TouchableOpacity>
+          </View>
+        }
       >
-        <ScrollView style={styles.filterModalScroll} showsVerticalScrollIndicator={false}>
-          {/* Section 1: Gender Filter */}
-          <Text style={[styles.filterSectionTitle, { color: colors.gold }]}>GENDER FILTER</Text>
-          <View style={styles.filterGenderGrid}>
-            {[
-              { id: 'ALL', label: 'All Genders' },
-              { id: 'Male', label: 'Male' },
-              { id: 'Female', label: 'Female' },
-              { id: 'Other', label: 'Other' },
-            ].map((g) => {
-              const isSelected = genderFilter === g.id;
-              return (
-                <TouchableOpacity
-                  key={g.id}
-                  onPress={() => {
-                    haptics.selection();
-                    setGenderFilter(g.id);
-                  }}
-                  style={[
-                    styles.filterModalGenderBtn,
-                    isSelected && {
-                      borderColor: colors.gold,
-                      backgroundColor: colors.goldMuted,
-                    },
-                  ]}
-                  activeOpacity={0.7}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: isSelected }}
-                >
-                  <Text
-                    style={[
-                      styles.filterModalGenderBtnText,
-                      { color: isSelected ? colors.gold : colors.textSecondary },
-                    ]}
-                  >
-                    {g.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+        <View style={styles.filterModalContent}>
+          {/* Section 1: Membership Status */}
+          <Text style={[styles.filterSectionTitle, { color: colors.gold }]}>
+            MEMBERSHIP STATUS
+          </Text>
+          <View style={styles.filterRow}>
+            <TouchableOpacity
+              onPress={() => {
+                haptics.selection();
+                handleStatusSelect('ALL');
+              }}
+              style={[
+                styles.filterModalBtn,
+                statusFilter === 'ALL' && styles.filterModalBtnActive,
+              ]}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.filterModalBtnText,
+                  { color: statusFilter === 'ALL' ? colors.gold : colors.textSecondary },
+                ]}
+              >
+                All Athletes ({allMembers.length})
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                haptics.selection();
+                handleStatusSelect('ACTIVE');
+              }}
+              style={[
+                styles.filterModalBtn,
+                statusFilter === 'ACTIVE' && styles.filterModalBtnActive,
+              ]}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.filterModalBtnText,
+                  { color: statusFilter === 'ACTIVE' ? colors.gold : colors.textSecondary },
+                ]}
+              >
+                Active ({counts.ACTIVE || 0})
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.filterRow}>
+            <TouchableOpacity
+              onPress={() => {
+                haptics.selection();
+                handleStatusSelect('EXPIRING_SOON');
+              }}
+              style={[
+                styles.filterModalBtn,
+                statusFilter === 'EXPIRING_SOON' && styles.filterModalBtnActive,
+              ]}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.filterModalBtnText,
+                  { color: statusFilter === 'EXPIRING_SOON' ? colors.gold : colors.textSecondary },
+                ]}
+              >
+                Expiring Soon ({counts.EXPIRING_SOON || 0})
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                haptics.selection();
+                handleStatusSelect('EXPIRED');
+              }}
+              style={[
+                styles.filterModalBtn,
+                statusFilter === 'EXPIRED' && styles.filterModalBtnActive,
+              ]}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.filterModalBtnText,
+                  { color: statusFilter === 'EXPIRED' ? colors.gold : colors.textSecondary },
+                ]}
+              >
+                Expired ({counts.EXPIRED || 0})
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.filterRow}>
+            <TouchableOpacity
+              onPress={() => {
+                haptics.selection();
+                handleStatusSelect('HOLD');
+              }}
+              style={[
+                styles.filterModalBtn,
+                statusFilter === 'HOLD' && styles.filterModalBtnActive,
+              ]}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.filterModalBtnText,
+                  { color: statusFilter === 'HOLD' ? colors.gold : colors.textSecondary },
+                ]}
+              >
+                On Hold ({counts.HOLD || 0})
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                haptics.selection();
+                handleStatusSelect('UPCOMING');
+              }}
+              style={[
+                styles.filterModalBtn,
+                statusFilter === 'UPCOMING' && styles.filterModalBtnActive,
+              ]}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.filterModalBtnText,
+                  { color: statusFilter === 'UPCOMING' ? colors.gold : colors.textSecondary },
+                ]}
+              >
+                Advance Queued ({counts.UPCOMING || 0})
+              </Text>
+            </TouchableOpacity>
           </View>
 
-          {/* Section 2: Sort By */}
-          <Text style={[styles.filterSectionTitle, { color: colors.gold, marginTop: 16 }]}>SORT ORDER</Text>
-          <View style={styles.sortModalScroll}>
+          {/* Section 2: Gender Filter */}
+          <Text style={[styles.filterSectionTitle, { color: colors.gold, marginTop: 14 }]}>
+            GENDER FILTER
+          </Text>
+          <View style={styles.filterRow}>
+            <TouchableOpacity
+              onPress={() => {
+                haptics.selection();
+                setGenderFilter('ALL');
+              }}
+              style={[
+                styles.filterModalBtn,
+                genderFilter === 'ALL' && styles.filterModalBtnActive,
+              ]}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.filterModalBtnText,
+                  { color: genderFilter === 'ALL' ? colors.gold : colors.textSecondary },
+                ]}
+              >
+                All Genders
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                haptics.selection();
+                setGenderFilter('Male');
+              }}
+              style={[
+                styles.filterModalBtn,
+                genderFilter === 'Male' && styles.filterModalBtnActive,
+              ]}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.filterModalBtnText,
+                  { color: genderFilter === 'Male' ? colors.gold : colors.textSecondary },
+                ]}
+              >
+                Male
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.filterRow}>
+            <TouchableOpacity
+              onPress={() => {
+                haptics.selection();
+                setGenderFilter('Female');
+              }}
+              style={[
+                styles.filterModalBtn,
+                genderFilter === 'Female' && styles.filterModalBtnActive,
+              ]}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.filterModalBtnText,
+                  { color: genderFilter === 'Female' ? colors.gold : colors.textSecondary },
+                ]}
+              >
+                Female
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                haptics.selection();
+                setGenderFilter('Other');
+              }}
+              style={[
+                styles.filterModalBtn,
+                genderFilter === 'Other' && styles.filterModalBtnActive,
+              ]}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.filterModalBtnText,
+                  { color: genderFilter === 'Other' ? colors.gold : colors.textSecondary },
+                ]}
+              >
+                Other
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Section 3: Sort Order */}
+          <Text style={[styles.filterSectionTitle, { color: colors.gold, marginTop: 14 }]}>
+            SORT ORDER
+          </Text>
+          <View style={styles.sortModalList}>
             {SORT_OPTIONS.map((opt) => {
               const isSelected = sortBy === opt.id;
               return (
@@ -847,34 +1060,7 @@ export function MembersScreen() {
               );
             })}
           </View>
-
-          {/* Action Row */}
-          <View style={styles.filterModalActions}>
-            <TouchableOpacity
-              onPress={() => {
-                haptics.medium();
-                setGenderFilter('ALL');
-                setSortBy('expiry_asc');
-              }}
-              style={styles.filterModalResetBtn}
-              activeOpacity={0.7}
-            >
-              <RotateCcw size={14} color={colors.textMuted} />
-              <Text style={[styles.filterModalResetBtnText, { color: colors.textMuted }]}>Reset</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => {
-                haptics.light();
-                setShowFilterModal(false);
-              }}
-              style={[styles.filterModalApplyBtn, { backgroundColor: colors.gold }]}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.filterModalApplyBtnText}>Apply</Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
+        </View>
       </FVEModal>
     </View>
   );
@@ -1034,8 +1220,8 @@ const getMembersStyles = (colors: ThemeColors, isDark: boolean) =>
     expiringCountBadgeText: {
       color: isDark ? '#FBBF24' : '#B45309',
     },
-    filterModalScroll: {
-      maxHeight: 460,
+    filterModalContent: {
+      paddingBottom: 8,
     },
     filterSectionTitle: {
       fontSize: 12,
@@ -1044,49 +1230,50 @@ const getMembersStyles = (colors: ThemeColors, isDark: boolean) =>
       letterSpacing: 0.8,
       marginBottom: 10,
     },
-    filterGenderGrid: {
+    filterRow: {
       flexDirection: 'row',
-      flexWrap: 'wrap',
       gap: 8,
+      marginBottom: 8,
     },
-    filterModalGenderBtn: {
+    filterModalBtn: {
       flex: 1,
-      minWidth: '45%',
-      paddingVertical: 10,
-      paddingHorizontal: 12,
+      paddingVertical: 11,
+      paddingHorizontal: 8,
       borderRadius: 10,
-      backgroundColor: isDark ? '#11141A' : colors.cardBackground,
+      backgroundColor: isDark ? '#14171E' : colors.surfaceMuted,
       borderWidth: 1,
-      borderColor: colors.borderDark,
+      borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.borderLight,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    filterModalGenderBtnText: {
-      fontSize: 13,
+    filterModalBtnActive: {
+      borderColor: colors.gold,
+      backgroundColor: colors.goldMuted,
+    },
+    filterModalBtnText: {
+      fontSize: 12,
       fontFamily: typography.fonts.rajdhani,
       fontWeight: '700',
       letterSpacing: 0.3,
+      textAlign: 'center',
     },
     filterModalActions: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      marginTop: 20,
-      paddingTop: 14,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: colors.borderDark,
       gap: 12,
+      width: '100%',
     },
     filterModalResetBtn: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
-      paddingVertical: 10,
-      paddingHorizontal: 14,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
       borderRadius: 10,
       borderWidth: 1,
-      borderColor: colors.borderDark,
-      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.04)',
+      borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.borderLight,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : colors.surfaceMuted,
     },
     filterModalResetBtnText: {
       fontSize: 13,
@@ -1097,7 +1284,7 @@ const getMembersStyles = (colors: ThemeColors, isDark: boolean) =>
       flex: 1,
       alignItems: 'center',
       justifyContent: 'center',
-      paddingVertical: 11,
+      paddingVertical: 12,
       borderRadius: 10,
     },
     filterModalApplyBtnText: {
@@ -1107,7 +1294,7 @@ const getMembersStyles = (colors: ThemeColors, isDark: boolean) =>
       fontWeight: '800',
       letterSpacing: 0.5,
     },
-    sortModalScroll: {
+    sortModalList: {
       marginBottom: 4,
     },
     sortOptionItem: {
@@ -1117,9 +1304,9 @@ const getMembersStyles = (colors: ThemeColors, isDark: boolean) =>
       paddingVertical: 12,
       paddingHorizontal: 14,
       borderRadius: 12,
-      backgroundColor: isDark ? '#11141A' : colors.cardBackground,
+      backgroundColor: isDark ? '#14171E' : colors.surfaceMuted,
       borderWidth: 1,
-      borderColor: colors.borderDark,
+      borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.borderLight,
       marginBottom: 8,
     },
     sortOptionItemActive: {

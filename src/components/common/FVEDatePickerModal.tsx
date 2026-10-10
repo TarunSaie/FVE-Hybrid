@@ -9,6 +9,7 @@ import {
   SafeAreaView,
   Pressable,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronLeft, ChevronRight, X, Calendar, Check } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ThemeColors } from '@/constants/colors';
@@ -52,6 +53,8 @@ export function FVEDatePickerModal({
   minDate,
 }: FVEDatePickerModalProps) {
   const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
+  const bottomInset = Math.max(insets.bottom, 16);
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
   // Parse initial year, month, day
@@ -167,7 +170,7 @@ export function FVEDatePickerModal({
         <Pressable style={styles.backdropTap} onPress={onClose} />
 
         <SafeAreaView pointerEvents="box-none" style={styles.safeArea}>
-          <View style={styles.sheet}>
+          <View style={[styles.sheet, { paddingBottom: bottomInset + 16 }]}>
             {/* Sheet Handle */}
             <View style={styles.handleContainer}>
               <View style={styles.sheetHandle} />
@@ -346,13 +349,12 @@ const getStyles = (colors: ThemeColors, isDark: boolean) =>
       justifyContent: 'flex-end',
     },
     sheet: {
-      backgroundColor: colors.cardBackground,
+      backgroundColor: colors.surface,
       borderTopLeftRadius: 28,
       borderTopRightRadius: 28,
       borderWidth: 1,
       borderBottomWidth: 0,
-      borderColor: colors.borderDark,
-      paddingBottom: 24,
+      borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.borderLight,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: -6 },
       shadowOpacity: 0.25,

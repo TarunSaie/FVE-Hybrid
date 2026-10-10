@@ -1,19 +1,29 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
+  SectionList,
   RefreshControl,
   TouchableOpacity,
   Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Shield, User, Phone, Mail, LogIn, Edit, Trash2, Sparkles, Search, X } from 'lucide-react-native';
+import {
+  Plus,
+  Shield,
+  Search,
+  X,
+  MoreVertical,
+  LogIn,
+  Edit,
+  Trash2,
+} from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEInput } from '@/components/common/FVEInput';
 import { FVEBadge } from '@/components/common/FVEBadge';
+import { FVEModal } from '@/components/common/FVEModal';
 import { StaffFormModal } from '@/components/features/StaffFormModal';
 import { FVEEmptyState } from '@/components/common/FVEEmptyState';
 import { FVELogoLoader } from '@/components/common/FVELogoLoader';
@@ -24,25 +34,35 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { ROLE_DISPLAY_NAMES } from '@/constants/permissions';
+import { haptics } from '@/utils/haptics';
+
+const ROLE_ORDER: { role: UserRole; title: string }[] = [
+  { role: 'OWNER', title: 'OWNERS' },
+  { role: 'ADMIN', title: 'ADMINISTRATORS' },
+  { role: 'TRAINER', title: 'TRAINERS' },
+  { role: 'RECEPTIONIST', title: 'RECEPTIONISTS' },
+  { role: 'ATTENDANCE_SCANNER', title: 'ATTENDANCE SCANNERS' },
+];
 
 export function StaffScreen() {
   const navigation = useNavigation();
-  const { user, ownerUser, activateStaffProfile, clearStaffProfile } = useAuth();
+  const { user, activateStaffProfile, clearStaffProfile } = useAuth();
   const qc = useQueryClient();
   const { colors, isDark } = useTheme();
-  const styles = React.useMemo(() => getStaffStyles(colors, isDark), [colors, isDark]);
+  const styles = useMemo(() => getStaffStyles(colors, isDark), [colors, isDark]);
 
   const [showModal, setShowModal] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState<UserProfile | null>(null);
+  const [activeMenuStaff, setActiveMenuStaff] = useState<UserProfile | null>(null);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
-  React.useEffect(() => {
+  useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
     return () => clearTimeout(t);
   }, [search]);
 
-  const { data: staffList, isLoading, refetch } = useQuery({
+  const { data: staffList, isLoading } = useQuery({
     queryKey: ['mobile-staff-list'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -54,17 +74,33 @@ export function StaffScreen() {
     },
   });
 
-  const filteredStaff = React.useMemo(() => {
+  const filteredStaff = useMemo(() => {
     const term = debouncedSearch.trim().toLowerCase();
     if (!term) return staffList || [];
     return (staffList || []).filter(s =>
       (s.full_name || '').toLowerCase().includes(term) ||
       (s.username || '').toLowerCase().includes(term) ||
-      (s.role || '').toLowerCase().includes(term)
+      (s.role || '').toLowerCase().includes(term) ||
+      (s.email || '').toLowerCase().includes(term)
     );
   }, [staffList, debouncedSearch]);
 
+  const sections = useMemo(() => {
+    const list = filteredStaff || [];
+    return ROLE_ORDER.map(group => {
+      const matching = list.filter(
+        s => (s.role || '').toUpperCase() === group.role
+      );
+      return {
+        title: group.title,
+        role: group.role,
+        data: matching,
+      };
+    }).filter(s => s.data.length > 0);
+  }, [filteredStaff]);
+
   const onRefresh = useCallback(() => {
+    haptics.light();
     qc.invalidateQueries({ queryKey: ['mobile-staff-list'] });
   }, [qc]);
 
@@ -78,7 +114,10 @@ export function StaffScreen() {
           text: 'Switch',
           onPress: async () => {
             await activateStaffProfile(profile);
-            Alert.alert('Profile Switched', `Active profile: ${profile.full_name || profile.username}`);
+            Alert.alert(
+              'Profile Switched',
+              `Active profile: ${profile.full_name || profile.username}`
+            );
           },
         },
       ]
@@ -108,7 +147,10 @@ export function StaffScreen() {
               if (error) throw error;
               onRefresh();
             } catch (err: unknown) {
-              Alert.alert('Error', (err as Error).message || 'Failed to remove staff');
+              Alert.alert(
+                'Error',
+                (err as Error).message || 'Failed to remove staff'
+              );
             }
           },
         },
@@ -167,148 +209,171 @@ export function StaffScreen() {
       {isLoading ? (
         <FVELogoLoader message="Syncing Staff..." fullScreen />
       ) : (
-        <FlatList
-          data={filteredStaff}
-        keyExtractor={item => item.id}
-        contentContainerStyle={styles.listContent}
-        keyboardDismissMode="on-drag"
-        keyboardShouldPersistTaps="handled"
-        initialNumToRender={10}
-        maxToRenderPerBatch={8}
-        windowSize={5}
-        removeClippedSubviews={true}
-        refreshControl={
-          <RefreshControl
-            refreshing={isLoading}
-            onRefresh={onRefresh}
-            tintColor={colors.gold}
-            colors={[colors.gold]}
-          />
-        }
-        renderItem={({ item }) => {
-          const isCurrentActive = user?.id === item.id;
-          const isOwner = item.role === 'OWNER';
-          const staffInitial = (
-            item.full_name?.trim()?.charAt(0) ||
-            item.username?.trim()?.charAt(0) ||
-            (isOwner ? 'O' : 'S')
-          ).toUpperCase();
-
-          return (
-            <View
-              style={[
-                styles.staffCard,
-                isOwner && styles.ownerCard,
-                isCurrentActive && styles.activeCard,
-              ]}
-            >
-              <View style={styles.staffHeader}>
-                <View style={styles.headerLeftRow}>
-                  <View style={[styles.staffAvatar, isOwner && styles.ownerStaffAvatar]}>
-                    <Text
-                      style={[
-                        styles.staffAvatarText,
-                        isOwner && styles.ownerStaffAvatarText,
-                      ]}
-                    >
-                      {staffInitial}
-                    </Text>
-                  </View>
-
-                  <View style={styles.leftCol}>
-                    <View style={styles.nameRow}>
-                      <Text style={[styles.staffName, isOwner && styles.ownerStaffName]}>
-                        {(item.full_name || item.username || 'Staff Profile').toUpperCase()}
-                      </Text>
-                      {isOwner && (
-                        <View style={styles.ownerBadgePill}>
-                          <Sparkles size={9} color={colors.goldBright} />
-                          <Text style={styles.ownerBadgePillText}>PRIMARY OWNER</Text>
-                        </View>
-                      )}
-                    </View>
-                    <FVEBadge role={item.role} size="sm" style={{ marginTop: 4 }} />
-                  </View>
-                </View>
-
-                {isCurrentActive ? (
-                  <View style={styles.activeBadge}>
-                    <Text style={styles.activeBadgeText}>ACTIVE</Text>
-                  </View>
-                ) : (
-                  !isOwner && (
-                    <TouchableOpacity
-                      onPress={() => handleSwitchProfile(item)}
-                      style={styles.switchBtn}
-                    >
-                      <LogIn size={13} color={colors.gold} />
-                      <Text style={styles.switchBtnText}>Operate</Text>
-                    </TouchableOpacity>
-                  )
-                )}
-              </View>
-
-              <View style={styles.contactDetails}>
-                {item.email ? (
-                  <View style={styles.detailRow}>
-                    <Mail size={12} color={colors.textMuted} />
-                    <Text style={styles.detailText}>{item.email}</Text>
-                  </View>
-                ) : null}
-
-                {item.phone ? (
-                  <View style={styles.detailRow}>
-                    <Phone size={12} color={colors.textMuted} />
-                    <Text style={styles.detailText}>{item.phone}</Text>
-                  </View>
-                ) : null}
-              </View>
-
-              {!isOwner && (
-                <View style={styles.actionsRow}>
-                  <TouchableOpacity
-                    onPress={() => {
-                      setSelectedStaff(item);
-                      setShowModal(true);
-                    }}
-                    style={styles.actionIconBtn}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Edit ${item.full_name || item.username}`}
-                  >
-                    <Edit size={14} color={colors.gold} />
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    onPress={() => handleDeleteStaff(item)}
-                    style={[styles.actionIconBtn, styles.deleteActionBtn]}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Delete ${item.full_name || item.username}`}
-                  >
-                    <Trash2 size={14} color={colors.error} />
-                  </TouchableOpacity>
-                </View>
-              )}
+        <SectionList
+          sections={sections}
+          keyExtractor={item => item.id}
+          contentContainerStyle={styles.listContent}
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
+          initialNumToRender={14}
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          removeClippedSubviews={true}
+          refreshControl={
+            <RefreshControl
+              refreshing={isLoading}
+              onRefresh={onRefresh}
+              tintColor={colors.gold}
+              colors={[colors.gold]}
+            />
+          }
+          renderSectionHeader={({ section }) => (
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionHeaderText}>
+                {section.title} ({section.data.length})
+              </Text>
             </View>
-          );
-        }}
-        ListEmptyComponent={
-          !isLoading ? (
-            <FVEEmptyState
-              icon={<Shield size={40} color={colors.gold} />}
-              title="No Staff Members"
-              description="Add trainers, receptionists, or attendance kiosks."
-              actionTitle="+ Add Staff"
-              onAction={() => {
-                setSelectedStaff(null);
+          )}
+          renderItem={({ item }) => {
+            const isCurrentActive = user?.id === item.id;
+            const staffName = (item.full_name || item.username || 'Staff Profile').toUpperCase();
+            const staffEmail = item.email || item.phone || 'No email specified';
+
+            return (
+              <View style={styles.staffRow}>
+                <View style={styles.rowMainCol}>
+                  {/* Fixed Row Line 1: Name + Role (+ Subtle (You) marker) */}
+                  <View style={styles.nameLine}>
+                    <Text style={styles.staffName} numberOfLines={1}>
+                      {staffName}
+                    </Text>
+                    {isCurrentActive && (
+                      <View style={styles.youMarkerBadge}>
+                        <Text style={styles.youMarkerText}>You</Text>
+                      </View>
+                    )}
+                    {/* Exactly one role label */}
+                    <FVEBadge role={item.role} size="sm" />
+                  </View>
+
+                  {/* Fixed Row Line 2: Email */}
+                  <Text style={styles.staffEmail} numberOfLines={1}>
+                    {staffEmail}
+                  </Text>
+                </View>
+
+                {/* ⋮ Options Menu */}
+                <TouchableOpacity
+                  onPress={() => {
+                    haptics.light();
+                    setActiveMenuStaff(item);
+                  }}
+                  style={styles.moreBtn}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Options for ${item.full_name || item.username}`}
+                >
+                  <MoreVertical size={18} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+            );
+          }}
+          ListEmptyComponent={
+            !isLoading ? (
+              <FVEEmptyState
+                icon={<Shield size={40} color={colors.gold} />}
+                title="No Staff Found"
+                description={
+                  debouncedSearch
+                    ? 'No team members match your search criteria.'
+                    : 'Add trainers, receptionists, or attendance kiosks.'
+                }
+                actionTitle="+ Add Staff"
+                onAction={() => {
+                  setSelectedStaff(null);
+                  setShowModal(true);
+                }}
+              />
+            ) : null
+          }
+        />
+      )}
+
+      {/* Staff Options Modal (⋮) */}
+      <FVEModal
+        visible={!!activeMenuStaff}
+        onClose={() => setActiveMenuStaff(null)}
+        title="STAFF OPTIONS"
+        subtitle={activeMenuStaff?.full_name || activeMenuStaff?.username || undefined}
+      >
+        {activeMenuStaff && (
+          <View style={styles.modalMenuContent}>
+            {/* Operate profile (if not current active user and not owner) */}
+            {user?.id !== activeMenuStaff.id && activeMenuStaff.role !== 'OWNER' && (
+              <TouchableOpacity
+                style={styles.menuItem}
+                activeOpacity={0.7}
+                onPress={() => {
+                  const staffToSwitch = activeMenuStaff;
+                  setActiveMenuStaff(null);
+                  handleSwitchProfile(staffToSwitch);
+                }}
+              >
+                <View style={[styles.menuIconWrap, { backgroundColor: colors.goldMuted, borderColor: colors.goldBorder }]}>
+                  <LogIn size={16} color={colors.gold} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.menuItemTitle}>Operate Account</Text>
+                  <Text style={styles.menuItemSub}>
+                    Temporarily switch session to this staff role
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            )}
+
+            {/* Edit staff */}
+            <TouchableOpacity
+              style={styles.menuItem}
+              activeOpacity={0.7}
+              onPress={() => {
+                const staffToEdit = activeMenuStaff;
+                setActiveMenuStaff(null);
+                setSelectedStaff(staffToEdit);
                 setShowModal(true);
               }}
-            />
-          ) : null
-        }
-      />
-      )}
+            >
+              <View style={[styles.menuIconWrap, { backgroundColor: colors.goldMuted, borderColor: colors.goldBorder }]}>
+                <Edit size={16} color={colors.gold} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.menuItemTitle}>Edit Details</Text>
+                <Text style={styles.menuItemSub}>Update full name, contact, or assigned role</Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* Delete staff (only non-owner) */}
+            {activeMenuStaff.role !== 'OWNER' && (
+              <TouchableOpacity
+                style={[styles.menuItem, { borderColor: 'rgba(239, 68, 68, 0.25)' }]}
+                activeOpacity={0.7}
+                onPress={() => {
+                  const staffToDelete = activeMenuStaff;
+                  setActiveMenuStaff(null);
+                  handleDeleteStaff(staffToDelete);
+                }}
+              >
+                <View style={[styles.menuIconWrap, { backgroundColor: 'rgba(239, 68, 68, 0.12)', borderColor: 'rgba(239, 68, 68, 0.3)' }]}>
+                  <Trash2 size={16} color={colors.error} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.menuItemTitle, { color: colors.error }]}>Delete Staff</Text>
+                  <Text style={styles.menuItemSub}>Permanently remove from staff roster</Text>
+                </View>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+      </FVEModal>
 
       <StaffFormModal
         visible={showModal}
@@ -347,7 +412,8 @@ const getStaffStyles = (colors: ThemeColors, isDark: boolean) =>
       backgroundColor: isDark ? 'rgba(239, 161, 0, 0.15)' : 'rgba(217, 130, 0, 0.12)',
       borderBottomWidth: 1,
       borderBottomColor: colors.goldBorder,
-      padding: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
@@ -360,7 +426,7 @@ const getStaffStyles = (colors: ThemeColors, isDark: boolean) =>
     },
     returnBtn: {
       backgroundColor: colors.gold,
-      paddingHorizontal: 8,
+      paddingHorizontal: 10,
       paddingVertical: 4,
       borderRadius: 6,
     },
@@ -372,92 +438,47 @@ const getStaffStyles = (colors: ThemeColors, isDark: boolean) =>
     },
     searchContainer: {
       paddingHorizontal: 16,
-      paddingBottom: 10,
+      paddingBottom: 8,
       paddingTop: 4,
     },
     listContent: {
-      padding: 16,
       paddingBottom: 40,
     },
-    staffCard: {
-      backgroundColor: colors.cardBackground,
-      borderWidth: 1,
-      borderColor: isDark ? 'rgba(239, 161, 0, 0.22)' : 'rgba(217, 130, 0, 0.2)',
-      borderRadius: 14,
-      padding: 14,
-      marginBottom: 10,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: isDark ? 0.3 : 0.06,
-      shadowRadius: 6,
-      elevation: 2,
+    sectionHeader: {
+      paddingHorizontal: 16,
+      paddingTop: 16,
+      paddingBottom: 8,
+      backgroundColor: colors.background,
     },
-    ownerCard: {
-      backgroundColor: isDark ? '#131722' : '#F8FAFC',
-      borderWidth: 1.5,
-      borderColor: isDark ? 'rgba(239, 161, 0, 0.45)' : 'rgba(217, 130, 0, 0.4)',
-      shadowColor: colors.gold,
-      shadowOffset: { width: 0, height: 3 },
-      shadowOpacity: 0.2,
-      shadowRadius: 8,
-      elevation: 4,
+    sectionHeaderText: {
+      color: colors.textSecondary,
+      fontSize: 11,
+      fontFamily: typography.fonts.orbitron,
+      fontWeight: '700',
+      letterSpacing: 1,
+      textTransform: 'uppercase',
     },
-    activeCard: {
-      borderColor: colors.gold,
-      backgroundColor: isDark ? '#161B26' : '#FFFDF5',
-    },
-    staffHeader: {
+    // Fixed row height: name + role, then email
+    staffRow: {
+      height: 64,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      marginBottom: 10,
-    },
-    headerLeftRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      flex: 1,
-      marginRight: 8,
-    },
-    staffAvatar: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
+      paddingHorizontal: 16,
       backgroundColor: colors.surface,
-      borderWidth: 1.2,
-      borderColor: colors.borderDark,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginRight: 10,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.borderDark,
     },
-    ownerStaffAvatar: {
-      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.16)' : 'rgba(217, 130, 0, 0.12)',
-      borderColor: colors.gold,
-      borderWidth: 1.8,
-      shadowColor: colors.gold,
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.4,
-      shadowRadius: 4,
-      elevation: 3,
-    },
-    staffAvatarText: {
-      color: colors.textPrimary,
-      fontSize: 18,
-      fontFamily: typography.fonts.orbitron,
-      fontWeight: '800',
-      includeFontPadding: false,
-    },
-    ownerStaffAvatarText: {
-      color: colors.gold,
-      fontWeight: '900',
-    },
-    leftCol: {
+    rowMainCol: {
       flex: 1,
+      marginRight: 12,
+      justifyContent: 'center',
     },
-    nameRow: {
+    nameLine: {
       flexDirection: 'row',
       alignItems: 'center',
-      flexWrap: 'wrap',
       gap: 6,
+      marginBottom: 3,
     },
     staffName: {
       color: colors.textPrimary,
@@ -466,87 +487,64 @@ const getStaffStyles = (colors: ThemeColors, isDark: boolean) =>
       fontWeight: '700',
       flexShrink: 1,
     },
-    ownerStaffName: {
-      color: colors.textPrimary,
-      fontFamily: typography.fonts.orbitron,
-      fontWeight: '800',
-      letterSpacing: 0.4,
-    },
-    ownerBadgePill: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 3,
-      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.18)' : 'rgba(217, 130, 0, 0.15)',
-      borderWidth: 1,
-      borderColor: isDark ? 'rgba(239, 161, 0, 0.45)' : 'rgba(217, 130, 0, 0.4)',
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-      borderRadius: 6,
-    },
-    ownerBadgePillText: {
-      color: colors.gold,
-      fontSize: 8.5,
-      fontFamily: typography.fonts.orbitron,
-      fontWeight: '800',
-      letterSpacing: 0.6,
-    },
-    switchBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-      backgroundColor: colors.goldMuted,
+    youMarkerBadge: {
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.16)' : 'rgba(217, 130, 0, 0.12)',
       borderWidth: 1,
       borderColor: colors.goldBorder,
-      borderRadius: 6,
-      paddingHorizontal: 8,
-      paddingVertical: 4,
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+      borderRadius: 4,
     },
-    switchBtnText: {
+    youMarkerText: {
       color: colors.gold,
-      fontSize: 10,
-      fontFamily: typography.fonts.rajdhani,
-      fontWeight: '700',
-    },
-    activeBadge: {
-      backgroundColor: colors.successMuted,
-      borderRadius: 6,
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-    },
-    activeBadgeText: {
-      color: colors.success,
       fontSize: 9,
       fontFamily: typography.fonts.rajdhani,
       fontWeight: '700',
     },
-    contactDetails: {
-      gap: 4,
-    },
-    detailRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-    },
-    detailText: {
+    staffEmail: {
       color: colors.textSecondary,
       fontSize: typography.sizes.xs,
       fontFamily: typography.fonts.inter,
     },
-    actionsRow: {
-      flexDirection: 'row',
-      justifyContent: 'flex-end',
+    moreBtn: {
+      width: 36,
+      height: 36,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 8,
+    },
+    modalMenuContent: {
       gap: 8,
-      marginTop: 10,
-      borderTopWidth: 1,
-      borderTopColor: colors.borderDark,
-      paddingTop: 8,
+      paddingBottom: 12,
     },
-    actionIconBtn: {
-      padding: 6,
-      borderRadius: 6,
-      backgroundColor: colors.goldMuted,
+    menuItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      padding: 12,
+      borderRadius: 12,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.borderDark,
     },
-    deleteActionBtn: {
-      backgroundColor: colors.errorMuted,
+    menuIconWrap: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+    },
+    menuItemTitle: {
+      color: colors.textPrimary,
+      fontSize: typography.sizes.sm,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    menuItemSub: {
+      color: colors.textSecondary,
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.inter,
+      marginTop: 2,
     },
   });

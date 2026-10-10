@@ -883,31 +883,36 @@ export function MemberFormModal({
         </View>
       </FVEModal>
 
-      {/* Date of Birth Picker */}
+      {/* Unified Date Picker Sheet (One sheet per screen) */}
       <FVEDatePickerModal
-        visible={showDobPicker}
-        onClose={() => setShowDobPicker(false)}
-        onSelectDate={handleDobSelect}
-        initialDate={dateOfBirth || '1998-01-01'}
-        title="SELECT DATE OF BIRTH"
-      />
-
-      {/* Joining Date Picker */}
-      <FVEDatePickerModal
-        visible={showJoiningPicker}
-        onClose={() => setShowJoiningPicker(false)}
-        onSelectDate={(d) => setJoiningDate(d)}
-        initialDate={joiningDate || getLocalDateStr()}
-        title="SELECT JOINING DATE"
-      />
-
-      {/* Plan Start Date Picker */}
-      <FVEDatePickerModal
-        visible={showPlanStartDatePicker}
-        onClose={() => setShowPlanStartDatePicker(false)}
-        onSelectDate={(d) => setPlanStartDate(d)}
-        initialDate={planStartDate || getLocalDateStr()}
-        title="SELECT MEMBERSHIP START DATE"
+        visible={showDobPicker || showJoiningPicker || showPlanStartDatePicker}
+        onClose={() => {
+          setShowDobPicker(false);
+          setShowJoiningPicker(false);
+          setShowPlanStartDatePicker(false);
+        }}
+        onSelectDate={(d) => {
+          if (showDobPicker) handleDobSelect(d);
+          else if (showJoiningPicker) setJoiningDate(d);
+          else if (showPlanStartDatePicker) setPlanStartDate(d);
+          setShowDobPicker(false);
+          setShowJoiningPicker(false);
+          setShowPlanStartDatePicker(false);
+        }}
+        initialDate={
+          showDobPicker
+            ? (dateOfBirth || '1998-01-01')
+            : showJoiningPicker
+            ? (joiningDate || getLocalDateStr())
+            : (planStartDate || getLocalDateStr())
+        }
+        title={
+          showDobPicker
+            ? 'SELECT DATE OF BIRTH'
+            : showJoiningPicker
+            ? 'SELECT JOINING DATE'
+            : 'SELECT MEMBERSHIP START DATE'
+        }
       />
     </>
   );

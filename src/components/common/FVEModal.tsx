@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import {
   Modal,
   View,
@@ -31,6 +31,7 @@ interface FVEModalProps {
   maxHeight?: number | `${number}%`;
   scrollable?: boolean;
   contentContainerStyle?: StyleProp<ViewStyle>;
+  footer?: React.ReactNode;
 }
 
 export function FVEModal({
@@ -39,24 +40,22 @@ export function FVEModal({
   title,
   children,
   subtitle,
-  maxHeight = '90%',
+  maxHeight,
   scrollable = true,
   contentContainerStyle,
+  footer,
 }: FVEModalProps) {
   const { colors, isDark } = useTheme();
   const { height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const bottomInset = Math.max(insets.bottom, 16);
-  const topInset = Math.max(insets.top, 24);
+
+  // Default long-sheet height is ~85% of screen; short sheets dynamically size to content
+  const resolvedMaxHeight = maxHeight ?? Math.round(screenHeight * 0.85);
 
   const translateY = useRef(new Animated.Value(screenHeight)).current;
   const currentOffset = useRef(0);
-  const [sheetHeight, setSheetHeight] = useState(0);
-  const isDragging = useRef(false);
   const isClosingRef = useRef(false);
-
-  // Maximum distance the sheet can travel upwards toward the top of the screen
-  const maxUpDrag = Math.max(0, screenHeight - sheetHeight - topInset - 16);
 
   const closeWithAnimation = useCallback(() => {
     if (isClosingRef.current) return;
@@ -64,28 +63,15 @@ export function FVEModal({
     haptics.light();
     Animated.timing(translateY, {
       toValue: screenHeight,
-      duration: 200,
+      duration: 220,
       useNativeDriver: true,
     }).start(() => {
       onClose();
-      // Keep offscreen position so it never flashes back to 0 before unmounting
       setTimeout(() => {
         isClosingRef.current = false;
-      }, 150);
+      }, 100);
     });
   }, [screenHeight, onClose, translateY]);
-
-  // Synchronously keep live parameters updated on every render to eliminate stale closures
-  const paramsRef = useRef({
-    maxUpDrag: Math.round(screenHeight * 0.45),
-    screenHeight,
-    closeWithAnimation,
-  });
-  paramsRef.current = {
-    maxUpDrag: maxUpDrag > 20 ? maxUpDrag : Math.round(screenHeight * 0.45),
-    screenHeight,
-    closeWithAnimation,
-  };
 
   useEffect(() => {
     if (visible) {
@@ -118,23 +104,22 @@ export function FVEModal({
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
-      onStartShouldSetPanResponderCapture: () => true,
+      onStartShouldSetPanResponderCapture: () => false,
       onMoveShouldSetPanResponder: (_, gestureState) => {
         return (
-          Math.abs(gestureState.dy) > 2 &&
+          Math.abs(gestureState.dy) > 4 &&
           Math.abs(gestureState.dy) > Math.abs(gestureState.dx)
         );
       },
       onMoveShouldSetPanResponderCapture: (_, gestureState) => {
         return (
-          Math.abs(gestureState.dy) > 2 &&
+          Math.abs(gestureState.dy) > 4 &&
           Math.abs(gestureState.dy) > Math.abs(gestureState.dx)
         );
       },
       onPanResponderTerminationRequest: () => false,
       onShouldBlockNativeResponder: () => true,
       onPanResponderGrant: () => {
-        isDragging.current = true;
         translateY.stopAnimation();
         // @ts-ignore - access synchronous current animated value safely
         const liveVal =
@@ -144,109 +129,60 @@ export function FVEModal({
         currentOffset.current = liveVal;
       },
       onPanResponderMove: (_, gestureState) => {
-        const { maxUpDrag: maxUp } = paramsRef.current;
-        const target = currentOffset.current + gestureState.dy;
-
-        if (target < -maxUp) {
-          // Dragging above top limit: apply rubber-band damping
-          const over = -maxUp - target;
-          translateY.setValue(-maxUp - over * 0.25);
+        const dy = gestureState.dy;
+        if (dy > 0) {
+          // Dragging down: direct tracking
+          translateY.setValue(dy);
         } else {
-          translateY.setValue(target);
+          // Dragging up towards top: rubber-band resistance (max ~28px upward displacement)
+          // Short sheets size to content and never jump/expand to leave empty space
+          const upwardTravel = Math.max(-28, dy * 0.18);
+          translateY.setValue(upwardTravel);
         }
       },
       onPanResponderRelease: (_, gestureState) => {
-        isDragging.current = false;
-        const { maxUpDrag: maxUp, closeWithAnimation: closeAnim } = paramsRef.current;
-        const startOffset = currentOffset.current;
         const dy = gestureState.dy;
         const vy = gestureState.vy;
-        const endPosition = startOffset + dy;
 
-        // Quick tap on handle (minimal movement): toggle between REST and TOP
-        if (Math.abs(dy) < 6 && Math.abs(vy) < 0.15) {
-          if (startOffset === 0 && maxUp > 30) {
-            haptics.light();
-            Animated.spring(translateY, {
-              toValue: -maxUp,
-              useNativeDriver: true,
-              damping: 20,
-              stiffness: 160,
-              mass: 0.8,
-            }).start(() => {
-              currentOffset.current = -maxUp;
-            });
-            return;
-          } else if (startOffset < -20) {
-            haptics.light();
-            Animated.spring(translateY, {
-              toValue: 0,
-              useNativeDriver: true,
-              damping: 20,
-              stiffness: 160,
-              mass: 0.8,
-            }).start(() => {
-              currentOffset.current = 0;
-            });
-            return;
-          }
-        }
-
-        // 1. DISMISS CONDITION:
-        // Dragged down past rest position by > 75px or strong downward flick
-        if (endPosition > 75 || (vy > 0.6 && endPosition > -30)) {
-          closeAnim();
+        // Dismiss if dragged down by > 75px or strong downward flick
+        if (dy > 75 || (vy > 0.55 && dy > 20)) {
+          closeWithAnimation();
           return;
         }
 
-        // 2. EXPAND TO TOP CONDITION:
-        // Strong upward flick or dragged past 35% of upward travel
-        if (maxUp > 30 && (vy < -0.4 || endPosition < -maxUp * 0.35)) {
-          haptics.light();
-          Animated.spring(translateY, {
-            toValue: -maxUp,
-            useNativeDriver: true,
-            damping: 20,
-            stiffness: 160,
-            mass: 0.8,
-          }).start(() => {
-            currentOffset.current = -maxUp;
-          });
-          return;
-        }
-
-        // 3. COLLAPSE TO REST POSITION (Default):
-        haptics.light();
+        // Return to resting position (0) smoothly
         Animated.spring(translateY, {
           toValue: 0,
           useNativeDriver: true,
-          damping: 20,
-          stiffness: 160,
+          damping: 24,
+          stiffness: 220,
           mass: 0.8,
         }).start(() => {
           currentOffset.current = 0;
         });
       },
       onPanResponderTerminate: () => {
-        isDragging.current = false;
         Animated.spring(translateY, {
-          toValue: currentOffset.current,
+          toValue: 0,
           useNativeDriver: true,
-          damping: 20,
-          stiffness: 160,
-        }).start();
+          damping: 24,
+          stiffness: 220,
+        }).start(() => {
+          currentOffset.current = 0;
+        });
       },
     })
   ).current;
 
   const backdropOpacity = translateY.interpolate({
-    inputRange: [-maxUpDrag - 40, 0, screenHeight * 0.75],
+    inputRange: [-30, 0, screenHeight * 0.7],
     outputRange: [1, 1, 0],
     extrapolate: 'clamp',
   });
 
-  const sheetBg = isDark ? '#12151B' : colors.cardBackground;
-  const sheetBorder = isDark ? 'rgba(255, 255, 255, 0.1)' : colors.borderDark;
+  // Theme surface color (never pure white, even in light theme)
+  const sheetBg = colors.surface;
+  const sheetBorder = isDark ? 'rgba(255, 255, 255, 0.08)' : colors.borderLight;
   const handleBg = isDark ? 'rgba(255, 255, 255, 0.25)' : 'rgba(15, 23, 42, 0.2)';
   const closeBtnBg = isDark ? 'rgba(255, 255, 255, 0.07)' : 'rgba(15, 23, 42, 0.06)';
 
@@ -282,40 +218,21 @@ export function FVEModal({
           pointerEvents="box-none"
         >
           <Animated.View
-            onLayout={(e) => {
-              if (isDragging.current) return;
-              const h = e.nativeEvent.layout.height;
-              if (h > 0 && Math.abs(h - sheetHeight) > 4) {
-                setSheetHeight(h);
-              }
-            }}
             style={[
               styles.sheet,
               {
                 backgroundColor: sheetBg,
                 borderColor: sheetBorder,
-                maxHeight,
+                maxHeight: resolvedMaxHeight,
                 transform: [{ translateY }],
               },
             ]}
           >
-            {/* Seamless Bottom Skirt to prevent any gap when dragged towards top */}
-            <View
-              pointerEvents="none"
-              style={[
-                styles.bottomSkirt,
-                {
-                  backgroundColor: sheetBg,
-                  borderColor: sheetBorder,
-                },
-              ]}
-            />
-
             {/* Native Sheet Grab Handle with Drag Gesture */}
             <View
               {...panResponder.panHandlers}
               style={styles.handleContainer}
-              hitSlop={{ top: 10, bottom: 10 }}
+              hitSlop={{ top: 12, bottom: 12 }}
             >
               <View style={[styles.sheetHandle, { backgroundColor: handleBg }]} />
             </View>
@@ -324,7 +241,7 @@ export function FVEModal({
             <View
               style={[
                 styles.header,
-                { borderBottomColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.borderDark },
+                { borderBottomColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.borderLight },
               ]}
             >
               <View {...panResponder.panHandlers} style={styles.headerTextContainer}>
@@ -349,18 +266,19 @@ export function FVEModal({
               </TouchableOpacity>
             </View>
 
+            {/* Dynamic Content: short sheets size to content, long sheets scroll up to max 85% */}
             {scrollable ? (
               <ScrollView
                 style={styles.body}
                 contentContainerStyle={[
                   styles.bodyContent,
-                  { paddingBottom: bottomInset + 12 },
+                  { paddingBottom: footer ? 16 : bottomInset + 16 },
                   contentContainerStyle,
                 ]}
                 keyboardShouldPersistTaps="handled"
                 nestedScrollEnabled={true}
                 showsVerticalScrollIndicator={false}
-                bounces={false}
+                bounces={true}
               >
                 {children}
               </ScrollView>
@@ -369,11 +287,27 @@ export function FVEModal({
                 style={[
                   styles.body,
                   styles.bodyContent,
-                  { paddingBottom: bottomInset + 12 },
+                  { paddingBottom: footer ? 16 : bottomInset + 16 },
                   contentContainerStyle,
                 ]}
               >
                 {children}
+              </View>
+            )}
+
+            {/* Sticky Sheet Footer */}
+            {footer && (
+              <View
+                style={[
+                  styles.footerContainer,
+                  {
+                    paddingBottom: bottomInset + 8,
+                    borderTopColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.borderLight,
+                    backgroundColor: sheetBg,
+                  },
+                ]}
+              >
+                {footer}
               </View>
             )}
           </Animated.View>
@@ -404,25 +338,14 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 24,
   },
-  bottomSkirt: {
-    position: 'absolute',
-    bottom: -1200,
-    left: 0,
-    right: 0,
-    height: 1200,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    borderBottomWidth: 0,
-    borderTopWidth: 0,
-  },
   handleContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
+    paddingVertical: 12,
     width: '100%',
   },
   sheetHandle: {
-    width: 48,
+    width: 44,
     height: 5,
     borderRadius: 3,
   },
@@ -463,5 +386,11 @@ const styles = StyleSheet.create({
   bodyContent: {
     paddingHorizontal: 22,
     paddingTop: 16,
+  },
+  footerContainer: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    width: '100%',
   },
 });

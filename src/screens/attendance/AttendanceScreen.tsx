@@ -1242,7 +1242,7 @@ export function AttendanceScreen() {
           onRightIconPress={() => setManualSearch('')}
           containerStyle={{ marginBottom: 12 }}
         />
-        <ScrollView style={styles.manualList} showsVerticalScrollIndicator={false}>
+        <View style={styles.manualList}>
           {allMembers
             .filter(m => {
               if (manualFilter === 'ACTIVE' && !m.isActive) return false;
@@ -1310,7 +1310,7 @@ export function AttendanceScreen() {
                 )}
               </TouchableOpacity>
             ))}
-        </ScrollView>
+        </View>
       </FVEModal>
 
       {/* Member QR Code Modal */}
@@ -1662,7 +1662,7 @@ const getAttendanceStyles = (colors: ThemeColors, isDark: boolean) =>
       paddingBottom: 110,
     },
     manualList: {
-      maxHeight: 350,
+      width: '100%',
     },
     manualMemberItem: {
       flexDirection: 'row',

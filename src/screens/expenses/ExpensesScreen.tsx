@@ -3,7 +3,7 @@ import {
   View,
   Text,
   StyleSheet,
-  FlatList,
+  SectionList,
   RefreshControl,
   TouchableOpacity,
   ScrollView,
@@ -14,18 +14,15 @@ import { useNavigation } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Plus,
-  DollarSign,
   TrendingDown,
   TrendingUp,
-  Trash2,
-  Edit,
-  Filter,
   Search,
   X,
   Calendar,
   ChevronLeft,
   ChevronRight,
-  Download,
+  MoreVertical,
+  IndianRupee,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEInput } from '@/components/common/FVEInput';
@@ -181,6 +178,42 @@ export function ExpensesScreen() {
     );
   }, [expenses, debouncedSearch]);
 
+  // Group filtered expenses into sections by date
+  const expenseSections = useMemo(() => {
+    const map = new Map<string, { date: string; dayTotal: number; data: Expense[] }>();
+    for (const exp of filteredExpenses) {
+      const dateKey = exp.expense_date || getLocalDateStr();
+      if (!map.has(dateKey)) {
+        map.set(dateKey, { date: dateKey, dayTotal: 0, data: [] });
+      }
+      const group = map.get(dateKey)!;
+      group.data.push(exp);
+      group.dayTotal += Number(exp.amount || 0);
+    }
+
+    const sortedDates = Array.from(map.keys()).sort((a, b) => b.localeCompare(a));
+    const today = getLocalDateStr();
+    const yesterday = (() => {
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      return getLocalDateStr(d);
+    })();
+
+    return sortedDates.map(dateKey => {
+      const group = map.get(dateKey)!;
+      let title = formatDate(dateKey);
+      if (dateKey === today) title = 'Today';
+      else if (dateKey === yesterday) title = 'Yesterday';
+
+      return {
+        title,
+        date: dateKey,
+        dayTotal: group.dayTotal,
+        data: group.data,
+      };
+    });
+  }, [filteredExpenses]);
+
   const onRefresh = useCallback(() => {
     haptics.light();
     qc.invalidateQueries({ queryKey: ['mobile-expenses'] });
@@ -235,10 +268,10 @@ export function ExpensesScreen() {
     }
   };
 
-  const handleExportPress = () => {
+  const handleExportMenuPress = () => {
     haptics.light();
     Alert.alert(
-      'Download Expense Report',
+      'Export Expense Report',
       `Select format for ${formattedMonthLabel}:`,
       [
         {
@@ -260,7 +293,7 @@ export function ExpensesScreen() {
   const handleDelete = (expense: Expense) => {
     Alert.alert(
       'Delete Expense',
-      `Remove ${expense.category} expense of ${formatCurrency(expense.amount)}?`,
+      `Are you sure you want to delete ${expense.category} expense of ${formatCurrency(expense.amount)}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -273,8 +306,10 @@ export function ExpensesScreen() {
                 .delete()
                 .eq('id', expense.id);
               if (error) throw error;
+              haptics.success();
               onRefresh();
             } catch (err: unknown) {
+              haptics.error();
               Alert.alert('Error', (err as Error).message || 'Failed to delete');
             }
           },
@@ -293,31 +328,34 @@ export function ExpensesScreen() {
           <View style={styles.headerRightRow}>
             {isOwnerOrAdmin && (
               <TouchableOpacity
-                onPress={handleExportPress}
+                onPress={handleExportMenuPress}
                 disabled={exporting}
-                style={styles.exportHeaderBtn}
+                style={styles.moreMenuBtn}
                 hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                accessibilityRole="button"
+                accessibilityLabel="Export options menu"
               >
                 {exporting ? (
                   <ActivityIndicator size="small" color={colors.gold} />
                 ) : (
-                  <>
-                    <Download size={14} color={colors.gold} />
-                    <Text style={styles.exportHeaderBtnText}>Export</Text>
-                  </>
+                  <MoreVertical size={20} color={colors.gold} />
                 )}
               </TouchableOpacity>
             )}
+
             <TouchableOpacity
               onPress={() => {
                 haptics.light();
                 setSelectedExpense(null);
                 setShowModal(true);
               }}
-              style={styles.addBtn}
+              style={styles.primaryAddBtn}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Record new expense"
             >
-              <Plus size={16} color={colors.gold} />
-              <Text style={styles.addBtnText}>Add</Text>
+              <Plus size={16} color="#050505" strokeWidth={2.5} />
+              <Text style={styles.primaryAddBtnText}>Add</Text>
             </TouchableOpacity>
           </View>
         }
@@ -366,7 +404,7 @@ export function ExpensesScreen() {
         </View>
       </View>
 
-      {/* 3-Card P&L Summary Grid Matching Web */}
+      {/* 3-Card P&L Summary Grid: One Label Each, ₹ Icon, Aligned Margins */}
       <View style={styles.pnlGrid}>
         {/* Card 1: REVENUE */}
         <View style={styles.pnlCardRevenue}>
@@ -377,7 +415,6 @@ export function ExpensesScreen() {
           <Text numberOfLines={1} style={styles.pnlValSuccess}>
             {formatCurrency(monthRevenue)}
           </Text>
-          <Text style={styles.pnlSubText}>Monthly Payments</Text>
         </View>
 
         {/* Card 2: EXPENSES */}
@@ -389,19 +426,19 @@ export function ExpensesScreen() {
           <Text numberOfLines={1} style={styles.pnlValError}>
             {formatCurrency(monthTotalExpenses)}
           </Text>
-          <Text style={styles.pnlSubText}>Gym Expenditure</Text>
         </View>
 
-        {/* Card 3: NET PROFIT / LOSS */}
+        {/* Card 3: NET PROFIT / NET LOSS (by sign) */}
         <View style={[styles.pnlCardProfit, netProfit < 0 && styles.pnlCardLoss]}>
           <View style={styles.pnlHeaderRow}>
-            <Text style={styles.pnlLabel}>{netProfit >= 0 ? 'NET PROFIT' : 'NET LOSS'}</Text>
-            <DollarSign size={14} color={netProfit >= 0 ? colors.gold : colors.error} />
+            <Text style={styles.pnlLabel}>
+              {netProfit >= 0 ? 'NET PROFIT' : 'NET LOSS'}
+            </Text>
+            <IndianRupee size={13} color={netProfit >= 0 ? colors.gold : colors.error} />
           </View>
           <Text numberOfLines={1} style={[styles.pnlValProfit, netProfit < 0 && { color: colors.error }]}>
             {formatCurrency(Math.abs(netProfit))}
           </Text>
-          <Text style={styles.pnlSubText}>{netProfit >= 0 ? 'Surplus' : 'Deficit'}</Text>
         </View>
       </View>
 
@@ -418,51 +455,61 @@ export function ExpensesScreen() {
         />
       </View>
 
-      {/* Category Filter Chips */}
+      {/* Category Filter Chips with Fade Edge */}
       <View style={styles.filterSection}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <TouchableOpacity
-            onPress={() => setCategoryFilter('')}
-            style={[styles.filterChip, !categoryFilter && styles.selectedFilterChip]}
+        <View style={styles.chipRowWrap}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            fadingEdgeLength={36}
+            contentContainerStyle={styles.chipScrollContent}
           >
-            <Text
-              style={[
-                styles.filterChipText,
-                !categoryFilter && styles.selectedFilterChipText,
-              ]}
+            <TouchableOpacity
+              onPress={() => setCategoryFilter('')}
+              style={[styles.filterChip, !categoryFilter && styles.selectedFilterChip]}
+              activeOpacity={0.7}
             >
-              All Categories
-            </Text>
-          </TouchableOpacity>
-
-          {EXPENSE_CATEGORIES.map(cat => {
-            const isSelected = categoryFilter === cat;
-            return (
-              <TouchableOpacity
-                key={cat}
-                onPress={() => setCategoryFilter(cat)}
-                style={[styles.filterChip, isSelected && styles.selectedFilterChip]}
+              <Text
+                style={[
+                  styles.filterChipText,
+                  !categoryFilter && styles.selectedFilterChipText,
+                ]}
               >
-                <Text
-                  style={[
-                    styles.filterChipText,
-                    isSelected && styles.selectedFilterChipText,
-                  ]}
+                All Categories
+              </Text>
+            </TouchableOpacity>
+
+            {EXPENSE_CATEGORIES.map(cat => {
+              const isSelected = categoryFilter === cat;
+              return (
+                <TouchableOpacity
+                  key={cat}
+                  onPress={() => setCategoryFilter(cat)}
+                  style={[styles.filterChip, isSelected && styles.selectedFilterChip]}
+                  activeOpacity={0.7}
                 >
-                  {cat}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+                  <Text
+                    style={[
+                      styles.filterChipText,
+                      isSelected && styles.selectedFilterChipText,
+                    ]}
+                  >
+                    {cat}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+          <View style={styles.chipEdgeFade} pointerEvents="none" />
+        </View>
       </View>
 
-      {/* Expenses List */}
+      {/* Compact Expense List Grouped by Date */}
       {isLoading ? (
         <FVELogoLoader message="Syncing Expenses..." fullScreen />
       ) : (
-        <FlatList
-          data={filteredExpenses}
+        <SectionList
+          sections={expenseSections}
           keyExtractor={item => item.id}
           contentContainerStyle={styles.listContent}
           keyboardDismissMode="on-drag"
@@ -479,51 +526,52 @@ export function ExpensesScreen() {
               colors={[colors.gold]}
             />
           }
+          renderSectionHeader={({ section }) => (
+            <View style={styles.dateSectionHeader}>
+              <Text style={styles.dateSectionTitle}>{section.title}</Text>
+              <Text style={styles.dateSectionTotal}>
+                {formatCurrency(section.dayTotal)}
+              </Text>
+            </View>
+          )}
           renderItem={({ item }) => (
-            <View style={styles.expenseCard}>
-              <View style={styles.expenseInfo}>
-                <View style={styles.categoryRow}>
-                  <View style={styles.categoryBadge}>
-                    <Text style={styles.categoryBadgeText}>{item.category}</Text>
-                  </View>
-                  <Text style={styles.dateText}>{formatDate(item.expense_date)}</Text>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => {
+                haptics.light();
+                setSelectedExpense(item);
+                setShowModal(true);
+              }}
+              onLongPress={() => {
+                haptics.medium();
+                handleDelete(item);
+              }}
+              style={styles.compactRow}
+              accessibilityRole="button"
+              accessibilityLabel={`${item.category} expense: ${formatCurrency(item.amount)}. Tap to edit, long press to delete.`}
+            >
+              <View style={styles.rowLeftCol}>
+                <View style={styles.compactCategoryBadge}>
+                  <Text style={styles.compactCategoryText}>{item.category}</Text>
                 </View>
-
                 {item.description ? (
-                  <Text numberOfLines={2} style={styles.descriptionText}>
+                  <Text numberOfLines={1} style={styles.compactDescText}>
                     {item.description}
                   </Text>
                 ) : null}
               </View>
 
-              <View style={styles.rightColumn}>
-                <Text style={styles.amountText}>{formatCurrency(item.amount)}</Text>
-                <View style={styles.actionRow}>
-                  <TouchableOpacity
-                    onPress={() => {
-                      haptics.light();
-                      setSelectedExpense(item);
-                      setShowModal(true);
-                    }}
-                    style={styles.iconBtn}
-                  >
-                    <Edit size={14} color={colors.gold} />
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    onPress={() => handleDelete(item)}
-                    style={[styles.iconBtn, styles.deleteIconBtn]}
-                  >
-                    <Trash2 size={14} color={colors.error} />
-                  </TouchableOpacity>
-                </View>
+              <View style={styles.rowRightCol}>
+                <Text style={styles.compactAmountText}>
+                  {formatCurrency(item.amount)}
+                </Text>
               </View>
-            </View>
+            </TouchableOpacity>
           )}
           ListEmptyComponent={
             !isLoading ? (
               <FVEEmptyState
-                icon={<DollarSign size={40} color={colors.gold} />}
+                icon={<IndianRupee size={40} color={colors.gold} />}
                 title="No Expenses Recorded"
                 description={`No expenses recorded for ${formattedMonthLabel}.`}
                 actionTitle="+ Record Expense"
@@ -541,6 +589,7 @@ export function ExpensesScreen() {
         visible={showModal}
         onClose={() => setShowModal(false)}
         onSaved={onRefresh}
+        onDelete={handleDelete}
         expense={selectedExpense}
       />
 
@@ -567,41 +616,38 @@ const getExpensesStyles = (colors: ThemeColors, isDark: boolean) =>
     headerRightRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 8,
+      gap: 10,
     },
-    exportHeaderBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
+    moreMenuBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 8,
       backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : 'rgba(239, 161, 0, 0.08)',
       borderWidth: 1,
       borderColor: colors.goldBorder,
-      borderRadius: 8,
-      paddingHorizontal: 9,
-      paddingVertical: 6,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
-    exportHeaderBtnText: {
-      color: colors.gold,
-      fontSize: typography.sizes.xs,
-      fontFamily: typography.fonts.rajdhani,
-      fontWeight: '700',
-    },
-    addBtn: {
+    primaryAddBtn: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 4,
-      backgroundColor: colors.goldMuted,
-      borderWidth: 1,
-      borderColor: colors.goldBorder,
+      gap: 5,
+      backgroundColor: colors.gold,
       borderRadius: 8,
-      paddingHorizontal: 10,
-      paddingVertical: 6,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      elevation: 2,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.15,
+      shadowRadius: 2,
     },
-    addBtnText: {
-      color: colors.gold,
+    primaryAddBtnText: {
+      color: '#050505',
       fontSize: typography.sizes.xs,
       fontFamily: typography.fonts.rajdhani,
-      fontWeight: '700',
+      fontWeight: '800',
+      letterSpacing: 0.3,
     },
     monthNavBar: {
       flexDirection: 'row',
@@ -650,10 +696,10 @@ const getExpensesStyles = (colors: ThemeColors, isDark: boolean) =>
       fontWeight: '800',
       letterSpacing: 0.8,
     },
-    // 3-Card P&L Grid Styles
+    // 3-Card P&L Grid Styles - Margins aligned to 16px, Single Label Each
     pnlGrid: {
       flexDirection: 'row',
-      paddingHorizontal: 14,
+      paddingHorizontal: 16,
       paddingTop: 12,
       paddingBottom: 6,
       gap: 8,
@@ -665,6 +711,7 @@ const getExpensesStyles = (colors: ThemeColors, isDark: boolean) =>
       borderColor: 'rgba(34, 197, 94, 0.28)',
       borderRadius: 12,
       padding: 10,
+      justifyContent: 'center',
     },
     pnlCardExpenses: {
       flex: 1,
@@ -673,6 +720,7 @@ const getExpensesStyles = (colors: ThemeColors, isDark: boolean) =>
       borderColor: 'rgba(239, 68, 68, 0.28)',
       borderRadius: 12,
       padding: 10,
+      justifyContent: 'center',
     },
     pnlCardProfit: {
       flex: 1,
@@ -681,6 +729,7 @@ const getExpensesStyles = (colors: ThemeColors, isDark: boolean) =>
       borderColor: isDark ? 'rgba(239, 161, 0, 0.32)' : 'rgba(217, 130, 0, 0.3)',
       borderRadius: 12,
       padding: 10,
+      justifyContent: 'center',
     },
     pnlCardLoss: {
       backgroundColor: 'rgba(239, 68, 68, 0.09)',
@@ -690,47 +739,56 @@ const getExpensesStyles = (colors: ThemeColors, isDark: boolean) =>
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      marginBottom: 4,
+      marginBottom: 6,
     },
     pnlLabel: {
       color: colors.textMuted,
-      fontSize: 9,
+      fontSize: 9.5,
       fontFamily: typography.fonts.rajdhani,
       fontWeight: '800',
       letterSpacing: 0.6,
     },
     pnlValSuccess: {
       color: '#16A34A',
-      fontSize: typography.sizes.base,
+      fontSize: 16,
       fontFamily: typography.fonts.rajdhani,
       fontWeight: '800',
     },
     pnlValError: {
       color: '#DC2626',
-      fontSize: typography.sizes.base,
+      fontSize: 16,
       fontFamily: typography.fonts.rajdhani,
       fontWeight: '800',
     },
     pnlValProfit: {
       color: colors.gold,
-      fontSize: typography.sizes.base,
+      fontSize: 16,
       fontFamily: typography.fonts.rajdhani,
       fontWeight: '800',
-    },
-    pnlSubText: {
-      color: colors.textMuted,
-      fontSize: 9.5,
-      fontFamily: typography.fonts.inter,
-      marginTop: 2,
     },
     searchContainer: {
       paddingHorizontal: 16,
       paddingTop: 8,
-      paddingBottom: 10,
+      paddingBottom: 8,
     },
     filterSection: {
       paddingHorizontal: 16,
-      paddingBottom: 10,
+      paddingBottom: 8,
+    },
+    chipRowWrap: {
+      position: 'relative',
+    },
+    chipScrollContent: {
+      paddingRight: 24,
+    },
+    chipEdgeFade: {
+      position: 'absolute',
+      right: 0,
+      top: 0,
+      bottom: 0,
+      width: 20,
+      backgroundColor: colors.background,
+      opacity: 0.6,
     },
     filterChip: {
       backgroundColor: colors.surface,
@@ -755,80 +813,79 @@ const getExpensesStyles = (colors: ThemeColors, isDark: boolean) =>
       color: colors.gold,
     },
     listContent: {
-      padding: 16,
+      paddingHorizontal: 16,
       paddingBottom: 40,
     },
-    expenseCard: {
+    dateSectionHeader: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      backgroundColor: colors.cardBackground,
-      borderWidth: 1,
-      borderColor: isDark ? 'rgba(239, 161, 0, 0.2)' : 'rgba(217, 130, 0, 0.2)',
-      borderRadius: 12,
-      padding: 12,
-      marginBottom: 8,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: isDark ? 0.25 : 0.05,
-      shadowRadius: 4,
-      elevation: 2,
+      paddingVertical: 8,
+      paddingHorizontal: 4,
+      backgroundColor: colors.background,
+      borderBottomWidth: 1,
+      borderBottomColor: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.06)',
+      marginTop: 8,
     },
-    expenseInfo: {
-      flex: 1,
-      marginRight: 10,
+    dateSectionTitle: {
+      color: colors.textMuted,
+      fontSize: 10.5,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '800',
+      letterSpacing: 0.8,
+      textTransform: 'uppercase',
     },
-    categoryRow: {
+    dateSectionTotal: {
+      color: colors.textSecondary,
+      fontSize: 11,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    compactRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 8,
-      marginBottom: 4,
+      justifyContent: 'space-between',
+      paddingVertical: 11,
+      paddingHorizontal: 6,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.06)',
+      minHeight: 48,
     },
-    categoryBadge: {
+    rowLeftCol: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      flex: 1,
+      marginRight: 12,
+    },
+    compactCategoryBadge: {
       backgroundColor: colors.goldMuted,
       borderWidth: 1,
       borderColor: colors.goldBorder,
-      borderRadius: 4,
-      paddingHorizontal: 6,
+      borderRadius: 5,
+      paddingHorizontal: 7,
       paddingVertical: 2,
     },
-    categoryBadgeText: {
+    compactCategoryText: {
       color: colors.gold,
       fontSize: 10,
       fontFamily: typography.fonts.rajdhani,
       fontWeight: '700',
+      letterSpacing: 0.3,
     },
-    dateText: {
-      color: colors.textMuted,
-      fontSize: 11,
-      fontFamily: typography.fonts.inter,
-    },
-    descriptionText: {
+    compactDescText: {
       color: colors.textSecondary,
-      fontSize: typography.sizes.xs,
+      fontSize: 12,
       fontFamily: typography.fonts.inter,
-      marginTop: 2,
+      flexShrink: 1,
     },
-    rightColumn: {
+    rowRightCol: {
       alignItems: 'flex-end',
     },
-    amountText: {
+    compactAmountText: {
       color: colors.textPrimary,
-      fontSize: typography.sizes.base,
+      fontSize: 14,
       fontFamily: typography.fonts.rajdhani,
       fontWeight: '700',
-      marginBottom: 6,
-    },
-    actionRow: {
-      flexDirection: 'row',
-      gap: 6,
-    },
-    iconBtn: {
-      padding: 6,
-      borderRadius: 6,
-      backgroundColor: colors.goldMuted,
-    },
-    deleteIconBtn: {
-      backgroundColor: colors.errorMuted,
     },
   });

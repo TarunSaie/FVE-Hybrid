@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Alert, TouchableOpacity, ScrollView } from 'react-native';
-import { Calendar } from 'lucide-react-native';
+import { Calendar, Trash2 } from 'lucide-react-native';
 import { FVEModal } from '@/components/common/FVEModal';
 import { FVEInput } from '@/components/common/FVEInput';
 import { FVEButton } from '@/components/common/FVEButton';
@@ -18,6 +18,7 @@ interface ExpenseFormModalProps {
   visible: boolean;
   onClose: () => void;
   onSaved: () => void;
+  onDelete?: (expense: Expense) => void;
   expense?: Expense | null;
 }
 
@@ -25,6 +26,7 @@ export function ExpenseFormModal({
   visible,
   onClose,
   onSaved,
+  onDelete,
   expense,
 }: ExpenseFormModalProps) {
   const { colors, isDark } = useTheme();
@@ -93,12 +95,13 @@ export function ExpenseFormModal({
   };
 
   return (
-    <FVEModal
-      visible={visible}
-      onClose={onClose}
-      title={expense ? 'Edit Expense' : 'Add Expense'}
-      subtitle="Track gym operating expenses"
-    >
+    <>
+      <FVEModal
+        visible={visible}
+        onClose={onClose}
+        title={expense ? 'Edit Expense' : 'Add Expense'}
+        subtitle="Track gym operating expenses"
+      >
       <View style={styles.form}>
         {/* Category selector */}
         <View style={styles.fieldSection}>
@@ -163,8 +166,23 @@ export function ExpenseFormModal({
           size="lg"
           style={styles.saveButton}
         />
+
+        {expense && onDelete && (
+          <TouchableOpacity
+            onPress={() => {
+              onClose();
+              onDelete(expense);
+            }}
+            style={styles.modalDeleteBtn}
+            activeOpacity={0.7}
+          >
+            <Trash2 size={15} color={colors.error} />
+            <Text style={styles.modalDeleteBtnText}>DELETE EXPENSE</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
+      </FVEModal>
       <FVEDatePickerModal
         visible={showDatePicker}
         onClose={() => setShowDatePicker(false)}
@@ -172,7 +190,7 @@ export function ExpenseFormModal({
         initialDate={expenseDate}
         title="SELECT EXPENSE DATE"
       />
-    </FVEModal>
+    </>
   );
 }
 
@@ -242,6 +260,25 @@ const getExpenseFormStyles = (colors: ThemeColors, isDark: boolean) =>
     datePickerValueText: {
       color: colors.gold,
       fontSize: typography.sizes.sm,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 0.5,
+    },
+    modalDeleteBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      marginTop: 12,
+      paddingVertical: 12,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: 'rgba(239, 68, 68, 0.35)',
+      backgroundColor: 'rgba(239, 68, 68, 0.08)',
+    },
+    modalDeleteBtnText: {
+      color: colors.error,
+      fontSize: typography.sizes.xs,
       fontFamily: typography.fonts.rajdhani,
       fontWeight: '700',
       letterSpacing: 0.5,

@@ -1,15 +1,17 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
+  SectionList,
   RefreshControl,
   TouchableOpacity,
   Alert,
+  Animated,
+  PanResponder,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Bell,
   CheckCheck,
@@ -29,42 +31,244 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
-import { formatDateTime } from '@/utils/date';
+import { formatDateTime, formatDate, getLocalDateStr } from '@/utils/date';
 import { haptics } from '@/utils/haptics';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
+const PAGE_SIZE = 40;
+
+function cleanTitle(title?: string | null): string {
+  if (!title) return '';
+  return title
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}]/gu, '')
+    .trim();
+}
+
+function cleanMessage(message?: string | null): string {
+  if (!message) return '';
+  return message
+    .replace(/\(\s*0\s*days?\s*left\s*\)/gi, '(expires today)')
+    .replace(/\b0\s*days?\s*left\b/gi, 'expires today');
+}
+
+function getDayGroupLabel(dateString: string): string {
+  const d = new Date(dateString);
+  const todayStr = getLocalDateStr(new Date());
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = getLocalDateStr(yesterday);
+  const itemDateStr = getLocalDateStr(d);
+
+  if (itemDateStr === todayStr) return 'Today';
+  if (itemDateStr === yesterdayStr) return 'Yesterday';
+  return formatDate(itemDateStr);
+}
+
+interface SwipeableRowProps {
+  item: Notification;
+  onPress: () => void;
+  onDelete: () => void;
+  getTypeIcon: (type?: string | null) => React.ReactNode;
+  colors: ThemeColors;
+  styles: ReturnType<typeof getNotificationsStyles>;
+}
+
+function SwipeableNotificationRow({
+  item,
+  onPress,
+  onDelete,
+  getTypeIcon,
+  styles,
+}: SwipeableRowProps) {
+  const pan = useRef(new Animated.Value(0)).current;
+  const isOpen = useRef(false);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gesture) => {
+        return Math.abs(gesture.dx) > Math.abs(gesture.dy) && Math.abs(gesture.dx) > 10;
+      },
+      onPanResponderMove: (_, gesture) => {
+        if (gesture.dx < 0) {
+          pan.setValue(Math.max(-80, gesture.dx));
+        } else if (isOpen.current) {
+          pan.setValue(Math.min(0, -80 + gesture.dx));
+        }
+      },
+      onPanResponderRelease: (_, gesture) => {
+        if (gesture.dx < -35) {
+          isOpen.current = true;
+          Animated.spring(pan, {
+            toValue: -80,
+            useNativeDriver: true,
+            bounciness: 4,
+          }).start();
+        } else {
+          isOpen.current = false;
+          Animated.spring(pan, {
+            toValue: 0,
+            useNativeDriver: true,
+            bounciness: 4,
+          }).start();
+        }
+      },
+    })
+  ).current;
+
+  const closeRow = () => {
+    isOpen.current = false;
+    Animated.spring(pan, {
+      toValue: 0,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const titleText = useMemo(() => cleanTitle(item.title), [item.title]);
+  const messageText = useMemo(() => cleanMessage(item.message), [item.message]);
+
+  return (
+    <View style={styles.swipeRowWrapper}>
+      {/* Background delete action revealed upon swipe */}
+      <View style={styles.swipeDeleteActionBackground}>
+        <TouchableOpacity
+          onPress={() => {
+            closeRow();
+            onDelete();
+          }}
+          style={styles.swipeDeleteButton}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel={`Delete notification ${titleText}`}
+        >
+          <Trash2 size={18} color="#FFFFFF" />
+          <Text style={styles.swipeDeleteText}>Delete</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Foreground row content */}
+      <Animated.View
+        style={[styles.rowForeground, { transform: [{ translateX: pan }] }]}
+        {...panResponder.panHandlers}
+      >
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => {
+            if (isOpen.current) {
+              closeRow();
+            } else {
+              onPress();
+            }
+          }}
+          style={styles.rowTouchable}
+        >
+          <View style={styles.iconCol}>{getTypeIcon(item.type)}</View>
+
+          <View style={styles.textCol}>
+            <View style={styles.titleRow}>
+              <Text style={styles.notifTitle} numberOfLines={1}>
+                {titleText}
+              </Text>
+              {!item.read && <View style={styles.unreadDot} />}
+            </View>
+
+            <Text style={styles.notifMessage} numberOfLines={3}>
+              {messageText}
+            </Text>
+            <Text style={styles.notifTime}>{formatDateTime(item.created_at)}</Text>
+          </View>
+        </TouchableOpacity>
+      </Animated.View>
+    </View>
+  );
+}
+
 export function NotificationsScreen() {
   const navigation = useNavigation<NavigationProp>();
   const { colors, isDark } = useTheme();
-  const styles = React.useMemo(() => getNotificationsStyles(colors, isDark), [colors, isDark]);
+  const styles = useMemo(() => getNotificationsStyles(colors, isDark), [colors, isDark]);
   const { user } = useAuth();
   const qc = useQueryClient();
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
 
-  const { data: notifications, isLoading, refetch } = useQuery({
-    queryKey: ['mobile-notifications', user?.id],
-    queryFn: async () => {
-      if (!user?.id) return [];
-      const { data, error } = await supabase
+  // Infinite query for virtualization and pagination
+  const {
+    data: pagedData,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+  } = useInfiniteQuery({
+    queryKey: ['mobile-notifications-paged', user?.id, filter],
+    queryFn: async ({ pageParam = 0 }) => {
+      if (!user?.id) return { items: [], nextPage: undefined };
+      const from = pageParam * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+
+      let query = supabase
         .from('notifications')
         .select('*')
         .or(`user_id.eq.${user.id},user_id.is.null`)
         .order('created_at', { ascending: false });
 
+      if (filter === 'unread') {
+        query = query.eq('read', false);
+      }
+
+      const { data, error } = await query.range(from, to);
       if (error) {
         console.error('[NotificationsScreen] Fetch error:', error.message);
         throw error;
       }
-      return (data || []) as Notification[];
+      const items = (data || []) as Notification[];
+      return {
+        items,
+        nextPage: items.length === PAGE_SIZE ? pageParam + 1 : undefined,
+      };
     },
+    initialPageParam: 0,
+    getNextPageParam: lastPage => lastPage.nextPage,
     enabled: !!user?.id,
     refetchInterval: 15000,
   });
 
+  // Query exact total count for segmented control
+  const { data: totalCount = 0 } = useQuery({
+    queryKey: ['mobile-notifications-total-count', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return 0;
+      const { count, error } = await supabase
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .or(`user_id.eq.${user.id},user_id.is.null`);
+      if (error) return 0;
+      return count ?? 0;
+    },
+    enabled: !!user?.id,
+  });
+
+  // Query exact unread count for segmented control
+  const { data: unreadCount = 0 } = useQuery({
+    queryKey: ['mobile-notifications-unread-count', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return 0;
+      const { count, error } = await supabase
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .or(`user_id.eq.${user.id},user_id.is.null`)
+        .eq('read', false);
+      if (error) return 0;
+      return count ?? 0;
+    },
+    enabled: !!user?.id,
+  });
+
   const invalidateAll = useCallback(() => {
+    qc.invalidateQueries({ queryKey: ['mobile-notifications-paged'] });
+    qc.invalidateQueries({ queryKey: ['mobile-notifications-total-count'] });
+    qc.invalidateQueries({ queryKey: ['mobile-notifications-unread-count'] });
     qc.invalidateQueries({ queryKey: ['mobile-notifications'] });
     qc.invalidateQueries({ queryKey: ['unread-notifications'] });
     qc.invalidateQueries({ queryKey: ['unread-notifications-count'] });
@@ -82,14 +286,20 @@ export function NotificationsScreen() {
   };
 
   const markAllAsRead = async () => {
-    const unreadIds = (notifications || []).filter(n => !n.read).map(n => n.id);
-    if (unreadIds.length === 0) return;
+    if (!user?.id) return;
     haptics.success();
-    await supabase
-      .from('notifications')
-      .update({ read: true })
-      .in('id', unreadIds);
-    invalidateAll();
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .update({ read: true })
+        .eq('read', false)
+        .or(`user_id.eq.${user.id},user_id.is.null`);
+      if (error) {
+        console.error('[Notifications] markAllAsRead error:', error.message);
+      }
+    } finally {
+      invalidateAll();
+    }
   };
 
   const deleteSingle = async (id: string) => {
@@ -99,12 +309,11 @@ export function NotificationsScreen() {
   };
 
   const clearReadNotifications = async () => {
-    const readIds = (notifications || []).filter(n => n.read).map(n => n.id);
-    if (readIds.length === 0) return;
+    if (!user?.id) return;
     haptics.warning();
     Alert.alert(
       'Clear Read Notifications',
-      `Delete all ${readIds.length} read notifications?`,
+      'Are you sure you want to permanently delete all read notifications?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -112,36 +321,18 @@ export function NotificationsScreen() {
           style: 'destructive',
           onPress: async () => {
             haptics.medium();
-            await supabase
-              .from('notifications')
-              .delete()
-              .in('id', readIds);
-            invalidateAll();
-          },
-        },
-      ]
-    );
-  };
-
-  const clearAllNotifications = async () => {
-    const allIds = (notifications || []).map(n => n.id);
-    if (allIds.length === 0) return;
-    haptics.warning();
-    Alert.alert(
-      'Clear Notifications',
-      'Are you sure you want to delete all notifications?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Clear All',
-          style: 'destructive',
-          onPress: async () => {
-            haptics.medium();
-            await supabase
-              .from('notifications')
-              .delete()
-              .in('id', allIds);
-            invalidateAll();
+            try {
+              const { error } = await supabase
+                .from('notifications')
+                .delete()
+                .eq('read', true)
+                .or(`user_id.eq.${user.id},user_id.is.null`);
+              if (error) {
+                console.error('[Notifications] clearRead error:', error.message);
+              }
+            } finally {
+              invalidateAll();
+            }
           },
         },
       ]
@@ -163,14 +354,27 @@ export function NotificationsScreen() {
     }
   };
 
-  const allNotifications = notifications || [];
-  const unreadCount = allNotifications.filter(n => !n.read).length;
-  const readCount = allNotifications.filter(n => n.read).length;
-  const totalCount = allNotifications.length;
+  const allLoadedItems = useMemo(() => {
+    if (!pagedData?.pages) return [];
+    return pagedData.pages.flatMap(page => page.items);
+  }, [pagedData]);
 
-  const filteredNotifications = filter === 'unread'
-    ? allNotifications.filter(n => !n.read)
-    : allNotifications;
+  // Group by day for SectionList
+  const sections = useMemo(() => {
+    const map = new Map<string, Notification[]>();
+    for (const item of allLoadedItems) {
+      const label = getDayGroupLabel(item.created_at);
+      if (!map.has(label)) {
+        map.set(label, []);
+      }
+      map.get(label)!.push(item);
+    }
+    return Array.from(map.entries()).map(([title, data]) => ({
+      title,
+      count: data.length,
+      data,
+    }));
+  }, [allLoadedItems]);
 
   return (
     <View style={styles.container}>
@@ -186,47 +390,57 @@ export function NotificationsScreen() {
                 <Text style={styles.readAllBtnText}>Read All</Text>
               </TouchableOpacity>
             )}
-            {readCount > 0 && (
-              <TouchableOpacity onPress={clearReadNotifications} style={styles.clearBtn}>
-                <Trash2 size={13} color={colors.textMuted} />
-                <Text style={styles.clearBtnText}>Clear Read</Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity onPress={clearReadNotifications} style={styles.clearBtn}>
+              <Trash2 size={13} color={colors.textMuted} />
+              <Text style={styles.clearBtnText}>Clear Read</Text>
+            </TouchableOpacity>
           </View>
         }
       />
 
-      {/* Segmented Filter Bar: ALL vs UNREAD */}
-      <View style={styles.tabBar}>
-        <TouchableOpacity
-          onPress={() => {
-            haptics.selection();
-            setFilter('all');
-          }}
-          style={[styles.tabBtn, filter === 'all' && styles.tabBtnActive]}
-          activeOpacity={0.7}
-        >
-          <Text style={[styles.tabBtnText, filter === 'all' && styles.tabBtnTextActive]}>
-            ALL ({totalCount})
-          </Text>
-        </TouchableOpacity>
+      {/* Segmented Control for All / Unread */}
+      <View style={styles.segmentedContainer}>
+        <View style={styles.segmentedControl}>
+          <TouchableOpacity
+            onPress={() => {
+              haptics.selection();
+              setFilter('all');
+            }}
+            style={[styles.segmentBtn, filter === 'all' && styles.segmentBtnActive]}
+            activeOpacity={0.7}
+          >
+            <Text
+              style={[
+                styles.segmentText,
+                filter === 'all' && styles.segmentTextActive,
+              ]}
+            >
+              All ({totalCount})
+            </Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          onPress={() => {
-            haptics.selection();
-            setFilter('unread');
-          }}
-          style={[styles.tabBtn, filter === 'unread' && styles.tabBtnActive]}
-          activeOpacity={0.7}
-        >
-          <Text style={[styles.tabBtnText, filter === 'unread' && styles.tabBtnTextActive]}>
-            UNREAD ({unreadCount})
-          </Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => {
+              haptics.selection();
+              setFilter('unread');
+            }}
+            style={[styles.segmentBtn, filter === 'unread' && styles.segmentBtnActive]}
+            activeOpacity={0.7}
+          >
+            <Text
+              style={[
+                styles.segmentText,
+                filter === 'unread' && styles.segmentTextActive,
+              ]}
+            >
+              Unread ({unreadCount})
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Quick Access to Renewal WhatsApp Batch */}
-      <View style={{ paddingHorizontal: 16, paddingTop: 10 }}>
+      <View style={{ paddingHorizontal: 16, paddingTop: 6, paddingBottom: 6 }}>
         <TouchableOpacity
           onPress={() => navigation.navigate('RenewalBatch')}
           style={styles.batchBanner}
@@ -247,14 +461,21 @@ export function NotificationsScreen() {
         </TouchableOpacity>
       </View>
 
-      <FlatList
-        data={filteredNotifications}
+      {/* Virtualized and Paginated SectionList Grouped by Day */}
+      <SectionList
+        sections={sections}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.listContent}
         initialNumToRender={15}
         maxToRenderPerBatch={10}
         windowSize={5}
         removeClippedSubviews={true}
+        onEndReached={() => {
+          if (hasNextPage && !isFetchingNextPage) {
+            fetchNextPage();
+          }
+        }}
+        onEndReachedThreshold={0.4}
         refreshControl={
           <RefreshControl
             refreshing={isLoading}
@@ -263,38 +484,28 @@ export function NotificationsScreen() {
             colors={[colors.gold]}
           />
         }
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            onPress={() => !item.read && markAsRead(item.id)}
-            activeOpacity={0.8}
-            style={[styles.notifCard, !item.read && styles.unreadCard]}
-          >
-            <View style={styles.notifRow}>
-              <View style={styles.iconCol}>{getTypeIcon(item.type)}</View>
-
-              <View style={styles.textCol}>
-                <View style={styles.titleRow}>
-                  <Text style={styles.notifTitle}>{item.title}</Text>
-                  <View style={styles.actionRow}>
-                    {!item.read && <View style={styles.unreadDot} />}
-                    <TouchableOpacity
-                      onPress={() => deleteSingle(item.id)}
-                      style={styles.deleteItemBtn}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <Trash2 size={13} color={colors.textMuted} />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                <Text style={styles.notifMessage}>{item.message}</Text>
-                <Text style={styles.notifTime}>
-                  {formatDateTime(item.created_at)}
-                </Text>
-              </View>
-            </View>
-          </TouchableOpacity>
+        renderSectionHeader={({ section }) => (
+          <View style={styles.dayHeader}>
+            <Text style={styles.dayHeaderText}>{section.title}</Text>
+          </View>
         )}
+        renderItem={({ item }) => (
+          <SwipeableNotificationRow
+            item={item}
+            onPress={() => !item.read && markAsRead(item.id)}
+            onDelete={() => deleteSingle(item.id)}
+            getTypeIcon={getTypeIcon}
+            colors={colors}
+            styles={styles}
+          />
+        )}
+        ListFooterComponent={
+          isFetchingNextPage ? (
+            <View style={styles.loadingMoreFooter}>
+              <Text style={styles.loadingMoreText}>Loading more notifications...</Text>
+            </View>
+          ) : null
+        }
         ListEmptyComponent={
           !isLoading ? (
             <FVEEmptyState
@@ -317,46 +528,12 @@ const getNotificationsStyles = (colors: ThemeColors, isDark: boolean) =>
   StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: colors.bgPrimary,
+      backgroundColor: colors.background,
     },
     headerActions: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
-    },
-    tabBar: {
-      flexDirection: 'row',
-      backgroundColor: colors.bgSecondary,
-      paddingHorizontal: 16,
-      paddingVertical: 10,
-      gap: 10,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.borderDefault,
-    },
-    tabBtn: {
-      flex: 1,
-      paddingVertical: 8,
-      minHeight: 44,
-      borderRadius: 8,
-      backgroundColor: colors.bgTertiary,
-      borderWidth: 1,
-      borderColor: colors.borderDefault,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    tabBtnActive: {
-      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : 'rgba(239, 161, 0, 0.15)',
-      borderColor: colors.gold,
-    },
-    tabBtnText: {
-      fontSize: 12,
-      fontFamily: typography.fonts.rajdhani,
-      fontWeight: '700',
-      color: colors.textMuted,
-      letterSpacing: 0.5,
-    },
-    tabBtnTextActive: {
-      color: colors.gold,
     },
     readAllBtn: {
       flexDirection: 'row',
@@ -388,18 +565,53 @@ const getNotificationsStyles = (colors: ThemeColors, isDark: boolean) =>
       fontFamily: typography.fonts.rajdhani,
       fontWeight: '700',
     },
+    // Segmented control
+    segmentedContainer: {
+      paddingHorizontal: 16,
+      paddingTop: 8,
+      paddingBottom: 4,
+    },
+    segmentedControl: {
+      flexDirection: 'row',
+      height: 38,
+      backgroundColor: colors.surface,
+      borderRadius: 10,
+      padding: 3,
+      borderWidth: 1,
+      borderColor: colors.borderDark,
+    },
+    segmentBtn: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 8,
+    },
+    segmentBtnActive: {
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.16)' : 'rgba(217, 130, 0, 0.12)',
+      borderWidth: 1,
+      borderColor: colors.goldBorder,
+    },
+    segmentText: {
+      fontSize: 12,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      color: colors.textSecondary,
+      letterSpacing: 0.5,
+    },
+    segmentTextActive: {
+      color: colors.gold,
+    },
     batchBanner: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
       backgroundColor: isDark ? '#141824' : '#FFFBEB',
-      borderRadius: 12,
-      paddingVertical: 10,
+      borderRadius: 10,
+      paddingVertical: 8,
       paddingHorizontal: 12,
       borderWidth: 1,
       borderColor: isDark ? 'rgba(239, 161, 0, 0.25)' : '#FDE68A',
-      marginBottom: 6,
-      minHeight: 48,
+      minHeight: 44,
     },
     batchBannerLeft: {
       flexDirection: 'row',
@@ -407,16 +619,16 @@ const getNotificationsStyles = (colors: ThemeColors, isDark: boolean) =>
       gap: 10,
     },
     batchBannerIconPill: {
-      width: 32,
-      height: 32,
-      borderRadius: 16,
+      width: 28,
+      height: 28,
+      borderRadius: 14,
       backgroundColor: isDark ? 'rgba(239, 161, 0, 0.15)' : '#FEF3C7',
       alignItems: 'center',
       justifyContent: 'center',
     },
     batchBannerTitle: {
       fontFamily: typography.fonts.rajdhani,
-      fontSize: 13,
+      fontSize: 12,
       fontWeight: '700',
       color: colors.gold,
       letterSpacing: 0.5,
@@ -428,33 +640,65 @@ const getNotificationsStyles = (colors: ThemeColors, isDark: boolean) =>
       marginTop: 1,
     },
     batchBannerArrow: {
-      fontSize: 14,
+      fontSize: 13,
       color: colors.gold,
       fontWeight: '700',
     },
     listContent: {
-      padding: 16,
       paddingBottom: 40,
     },
-    notifCard: {
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: colors.borderDefault,
-      borderRadius: 12,
-      padding: 14,
-      marginBottom: 8,
-      elevation: isDark ? 0 : 2,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: isDark ? 0 : 0.05,
-      shadowRadius: 2,
+    dayHeader: {
+      paddingHorizontal: 16,
+      paddingTop: 14,
+      paddingBottom: 6,
+      backgroundColor: colors.background,
     },
-    unreadCard: {
-      borderColor: colors.goldBorder,
-      backgroundColor: isDark ? '#141820' : '#FFFFFF',
+    dayHeaderText: {
+      fontSize: 11,
+      fontFamily: typography.fonts.orbitron,
+      fontWeight: '700',
+      color: colors.textSecondary,
+      letterSpacing: 0.8,
+      textTransform: 'uppercase',
     },
-    notifRow: {
+    // Plain rows with dividers instead of cards
+    swipeRowWrapper: {
+      position: 'relative',
+      backgroundColor: colors.surface,
+      overflow: 'hidden',
+    },
+    swipeDeleteActionBackground: {
+      position: 'absolute',
+      top: 0,
+      bottom: 0,
+      right: 0,
+      width: 80,
+      backgroundColor: colors.error,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    swipeDeleteButton: {
+      width: 80,
+      height: '100%',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 2,
+    },
+    swipeDeleteText: {
+      color: '#FFFFFF',
+      fontSize: 10,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    rowForeground: {
+      backgroundColor: colors.surface,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.borderDark,
+    },
+    rowTouchable: {
       flexDirection: 'row',
+      paddingVertical: 12,
+      paddingHorizontal: 16,
     },
     iconCol: {
       marginRight: 12,
@@ -470,40 +714,39 @@ const getNotificationsStyles = (colors: ThemeColors, isDark: boolean) =>
     },
     notifTitle: {
       color: colors.textPrimary,
-      fontSize: typography.sizes.base,
+      fontSize: typography.sizes.sm,
       fontFamily: typography.fonts.rajdhani,
       fontWeight: '700',
       flex: 1,
-      flexShrink: 1,
       marginRight: 6,
     },
-    actionRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      marginLeft: 6,
-    },
     unreadDot: {
-      width: 8,
-      height: 8,
+      width: 7,
+      height: 7,
       borderRadius: 4,
       backgroundColor: colors.gold,
-    },
-    deleteItemBtn: {
-      padding: 2,
-      opacity: 0.7,
     },
     notifMessage: {
       color: colors.textSecondary,
       fontSize: typography.sizes.xs,
       fontFamily: typography.fonts.inter,
-      marginTop: 4,
+      marginTop: 3,
       lineHeight: 16,
     },
     notifTime: {
       color: colors.textMuted,
       fontSize: 10,
       fontFamily: typography.fonts.inter,
-      marginTop: 6,
+      marginTop: 4,
+    },
+    loadingMoreFooter: {
+      paddingVertical: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    loadingMoreText: {
+      color: colors.textMuted,
+      fontSize: 11,
+      fontFamily: typography.fonts.inter,
     },
   });

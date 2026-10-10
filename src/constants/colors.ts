@@ -79,7 +79,7 @@ export const lightColors: Record<keyof typeof darkColors, string> = {
   background: '#F6F8FA',
   backgroundSecondary: '#EDF1F5',
   cardBackground: '#FFFFFF',
-  surface: '#FFFFFF',
+  surface: '#F1F4F8',
   surfaceLight: '#F1F4F8',
   surfaceMuted: '#E9EEF4',
 

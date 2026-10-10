@@ -22,7 +22,9 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { sounds } from '@/utils/sounds';
+import { haptics } from '@/utils/haptics';
 import { UPIPaymentQRCard } from '@/components/features/UPIPaymentQRCard';
+import { FVEDatePickerModal } from '@/components/common/FVEDatePickerModal';
 
 interface PaymentFormModalProps {
   visible: boolean;
@@ -61,7 +63,8 @@ export function PaymentFormModal({
   // Manual date overrides — null means use auto-computed renewalInfo
   const [manualStartDate, setManualStartDate] = useState<string | null>(null);
   const [manualExpiryDate, setManualExpiryDate] = useState<string | null>(null);
-  const [editingDateField, setEditingDateField] = useState<'start' | 'expiry' | null>(null);
+  const [showStartDatePicker, setShowStartDatePicker] = useState(false);
+  const [showExpiryDatePicker, setShowExpiryDatePicker] = useState(false);
 
   // Detect active plan whenever selected member changes
   useEffect(() => {
@@ -172,7 +175,6 @@ export function PaymentFormModal({
     // Reset manual date overrides when plan changes
     setManualStartDate(null);
     setManualExpiryDate(null);
-    setEditingDateField(null);
     const priceStr = String(plan.price);
     amountRef.current = priceStr;
     setAmountValue(priceStr);
@@ -182,19 +184,25 @@ export function PaymentFormModal({
   const effectiveStartDate = manualStartDate ?? renewalInfo?.startDate ?? getLocalDateStr();
   const effectiveExpiryDate = manualExpiryDate ?? renewalInfo?.expiryDate ?? '';
 
-  // Handle manual start date change: recalculate expiry unless expiry is also manually set
-  const handleManualStartChange = (text: string) => {
-    setManualStartDate(text);
-    // Auto-recalculate expiry from new start if plan is selected and expiry not manually overridden
-    if (!manualExpiryDate && selectedPlan && text.match(/^\d{4}-\d{2}-\d{2}$/)) {
-      setManualExpiryDate(calculateExpiryDate(text, selectedPlan.duration_days));
+  // Handle start date selection from Date Picker
+  const handleStartDateSelect = (selectedDate: string) => {
+    setManualStartDate(selectedDate);
+    // Auto-recalculate expiry from new start if plan is selected
+    if (selectedPlan) {
+      setManualExpiryDate(calculateExpiryDate(selectedDate, selectedPlan.duration_days));
     }
+    setShowStartDatePicker(false);
+  };
+
+  // Handle expiry date selection from Date Picker
+  const handleExpiryDateSelect = (selectedDate: string) => {
+    setManualExpiryDate(selectedDate);
+    setShowExpiryDatePicker(false);
   };
 
   const handleResetDates = () => {
     setManualStartDate(null);
     setManualExpiryDate(null);
-    setEditingDateField(null);
   };
 
   const isDateOverridden = manualStartDate !== null || manualExpiryDate !== null;
@@ -367,12 +375,13 @@ export function PaymentFormModal({
   };
 
   return (
-    <FVEModal
-      visible={visible}
-      onClose={onClose}
-      title="Record Payment"
-      subtitle="Collect Membership Dues & Fees"
-    >
+    <>
+      <FVEModal
+        visible={visible}
+        onClose={onClose}
+        title="Record Payment"
+        subtitle="Collect Membership Dues & Fees"
+      >
       <View style={styles.form}>
         {/* Member Selector */}
         <View style={styles.fieldSection}>
@@ -560,39 +569,35 @@ export function PaymentFormModal({
               </Text>
             )}
 
-            {/* Date fields — tappable labels toggle inline editing */}
+            {/* Date fields — Start Date Picker & Expiry Date Picker */}
             <View style={styles.renewalPeriodRow}>
               {/* START DATE */}
               <View style={styles.periodCol}>
                 <Text style={styles.periodLabel}>STARTS</Text>
-                {editingDateField === 'start' ? (
-                  <FVEInput
-                    value={manualStartDate ?? renewalInfo.startDate}
-                    onChangeText={handleManualStartChange}
-                    placeholder="YYYY-MM-DD"
-                    keyboardType="numeric"
-                    containerStyle={styles.inlineDateInput}
-                    onBlur={() => setEditingDateField(null)}
-                    autoFocus
-                  />
-                ) : (
-                  <TouchableOpacity
-                    onPress={() => {
-                      if (manualStartDate === null) setManualStartDate(renewalInfo.startDate);
-                      setEditingDateField('start');
-                    }}
-                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                    style={styles.editableDatePill}
-                  >
-                    <Text style={[
+                <TouchableOpacity
+                  onPress={() => {
+                    haptics.light();
+                    setShowStartDatePicker(true);
+                  }}
+                  style={[
+                    styles.datePickerTrigger,
+                    manualStartDate !== null && styles.datePickerTriggerOverridden,
+                  ]}
+                  activeOpacity={0.75}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Select Start Date. Current: ${formatDate(effectiveStartDate)}`}
+                >
+                  <Calendar size={13} color={manualStartDate !== null ? '#F59E0B' : colors.gold} />
+                  <Text
+                    numberOfLines={1}
+                    style={[
                       styles.periodValue,
-                      (manualStartDate !== null) && { color: '#F59E0B' },
-                    ]}>
-                      {formatDate(effectiveStartDate)}
-                    </Text>
-                    <Text style={styles.editDateHint}>✎</Text>
-                  </TouchableOpacity>
-                )}
+                      manualStartDate !== null && { color: '#F59E0B' },
+                    ]}
+                  >
+                    {formatDate(effectiveStartDate)}
+                  </Text>
+                </TouchableOpacity>
               </View>
 
               <Text style={styles.periodArrow}>→</Text>
@@ -600,34 +605,30 @@ export function PaymentFormModal({
               {/* EXPIRY DATE */}
               <View style={styles.periodCol}>
                 <Text style={styles.periodLabel}>EXPIRES</Text>
-                {editingDateField === 'expiry' ? (
-                  <FVEInput
-                    value={manualExpiryDate ?? renewalInfo.expiryDate}
-                    onChangeText={(t) => setManualExpiryDate(t)}
-                    placeholder="YYYY-MM-DD"
-                    keyboardType="numeric"
-                    containerStyle={styles.inlineDateInput}
-                    onBlur={() => setEditingDateField(null)}
-                    autoFocus
-                  />
-                ) : (
-                  <TouchableOpacity
-                    onPress={() => {
-                      if (manualExpiryDate === null) setManualExpiryDate(renewalInfo.expiryDate);
-                      setEditingDateField('expiry');
-                    }}
-                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                    style={styles.editableDatePill}
-                  >
-                    <Text style={[
+                <TouchableOpacity
+                  onPress={() => {
+                    haptics.light();
+                    setShowExpiryDatePicker(true);
+                  }}
+                  style={[
+                    styles.datePickerTrigger,
+                    manualExpiryDate !== null && styles.datePickerTriggerOverridden,
+                  ]}
+                  activeOpacity={0.75}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Select Expiry Date. Current: ${formatDate(effectiveExpiryDate)}`}
+                >
+                  <Calendar size={13} color={manualExpiryDate !== null ? '#F59E0B' : colors.gold} />
+                  <Text
+                    numberOfLines={1}
+                    style={[
                       styles.periodValue,
-                      (manualExpiryDate !== null) && { color: '#F59E0B' },
-                    ]}>
-                      {formatDate(effectiveExpiryDate)}
-                    </Text>
-                    <Text style={styles.editDateHint}>✎</Text>
-                  </TouchableOpacity>
-                )}
+                      manualExpiryDate !== null && { color: '#F59E0B' },
+                    ]}
+                  >
+                    {formatDate(effectiveExpiryDate)}
+                  </Text>
+                </TouchableOpacity>
               </View>
 
               <View style={styles.durationBadge}>
@@ -637,7 +638,7 @@ export function PaymentFormModal({
 
             {/* Hint strip */}
             {!isDateOverridden && (
-              <Text style={styles.editDateHintStrip}>Tap a date to override it manually</Text>
+              <Text style={styles.editDateHintStrip}>Tap Starts or Expires to pick custom dates</Text>
             )}
           </View>
         )}
@@ -717,7 +718,25 @@ export function PaymentFormModal({
           style={styles.submitButton}
         />
       </View>
-    </FVEModal>
+
+      </FVEModal>
+      {/* Unified Date Picker Sheet */}
+      <FVEDatePickerModal
+        visible={showStartDatePicker || showExpiryDatePicker}
+        onClose={() => {
+          setShowStartDatePicker(false);
+          setShowExpiryDatePicker(false);
+        }}
+        initialDate={
+          showStartDatePicker
+            ? effectiveStartDate
+            : (effectiveExpiryDate || effectiveStartDate)
+        }
+        minDate={showExpiryDatePicker ? effectiveStartDate : undefined}
+        title={showStartDatePicker ? 'SELECT START DATE' : 'SELECT EXPIRY DATE'}
+        onSelectDate={showStartDatePicker ? handleStartDateSelect : handleExpiryDateSelect}
+      />
+    </>
   );
 }
 
@@ -990,15 +1009,21 @@ const getPaymentFormStyles = (colors: ThemeColors, isDark: boolean) =>
       fontFamily: typography.fonts.rajdhaniMedium,
       fontWeight: '700',
     },
-    editableDatePill: {
+    datePickerTrigger: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 4,
+      gap: 6,
+      backgroundColor: isDark ? '#141820' : colors.surface,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+      borderRadius: 8,
+      paddingHorizontal: 8,
+      paddingVertical: 7,
+      minHeight: 36,
     },
-    editDateHint: {
-      color: colors.textMuted,
-      fontSize: 11,
-      opacity: 0.6,
+    datePickerTriggerOverridden: {
+      borderColor: 'rgba(245, 158, 11, 0.5)',
+      backgroundColor: isDark ? 'rgba(245, 158, 11, 0.12)' : 'rgba(245, 158, 11, 0.08)',
     },
     editDateHintStrip: {
       marginTop: 8,
@@ -1007,10 +1032,6 @@ const getPaymentFormStyles = (colors: ThemeColors, isDark: boolean) =>
       fontFamily: typography.fonts.inter,
       fontStyle: 'italic',
       opacity: 0.7,
-    },
-    inlineDateInput: {
-      marginBottom: 0,
-      marginTop: 2,
     },
     renewalHeaderRow: {
       flexDirection: 'row',

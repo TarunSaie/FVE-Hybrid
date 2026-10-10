@@ -16,6 +16,8 @@ import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEButton } from '@/components/common/FVEButton';
 import { FVEModal } from '@/components/common/FVEModal';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemeColors } from '@/constants/colors';
 import { haptics } from '@/utils/haptics';
 import { Payment, PersonalTraining } from '@/types';
@@ -40,6 +42,9 @@ export function PaymentReceiptScreen() {
   const navigation = useNavigation();
   const payment = route.params?.payment;
   const { colors, isDark } = useTheme();
+  const { user } = useAuth();
+  const insets = useSafeAreaInsets();
+  const isAdmin = ['OWNER', 'ADMIN'].includes(user?.role || '');
   const styles = useMemo(() => getReceiptStyles(colors, isDark), [colors, isDark]);
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -316,11 +321,8 @@ export function PaymentReceiptScreen() {
     }
   };
 
-  const memberQrCode =
-    activePayment.members?.qr_code ||
-    activePayment.members?.id ||
-    activePayment.member_id ||
-    activePayment.receipt_number;
+  // Receipt-only verification code — strictly verification, does NOT grant kiosk entrance
+  const receiptVerificationCode = `RECEIPT:${receiptNo}`;
 
   return (
     <View style={styles.container}>
@@ -514,38 +516,39 @@ export function PaymentReceiptScreen() {
               </>
             )}
 
-            {payment.transaction_reference && (
+            {activePayment.transaction_reference &&
+            activePayment.transaction_reference.trim() !== '' &&
+            activePayment.transaction_reference.trim() !== '.' &&
+            activePayment.transaction_reference.trim().toLowerCase() !== 'n/a' ? (
               <View style={styles.detailRow}>
                 <Text style={styles.detailLabel}>TXN REFERENCE</Text>
-                <Text style={styles.detailValue}>{payment.transaction_reference}</Text>
+                <Text style={styles.detailValue}>{activePayment.transaction_reference.trim()}</Text>
               </View>
-            )}
+            ) : null}
           </View>
 
           <View style={styles.divider} />
 
-          {/* Receipt QR Code */}
-          {memberQrCode && (
-            <View style={styles.qrSection}>
-              <View style={styles.qrContainer}>
-                <QRCode
-                  value={memberQrCode}
-                  size={110}
-                  color="#050505"
-                  backgroundColor="#FFFFFF"
-                />
-              </View>
-              <Text style={styles.qrFooterText}>
-                {isPT ? 'MEMBER ATTENDANCE & PT QR CODE' : 'MEMBER QR CODE'}
-              </Text>
+          {/* Receipt Verification QR Code (Strictly receipt verification, does not grant kiosk entrance) */}
+          <View style={styles.qrSection}>
+            <View style={styles.qrContainer}>
+              <QRCode
+                value={receiptVerificationCode}
+                size={110}
+                color="#050505"
+                backgroundColor="#FFFFFF"
+              />
             </View>
-          )}
+            <Text style={styles.qrFooterText}>
+              RECEIPT VERIFICATION CODE
+            </Text>
+          </View>
 
           {/* Amount Paid Showcase */}
           <View style={styles.amountBox}>
             <Text style={styles.amountLabel}>AMOUNT PAID</Text>
             <Text style={styles.amountValue}>
-              {`Rs. ${Number(payment.amount || 0).toLocaleString('en-IN')}/-`}
+              {`Rs. ${Number(activePayment.amount || 0).toLocaleString('en-IN')}/-`}
             </Text>
           </View>
 
@@ -559,9 +562,6 @@ export function PaymentReceiptScreen() {
 
           {/* Footer Branding */}
           <View style={styles.footerBranding}>
-            <Text style={styles.receiptFooter}>
-              FITVERSE ELITE • {isPT ? 'PERSONAL TRAINING' : 'MEMBERSHIP'} RECEIPT
-            </Text>
             <Text style={styles.chirvexTagline}>
               Built with <Text style={{ color: colors.gold, fontWeight: '700' }}>Chirvex</Text> © 2026
             </Text>
@@ -572,100 +572,109 @@ export function PaymentReceiptScreen() {
         {/* Action Buttons */}
         <View style={styles.actionButtonGroup}>
           <FVEButton
-            title="SHARE TO WHATSAPP"
+            title="SHARE RECEIPT"
             onPress={handleShareToWhatsApp}
             loading={pdfGenerating}
             variant="gold"
             size="lg"
             icon={<Share2 size={18} color="#050505" />}
-            style={styles.actionButton}
+            style={[styles.actionButton, { minHeight: 54, height: 54 }]}
           />
 
           <FVEButton
-            title="PRINT / SAVE PDF DOCUMENT"
+            title="Print / Save PDF"
             onPress={handlePrintPdf}
-            variant="ghost"
+            variant="outline"
             size="md"
-            icon={<Printer size={16} color={colors.gold} />}
-            style={{ marginTop: 8 }}
+            icon={<Printer size={16} color={colors.textSecondary} />}
+            style={{ marginTop: 10, minHeight: 46 }}
           />
 
-          {/* Administrative Transaction Rollback Card */}
-          <View style={styles.revertCard}>
-            <View style={styles.revertHeaderRow}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Trash2 size={13} color="#EF4444" />
-                <Text style={styles.revertCardTitle}>TRANSACTION ROLLBACK</Text>
+          {/* Administrative Transaction Rollback Card (Admin Only) */}
+          {isAdmin && (
+            <View style={styles.revertCard}>
+              <View style={styles.revertHeaderRow}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Trash2 size={13} color="#EF4444" />
+                  <Text style={styles.revertCardTitle}>TRANSACTION ROLLBACK</Text>
+                </View>
+                <View style={styles.revertBadge}>
+                  <Text style={styles.revertBadgeText}>ADMIN ONLY</Text>
+                </View>
               </View>
-              <View style={styles.revertBadge}>
-                <Text style={styles.revertBadgeText}>ADMIN ACTION</Text>
-              </View>
-            </View>
-            <Text style={styles.revertCardDesc}>
-              Reverting will safely delete this payment transaction, restore the member's previous membership plan dates, and rollback linked plan upgrades with zero data loss.
-            </Text>
-            <TouchableOpacity
-              onPress={() => {
-                Alert.alert(
-                  'Revert / Delete Payment',
-                  `Are you sure you want to revert or delete payment receipt #${activePayment.receipt_number || activePayment.id}? This will safely roll back any linked plan upgrade, restore previous membership expiry dates, and unlink personal training packages.`,
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                      text: 'Delete & Revert',
-                      style: 'destructive',
-                      onPress: async () => {
-                        try {
-                          setIsDeleting(true);
-                          const result = await revertOrDeletePayment(activePayment);
-                          if (result.success) {
-                            haptics.success();
-                            queryClient.invalidateQueries({ queryKey: ['payments'] });
-                            queryClient.invalidateQueries({ queryKey: ['members'] });
-                            queryClient.invalidateQueries({ queryKey: ['member-detail'] });
-                            queryClient.invalidateQueries({ queryKey: ['dashboard-metrics'] });
-                            Alert.alert(
-                              'Payment Reverted',
-                              'The payment record has been deleted and member plan status has been safely restored.',
-                              [{ text: 'OK', onPress: () => navigation.goBack() }]
-                            );
-                          } else {
-                            haptics.error();
-                            Alert.alert('Error', result.error || 'Failed to revert payment');
-                          }
-                        } catch (err: unknown) {
-                          const msg = err instanceof Error ? err.message : 'Unknown error occurred';
-                          Alert.alert('Error', msg);
-                        } finally {
-                          setIsDeleting(false);
-                        }
-                      },
-                    },
-                  ]
-                );
-              }}
-              disabled={isDeleting}
-              style={styles.revertActionBtn}
-              activeOpacity={0.8}
-            >
-              <Trash2 size={14} color="#EF4444" />
-              <Text style={styles.revertActionBtnText}>
-                {isDeleting ? 'Reverting Transaction...' : 'Revert & Delete This Payment'}
+              <Text style={styles.revertCardDesc}>
+                Rollback deletes this transaction, restores prior membership dates, and reverses upgrades.
               </Text>
-            </TouchableOpacity>
-          </View>
+              <TouchableOpacity
+                onPress={() => {
+                  Alert.alert(
+                    'Rollback Payment',
+                    `Roll back payment of ${formatCurrency(activePayment.amount)} for ${memberName}? This will delete transaction #${receiptNo} and restore previous membership dates.`,
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Rollback & Delete',
+                        style: 'destructive',
+                        onPress: async () => {
+                          try {
+                            setIsDeleting(true);
+                            const result = await revertOrDeletePayment(activePayment);
+                            if (result.success) {
+                              haptics.success();
+                              queryClient.invalidateQueries({ queryKey: ['payments'] });
+                              queryClient.invalidateQueries({ queryKey: ['members'] });
+                              queryClient.invalidateQueries({ queryKey: ['member-detail'] });
+                              queryClient.invalidateQueries({ queryKey: ['dashboard-metrics'] });
+                              Alert.alert(
+                                'Payment Reverted',
+                                'The payment record has been deleted and member plan status has been safely restored.',
+                                [{ text: 'OK', onPress: () => navigation.goBack() }]
+                              );
+                            } else {
+                              haptics.error();
+                              Alert.alert('Error', result.error || 'Failed to revert payment');
+                            }
+                          } catch (err: unknown) {
+                            const msg = err instanceof Error ? err.message : 'Unknown error occurred';
+                            Alert.alert('Error', msg);
+                          } finally {
+                            setIsDeleting(false);
+                          }
+                        },
+                      },
+                    ]
+                  );
+                }}
+                disabled={isDeleting}
+                style={styles.revertActionBtn}
+                activeOpacity={0.8}
+              >
+                <Trash2 size={14} color="#EF4444" />
+                <Text style={styles.revertActionBtnText}>
+                  {isDeleting ? 'Reverting Transaction...' : 'Rollback & Delete Payment'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </ScrollView>
 
-      {/* Unified WhatsApp Sharing Modal */}
+      {/* Share Receipt Modal */}
       <FVEModal
         visible={showWhatsAppModal}
         onClose={() => setShowWhatsAppModal(false)}
-        title="SHARE TO WHATSAPP"
+        title="Share receipt"
         subtitle={`Member: ${memberName}${memberMobile ? ` (${memberMobile})` : ''}`}
       >
-        <View style={styles.modalOptionList}>
-          {/* Option 1: Direct WhatsApp (with PDF Link) (Recommended) */}
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+          contentContainerStyle={[
+            styles.modalOptionList,
+            { paddingBottom: Math.max(insets.bottom, 16) + 8 },
+          ]}
+        >
+          {/* Option 1: Direct WhatsApp */}
           <TouchableOpacity
             style={[styles.modalOptionCard, styles.modalOptionCardHighlight]}
             activeOpacity={0.7}
@@ -676,20 +685,17 @@ export function PaymentReceiptScreen() {
             </View>
             <View style={styles.modalOptionTextContainer}>
               <View style={styles.modalOptionTitleRow}>
-                <Text style={[styles.modalOptionTitle, { color: '#25D366' }]} numberOfLines={2}>
-                  Direct WhatsApp (with PDF Link)
+                <Text style={[styles.modalOptionTitle, { color: '#25D366' }]} numberOfLines={1}>
+                  Direct WhatsApp
                 </Text>
-                <View style={[styles.recommendedBadge, { backgroundColor: 'rgba(37, 211, 102, 0.15)', borderColor: '#25D366' }]}>
-                  <Text style={[styles.recommendedBadgeText, { color: '#25D366' }]}>DIRECT</Text>
-                </View>
               </View>
-              <Text style={styles.modalOptionDesc}>
-                Opens chat directly with registered number ({memberMobile || 'N/A'}) and sends receipt breakdown with clickable PDF invoice link.
+              <Text style={styles.modalOptionDesc} numberOfLines={1}>
+                Opens WhatsApp with PDF link for {memberMobile || 'registered number'}.
               </Text>
             </View>
           </TouchableOpacity>
 
-          {/* Option 2: Attach PDF File via Share Sheet */}
+          {/* Option 2: Attach PDF File */}
           <TouchableOpacity
             style={styles.modalOptionCard}
             activeOpacity={0.7}
@@ -703,12 +709,12 @@ export function PaymentReceiptScreen() {
             </View>
             <View style={styles.modalOptionTextContainer}>
               <View style={styles.modalOptionTitleRow}>
-                <Text style={styles.modalOptionTitle} numberOfLines={2}>
-                  Attach PDF File (Share Sheet)
+                <Text style={styles.modalOptionTitle} numberOfLines={1}>
+                  Attach PDF File
                 </Text>
               </View>
-              <Text style={styles.modalOptionDesc}>
-                Generates branded PDF file and opens system share dialog to manually attach in WhatsApp, Drive, or Email.
+              <Text style={styles.modalOptionDesc} numberOfLines={1}>
+                Generates receipt PDF and opens system share sheet.
               </Text>
             </View>
           </TouchableOpacity>
@@ -727,16 +733,16 @@ export function PaymentReceiptScreen() {
             </View>
             <View style={styles.modalOptionTextContainer}>
               <View style={styles.modalOptionTitleRow}>
-                <Text style={styles.modalOptionTitle} numberOfLines={2}>
-                  Print / Save PDF Document
+                <Text style={styles.modalOptionTitle} numberOfLines={1}>
+                  Print / Save PDF
                 </Text>
               </View>
-              <Text style={styles.modalOptionDesc}>
-                Opens system print preview to save PDF locally to files or print wirelessly.
+              <Text style={styles.modalOptionDesc} numberOfLines={1}>
+                Opens print preview to save locally or print wirelessly.
               </Text>
             </View>
           </TouchableOpacity>
-        </View>
+        </ScrollView>
       </FVEModal>
     </View>
   );
@@ -873,7 +879,7 @@ const getReceiptStyles = (colors: ThemeColors, isDark: boolean) =>
     },
     detailRow: {
       flexDirection: 'row',
-      alignItems: 'center',
+      alignItems: 'baseline',
       justifyContent: 'space-between',
     },
     detailLabel: {
@@ -917,6 +923,8 @@ const getReceiptStyles = (colors: ThemeColors, isDark: boolean) =>
     },
     actionButton: {
       marginTop: 16,
+      minHeight: 54,
+      height: 54,
     },
     actionButtonGroup: {
       marginTop: 8,

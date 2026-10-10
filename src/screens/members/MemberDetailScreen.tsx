@@ -42,6 +42,8 @@ import {
   ChevronDown,
   ChevronRight,
   ZoomIn,
+  MoreVertical,
+  QrCode,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEBadge } from '@/components/common/FVEBadge';
@@ -114,6 +116,7 @@ export function MemberDetailScreen() {
   const { user } = useAuth();
   const dialog = useDialog();
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showActionMenu, setShowActionMenu] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [showWorkoutModal, setShowWorkoutModal] = useState(false);
@@ -705,16 +708,6 @@ export function MemberDetailScreen() {
         rightAction={
           <View style={styles.headerActions}>
             <TouchableOpacity
-              onPress={handleNativeShare}
-              accessibilityLabel="Share on WhatsApp"
-              accessibilityHint="Opens this member's registered WhatsApp chat with their PDF pass attached"
-              style={styles.headerIconBtn}
-              hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
-              activeOpacity={0.7}
-            >
-              <Share2 size={16} color={colors.gold} />
-            </TouchableOpacity>
-            <TouchableOpacity
               onPress={() => {
                 haptics.light();
                 setShowEditModal(true);
@@ -722,16 +715,23 @@ export function MemberDetailScreen() {
               style={styles.headerIconBtn}
               hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Edit member"
             >
               <Edit size={16} color={colors.gold} />
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={handleDelete}
-              style={[styles.headerIconBtn, styles.headerDeleteBtn]}
+              onPress={() => {
+                haptics.light();
+                setShowActionMenu(true);
+              }}
+              style={styles.headerIconBtn}
               hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Member actions menu"
             >
-              <Trash2 size={16} color={colors.error} />
+              <MoreVertical size={16} color={colors.gold} />
             </TouchableOpacity>
           </View>
         }
@@ -888,19 +888,23 @@ export function MemberDetailScreen() {
           </View>
         </View>
 
-        {/* QR Code Card */}
+        {/* Entrance QR Code */}
         {member?.qr_code && (
           <View style={styles.qrCard}>
-            <Text style={styles.cardHeaderTitle}>ENTRANCE CHECK-IN QR</Text>
+            <View style={styles.sectionHeaderRow}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <QrCode size={15} color={colors.gold} />
+                <Text style={styles.cardHeaderTitle}>ENTRANCE CHECK-IN QR</Text>
+              </View>
+            </View>
             <View style={styles.qrWrapper}>
               <QRCode
                 value={member.qr_code}
-                size={160}
+                size={140}
                 color={colors.gold}
                 backgroundColor="#0A0A0A"
               />
             </View>
-            <Text style={styles.qrCodeText}>{member.qr_code}</Text>
             <Text style={styles.qrSubtitle}>
               Scan at front-desk kiosk for attendance check-in
             </Text>
@@ -916,12 +920,7 @@ export function MemberDetailScreen() {
             </View>
 
             {activeMembership ? (
-              activeMembership.status === 'HOLD' ? (
-                <View style={styles.holdStatusIndicator}>
-                  <PauseCircle size={12} color="#FBBF24" />
-                  <Text style={styles.holdStatusIndicatorText}>ON HOLD</Text>
-                </View>
-              ) : isMemberExpired ? (
+              activeMembership.status === 'HOLD' ? null : isMemberExpired ? (
                 <View
                   style={[
                     styles.paidStatusBadge,
@@ -1054,16 +1053,16 @@ export function MemberDetailScreen() {
                     style={[
                       styles.subscriptionActionBtn,
                       activeMembership.status === 'HOLD'
-                        ? styles.reactivateToggleBtn
+                        ? styles.reactivatePrimaryBtn
                         : styles.pauseToggleBtn,
                     ]}
                     activeOpacity={0.8}
                   >
                     {activeMembership.status === 'HOLD' ? (
                       <>
-                        <PlayCircle size={14} color={colors.success} />
-                        <Text style={[styles.subscriptionActionBtnText, { color: colors.success }]}>
-                          Reactivate
+                        <PlayCircle size={15} color="#050505" strokeWidth={2.5} />
+                        <Text style={styles.reactivatePrimaryBtnText}>
+                          Reactivate Member
                         </Text>
                       </>
                     ) : (
@@ -1082,11 +1081,29 @@ export function MemberDetailScreen() {
                     haptics.medium();
                     setShowPaymentModal(true);
                   }}
-                  style={[styles.subscriptionActionBtn, styles.collectPayActionBtn]}
+                  style={[
+                    styles.subscriptionActionBtn,
+                    activeMembership.status === 'HOLD'
+                      ? styles.secondarySubActionBtn
+                      : styles.collectPayActionBtn,
+                  ]}
                   activeOpacity={0.7}
                 >
-                  <CreditCard size={14} color={colors.gold} />
-                  <Text style={[styles.subscriptionActionBtnText, { color: colors.gold }]}>
+                  <CreditCard
+                    size={14}
+                    color={activeMembership.status === 'HOLD' ? colors.textSecondary : colors.gold}
+                  />
+                  <Text
+                    style={[
+                      styles.subscriptionActionBtnText,
+                      {
+                        color:
+                          activeMembership.status === 'HOLD'
+                            ? colors.textSecondary
+                            : colors.gold,
+                      },
+                    ]}
+                  >
                     {isMemberExpired
                       ? '+ Collect Payment'
                       : upcomingMembership
@@ -1146,48 +1163,46 @@ export function MemberDetailScreen() {
           )}
         </View>
 
-        {/* Personal Training Add-On Section */}
+        {/* Merged TRAINING Section (Personal Training + Workout Plans) */}
         <View style={styles.sectionCard}>
           <View style={styles.sectionHeaderRow}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Dumbbell size={15} color="#C084FC" />
-              <Text style={styles.cardHeaderTitle}>PERSONAL TRAINING (ADD-ON)</Text>
+              <Text style={styles.cardHeaderTitle}>TRAINING</Text>
             </View>
-            {personalTraining ? (
-              <FVEBadge
-                label={personalTraining.status.replace('_', ' ')}
-                color={
-                  personalTraining.status === 'ACTIVE'
-                    ? colors.success
-                    : personalTraining.status === 'PENDING_PAYMENT'
-                      ? colors.warning
-                      : personalTraining.status === 'COMPLETED'
-                        ? colors.info
-                        : colors.gold
-                }
-                bgColor={
-                  personalTraining.status === 'ACTIVE'
-                    ? colors.successMuted
-                    : personalTraining.status === 'PENDING_PAYMENT'
-                      ? colors.warningMuted
-                      : personalTraining.status === 'COMPLETED'
-                        ? colors.infoMuted
-                        : colors.goldMuted
-                }
-                borderColor={
-                  personalTraining.status === 'ACTIVE'
-                    ? colors.successBorder
-                    : personalTraining.status === 'PENDING_PAYMENT'
-                      ? colors.warningBorder
-                      : personalTraining.status === 'COMPLETED'
-                        ? colors.infoBorder
-                        : colors.goldBorder
-                }
-              />
-            ) : null}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              {!personalTraining && (
+                <TouchableOpacity
+                  onPress={() => {
+                    haptics.light();
+                    if (['OWNER', 'ADMIN', 'TRAINER'].includes(user?.role || '')) {
+                      setShowPTAssignModal(true);
+                    } else {
+                      setShowPTRequestModal(true);
+                    }
+                  }}
+                  style={styles.newPayLink}
+                >
+                  <Text style={[styles.newPayLinkText, { color: '#C084FC' }]}>+ Add PT</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                onPress={() => {
+                  haptics.light();
+                  setShowWorkoutModal(true);
+                }}
+                style={styles.newPayLink}
+              >
+                <Text style={styles.newPayLinkText}>+ Workout Plan</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
-          {personalTraining ? (
+          {!personalTraining && (!workouts || workouts.length === 0) ? (
+            <Text style={styles.emptyText}>No personal training or workout plans assigned yet.</Text>
+          ) : (
+            <>
+              {personalTraining ? (
             <View style={styles.ptCardContent}>
               <View style={styles.ptHeaderRow}>
                 <View style={{ flex: 1 }}>
@@ -1540,42 +1555,31 @@ export function MemberDetailScreen() {
                 </TouchableOpacity>
               )}
             </View>
-          ) : (
-            <View style={styles.emptyNotice}>
-              <Text style={styles.emptyNoticeText}>
-                No Personal Training package currently active.
-              </Text>
-              <Text style={[styles.emptyNoticeText, { fontSize: 11, color: colors.textMuted, marginTop: 2, marginBottom: 8 }]}>
-                Add 1-on-1 coaching at any time linked to active membership.
-              </Text>
+          ) : null}
 
-              {/* Locked Diet Notice */}
-              <View style={styles.lockedDietBanner}>
-                <Lock size={14} color={colors.gold} />
-                <Text style={styles.lockedDietText}>
-                  Custom Diet Plans & Daily WhatsApp Delivery are exclusive to Personal Training members.
-                </Text>
-              </View>
-              <FVEButton
-                title="+ Request Personal Training"
-                onPress={() => {
-                  if (!activeMembership || activeMembership.status !== 'ACTIVE') {
-                    Alert.alert(
-                      'Membership Status',
-                      'Personal Training requires an active gym membership. Would you like to proceed with requesting PT now?',
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        { text: 'Proceed', onPress: () => setShowPTRequestModal(true) },
-                      ]
-                    );
-                  } else {
-                    setShowPTRequestModal(true);
-                  }
-                }}
-                variant="gold"
-                size="sm"
-              />
-            </View>
+              {/* Assigned Workout Plans Subsection */}
+              {workouts && workouts.length > 0 && (
+                <View style={{ marginTop: personalTraining ? 14 : 0 }}>
+                  <Text style={[styles.cardHeaderTitle, { fontSize: 12, marginBottom: 8, color: colors.textSecondary }]}>
+                    ASSIGNED WORKOUT PLANS
+                  </Text>
+                  {workouts.map(w => (
+                    <View key={w.id} style={styles.workoutRow}>
+                      <View style={styles.workoutLeft}>
+                        <Dumbbell size={15} color={colors.gold} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.workoutTitle}>{w.title}</Text>
+                          {w.description ? (
+                            <Text style={styles.workoutDesc}>{w.description}</Text>
+                          ) : null}
+                        </View>
+                      </View>
+                      <Text style={styles.workoutDate}>{formatDate(w.created_at)}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </>
           )}
         </View>
 
@@ -1607,18 +1611,8 @@ export function MemberDetailScreen() {
                     {formatDate(p.payment_date || p.created_at)}
                   </Text>
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <Text style={styles.payAmount}>{formatCurrency(p.amount)}</Text>
-                  <TouchableOpacity
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      handleDeletePayment(p);
-                    }}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    style={{ padding: 4 }}
-                  >
-                    <Trash2 size={15} color="#EF4444" />
-                  </TouchableOpacity>
                   <ChevronRight size={14} color={colors.textMuted} />
                 </View>
               </TouchableOpacity>
@@ -1691,50 +1685,6 @@ export function MemberDetailScreen() {
             })
           )}
         </View>
-
-        {/* Workout Plans */}
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.cardHeaderTitle}>ASSIGNED WORKOUT PLANS</Text>
-            <TouchableOpacity
-              onPress={() => {
-                haptics.light();
-                setShowWorkoutModal(true);
-              }}
-              style={styles.newPayLink}
-            >
-              <Dumbbell size={13} color={colors.gold} />
-              <Text style={styles.newPayLinkText}>+ Assign Plan</Text>
-            </TouchableOpacity>
-          </View>
-          {(!workouts || workouts.length === 0) ? (
-            <Text style={styles.emptyText}>No workout plans assigned yet.</Text>
-          ) : (
-            workouts.map(w => (
-              <View key={w.id} style={styles.workoutRow}>
-                <View style={styles.workoutLeft}>
-                  <Dumbbell size={15} color={colors.gold} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.workoutTitle}>{w.title}</Text>
-                    {w.description ? (
-                      <Text style={styles.workoutDesc}>{w.description}</Text>
-                    ) : null}
-                  </View>
-                </View>
-                <Text style={styles.workoutDate}>{formatDate(w.created_at)}</Text>
-              </View>
-            ))
-          )}
-        </View>
-
-        {/* Delete Member Button */}
-        <FVEButton
-          title="DELETE MEMBER"
-          onPress={handleDelete}
-          variant="danger"
-          size="sm"
-          style={styles.deleteButton}
-        />
       </ScrollView>
 
       {/* Edit Member Modal */}
@@ -1747,6 +1697,50 @@ export function MemberDetailScreen() {
         }}
         member={member}
       />
+
+      {/* Member Profile Action Menu Modal (⋮) */}
+      <FVEModal
+        visible={showActionMenu}
+        onClose={() => setShowActionMenu(false)}
+        title="MEMBER OPTIONS"
+        subtitle={member?.full_name}
+      >
+        <View style={styles.menuOptionsList}>
+          <TouchableOpacity
+            style={styles.menuOptionItem}
+            activeOpacity={0.7}
+            onPress={() => {
+              setShowActionMenu(false);
+              handleNativeShare();
+            }}
+          >
+            <View style={[styles.menuOptionIconWrap, { backgroundColor: colors.goldMuted, borderColor: colors.goldBorder }]}>
+              <Share2 size={16} color={colors.gold} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.menuOptionTitle}>Share Athlete Pass</Text>
+              <Text style={styles.menuOptionSub}>Export PDF pass or share via WhatsApp</Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.menuOptionItem, { borderColor: 'rgba(239, 68, 68, 0.3)' }]}
+            activeOpacity={0.7}
+            onPress={() => {
+              setShowActionMenu(false);
+              handleDelete();
+            }}
+          >
+            <View style={[styles.menuOptionIconWrap, { backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.3)' }]}>
+              <Trash2 size={16} color="#EF4444" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.menuOptionTitle, { color: '#EF4444' }]}>Delete Member</Text>
+              <Text style={styles.menuOptionSub}>Permanently remove member with confirmation</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      </FVEModal>
 
       {/* Payment Form Modal */}
       <PaymentFormModal
@@ -2012,17 +2006,10 @@ const getMemberDetailStyles = (colors: ThemeColors, isDark: boolean) =>
       borderColor: 'rgba(239, 68, 68, 0.3)',
     },
     profileCard: {
-      backgroundColor: colors.cardBackground,
-      borderWidth: 1,
-      borderColor: isDark ? 'rgba(239, 161, 0, 0.3)' : 'rgba(217, 130, 0, 0.25)',
-      borderRadius: 14,
-      padding: 16,
-      marginBottom: 16,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: isDark ? 0.3 : 0.06,
-      shadowRadius: 6,
-      elevation: 3,
+      paddingBottom: 16,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+      marginBottom: 6,
     },
     profileTopRow: {
       flexDirection: 'row',
@@ -2136,7 +2123,9 @@ const getMemberDetailStyles = (colors: ThemeColors, isDark: boolean) =>
     },
     contactBtn: {
       flex: 1,
-      minHeight: 38,
+      height: 46,
+      minHeight: 44,
+      maxHeight: 48,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
@@ -2145,7 +2134,6 @@ const getMemberDetailStyles = (colors: ThemeColors, isDark: boolean) =>
       borderWidth: 1,
       borderColor: colors.goldBorder,
       borderRadius: 8,
-      paddingVertical: 8,
       paddingHorizontal: 6,
     },
     whatsappBtn: {
@@ -2190,18 +2178,11 @@ const getMemberDetailStyles = (colors: ThemeColors, isDark: boolean) =>
       marginTop: 2,
     },
     qrCard: {
-      backgroundColor: colors.cardBackground,
-      borderWidth: 1,
-      borderColor: isDark ? 'rgba(239, 161, 0, 0.3)' : 'rgba(217, 130, 0, 0.25)',
-      borderRadius: 14,
-      padding: 16,
+      paddingVertical: 16,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
       alignItems: 'center',
-      marginBottom: 16,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: isDark ? 0.3 : 0.06,
-      shadowRadius: 6,
-      elevation: 3,
+      marginBottom: 6,
     },
     cardHeaderTitle: {
       color: colors.textSecondary,
@@ -2232,17 +2213,10 @@ const getMemberDetailStyles = (colors: ThemeColors, isDark: boolean) =>
       marginTop: 4,
     },
     sectionCard: {
-      backgroundColor: colors.cardBackground,
-      borderWidth: 1,
-      borderColor: isDark ? 'rgba(239, 161, 0, 0.25)' : 'rgba(217, 130, 0, 0.2)',
-      borderRadius: 14,
-      padding: 16,
-      marginBottom: 16,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: isDark ? 0.3 : 0.06,
-      shadowRadius: 6,
-      elevation: 3,
+      paddingVertical: 16,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+      marginBottom: 6,
     },
     sectionHeaderRow: {
       flexDirection: 'row',
@@ -3036,5 +3010,73 @@ const getMemberDetailStyles = (colors: ThemeColors, isDark: boolean) =>
       fontFamily: typography.fonts.rajdhani,
       fontWeight: '700',
       letterSpacing: 0.5,
+    },
+    reactivatePrimaryBtn: {
+      backgroundColor: colors.gold,
+      flex: 1.2,
+      minHeight: 44,
+      borderRadius: 8,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+    },
+    reactivatePrimaryBtnText: {
+      color: '#050505',
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    secondarySubActionBtn: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      flex: 1,
+      minHeight: 44,
+      borderRadius: 8,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+    },
+    secondarySubActionBtnText: {
+      color: colors.textSecondary,
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 12,
+      fontWeight: '700',
+    },
+    menuOptionsList: {
+      gap: 10,
+      paddingVertical: 4,
+    },
+    menuOptionItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      padding: 12,
+      borderRadius: 10,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    menuOptionIconWrap: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      borderWidth: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    menuOptionTitle: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 14,
+      fontWeight: '700',
+      color: colors.textPrimary,
+    },
+    menuOptionSub: {
+      fontFamily: typography.fonts.inter,
+      fontSize: 11,
+      color: colors.textMuted,
+      marginTop: 1,
     },
   });

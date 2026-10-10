@@ -127,12 +127,13 @@ export function DailyPassFormModal({
   };
 
   return (
-    <FVEModal
-      visible={visible}
-      onClose={onClose}
-      title={pass ? 'Edit Daily Pass' : 'Issue Daily Pass'}
-      subtitle="Single-day facility access token (₹100)"
-    >
+    <>
+      <FVEModal
+        visible={visible}
+        onClose={onClose}
+        title={pass ? 'Edit Daily Pass' : 'Issue Daily Pass'}
+        subtitle="Single-day facility access token (₹100)"
+      >
       <View style={styles.form}>
         <FVEInput
           label="VISITOR NAME *"
@@ -287,6 +288,7 @@ export function DailyPassFormModal({
         />
       </View>
 
+      </FVEModal>
       <FVEDatePickerModal
         visible={showDatePicker}
         onClose={() => setShowDatePicker(false)}
@@ -294,7 +296,7 @@ export function DailyPassFormModal({
         initialDate={passDate}
         title="SELECT PASS DATE"
       />
-    </FVEModal>
+    </>
   );
 }
 

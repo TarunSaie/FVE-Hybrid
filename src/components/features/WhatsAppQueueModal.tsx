@@ -175,7 +175,7 @@ export function WhatsAppQueueModal({
             style={[
               styles.container,
               {
-                backgroundColor: isDark ? '#0D0D10' : '#FFFFFF',
+                backgroundColor: colors.surface,
                 borderColor: colors.border,
               },
             ]}

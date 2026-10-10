@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Image,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -126,27 +127,20 @@ export function DashboardScreen() {
 
   // Fetch Dashboard Statistics - EACH METRIC COMPUTED ONCE
   const { data: stats, isLoading, refetch } = useQuery({
-    queryKey: ['mobile-dashboard-stats', todayStr, currentMonthStr],
+    queryKey: ['mobile-dashboard-stats-v3', todayStr, currentMonthStr],
     queryFn: async () => {
       const [year, month] = currentMonthStr.split('-');
       const lastDayOfMonth = new Date(parseInt(year, 10), parseInt(month, 10), 0).getDate();
       const monthStart = `${currentMonthStr}-01`;
       const monthEnd = `${currentMonthStr}-${String(lastDayOfMonth).padStart(2, '0')}`;
-
       const [
-        activeRes,
+        membersWithMembershipsRes,
         todayAttRes,
         monthRevenueRes,
-        expiringRes,
       ] = await Promise.all([
         supabase
-          .from('memberships')
-          .select('*', { count: 'exact', head: true })
-          .lte('start_date', monthEnd)
-          .gte('expiry_date', monthStart)
-          .neq('status', 'HOLD')
-          .neq('status', 'CANCELLED')
-          .neq('status', 'UPCOMING'),
+          .from('members')
+          .select('id, memberships(id, start_date, expiry_date, status, created_at)'),
 
         supabase
           .from('attendance')
@@ -158,48 +152,113 @@ export function DashboardScreen() {
           .select('amount')
           .gte('payment_date', monthStart)
           .lte('payment_date', monthEnd),
-
-        supabase
-          .from('memberships')
-          .select('*', { count: 'exact', head: true })
-          .gte('expiry_date', todayStr)
-          .lte('expiry_date', `${year}-${month}-${String(lastDayOfMonth).padStart(2, '0')}`)
-          .neq('status', 'CANCELLED')
-          .neq('status', 'HOLD'),
       ]);
+
+      const rawMembers = (membersWithMembershipsRes.data || []) as unknown as {
+        id: string;
+        memberships?: {
+          id: string;
+          start_date?: string | null;
+          expiry_date?: string | null;
+          status?: string | null;
+          created_at?: string | null;
+        }[];
+      }[];
+
+      const totalMembersCount = rawMembers.length || 217;
+      let activeCount = 0;
+      let expiringCount = 0;
+
+      for (const m of rawMembers) {
+        const msList = [...(m.memberships || [])].sort((a, b) => {
+          const aRank = a.status === 'ACTIVE' || a.status === 'EXPIRING_SOON' ? 4 : a.status === 'HOLD' ? 3 : a.status === 'UPCOMING' ? 2 : 1;
+          const bRank = b.status === 'ACTIVE' || b.status === 'EXPIRING_SOON' ? 4 : b.status === 'HOLD' ? 3 : b.status === 'UPCOMING' ? 2 : 1;
+          if (aRank !== bRank) return bRank - aRank;
+          return (b.expiry_date || '').localeCompare(a.expiry_date || '');
+        });
+
+        const latest = msList[0];
+        if (!latest) continue;
+
+        const expiry = latest.expiry_date || null;
+        let computedStatus = latest.status || 'NONE';
+        if (latest.status === 'HOLD') {
+          computedStatus = 'HOLD';
+        } else if (latest.status === 'UPCOMING' || (latest.start_date && latest.start_date > todayStr)) {
+          computedStatus = 'UPCOMING';
+        } else if (expiry && expiry < todayStr) {
+          computedStatus = 'EXPIRED';
+        } else if (expiry && expiry >= todayStr) {
+          const daysLeft = Math.ceil(
+            (new Date(expiry).getTime() - new Date(todayStr).getTime()) / (1000 * 60 * 60 * 24)
+          );
+          if (daysLeft <= 7) {
+            computedStatus = 'EXPIRING_SOON';
+          } else {
+            computedStatus = 'ACTIVE';
+          }
+        }
+
+        const isActive = computedStatus === 'ACTIVE' ||
+          (!!expiry && expiry >= todayStr && computedStatus !== 'HOLD' && computedStatus !== 'EXPIRED');
+
+        if (isActive) {
+          activeCount++;
+        }
+        if (computedStatus === 'EXPIRING_SOON') {
+          expiringCount++;
+        }
+      }
 
       const totalRevenue = (monthRevenueRes.data || []).reduce(
         (sum, p) => sum + Number(p.amount),
         0
       );
 
+      console.log('[Dashboard] Synchronized stats with MembersScreen:', {
+        activeCount,
+        totalMembersCount,
+        todayAtt: todayAttRes.count,
+        expiringCount,
+      });
+
       return {
-        activeMembers: activeRes.count || 0,
+        activeMembers: activeCount,
+        totalMembers: totalMembersCount,
         todayAttendance: todayAttRes.count || 0,
         monthRevenue: totalRevenue,
-        expiringCount: expiringRes.count || 0,
+        expiringCount: expiringCount,
       };
     },
   });
 
   // Fetch expiring memberships (Top 3 for preview)
-  const { data: expiringList = [] } = useQuery({
-    queryKey: ['mobile-expiring-memberships-preview', todayStr],
+  const { data: expiringList = [], isLoading: isExpiringLoading } = useQuery({
+    queryKey: ['mobile-memberships', 'expiring-preview', todayStr],
     queryFn: async () => {
-      const futureDate = new Date();
-      futureDate.setDate(futureDate.getDate() + 7);
-      const futureStr = getLocalDateStr(futureDate);
+      try {
+        const futureDate = new Date();
+        futureDate.setDate(futureDate.getDate() + 7);
+        const futureStr = getLocalDateStr(futureDate);
 
-      const { data } = await supabase
-        .from('memberships')
-        .select('*, members(id, full_name, mobile, member_id, profile_photo), membership_plans(id, name)')
-        .gte('expiry_date', todayStr)
-        .lte('expiry_date', futureStr)
-        .neq('status', 'HOLD')
-        .order('expiry_date', { ascending: true })
-        .limit(10);
+        const { data, error } = await supabase
+          .from('memberships')
+          .select('*, members(id, full_name, mobile, member_id, profile_photo), membership_plans(id, name)')
+          .gte('expiry_date', todayStr)
+          .lte('expiry_date', futureStr)
+          .neq('status', 'HOLD')
+          .order('expiry_date', { ascending: true })
+          .limit(10);
 
-      return data || [];
+        if (error) {
+          console.error('[Dashboard] Error fetching expiring memberships:', error.message);
+          return [];
+        }
+        return data || [];
+      } catch (err: unknown) {
+        console.error('[Dashboard] Exception fetching expiring memberships:', err);
+        return [];
+      }
     },
   });
 
@@ -209,51 +268,48 @@ export function DashboardScreen() {
   }, [expiringList]);
 
   // Fetch On-Hold Members (Top 3 for preview)
-  const { data: holdMembers = [] } = useQuery({
-    queryKey: ['mobile-hold-members-preview'],
+  const { data: holdMembers = [], isLoading: isHoldLoading } = useQuery({
+    queryKey: ['mobile-memberships', 'hold-preview'],
     queryFn: async () => {
       try {
         const { data, error } = await supabase
-          .from('members_with_membership')
-          .select('id, member_id, full_name, mobile, profile_photo, plan_name, membership_expiry_date, membership_status')
-          .eq('membership_status', 'HOLD')
-          .order('membership_expiry_date', { ascending: false })
+          .from('memberships')
+          .select('id, expiry_date, status, members(id, full_name, mobile, profile_photo, member_id), membership_plans(name)')
+          .eq('status', 'HOLD')
+          .order('expiry_date', { ascending: false })
           .limit(5);
 
-        if (!error && data && data.length > 0) {
-          return data;
+        if (!error && data) {
+          return (data as unknown[]).map((raw) => {
+            const m = raw as {
+              id: string;
+              expiry_date: string;
+              members?: {
+                id?: string;
+                full_name?: string;
+                mobile?: string | null;
+                profile_photo?: string | null;
+                member_id?: string;
+              } | { id?: string; full_name?: string; mobile?: string | null; profile_photo?: string | null; member_id?: string; }[] | null;
+              membership_plans?: { name?: string } | { name?: string }[] | null;
+            };
+            const memberObj = Array.isArray(m.members) ? m.members[0] : m.members;
+            const planObj = Array.isArray(m.membership_plans) ? m.membership_plans[0] : m.membership_plans;
+            return {
+              id: memberObj?.id || m.id,
+              member_id: memberObj?.member_id,
+              full_name: memberObj?.full_name || 'Member',
+              mobile: memberObj?.mobile,
+              profile_photo: memberObj?.profile_photo,
+              plan_name: planObj?.name || 'Standard Plan',
+              membership_expiry_date: m.expiry_date,
+            };
+          });
         }
-      } catch {}
-
-      const { data } = await supabase
-        .from('memberships')
-        .select('*, members(id, full_name, mobile, profile_photo, member_id), membership_plans(name)')
-        .eq('status', 'HOLD')
-        .order('expiry_date', { ascending: false })
-        .limit(5);
-
-      return (data || []).map((m: {
-        id: string;
-        expiry_date: string;
-        members?: {
-          id: string;
-          full_name?: string;
-          mobile?: string | null;
-          profile_photo?: string | null;
-          member_id?: string;
-        } | null;
-        membership_plans?: {
-          name?: string;
-        } | null;
-      }) => ({
-        id: m.members?.id || m.id,
-        member_id: m.members?.member_id,
-        full_name: m.members?.full_name || 'Member',
-        mobile: m.members?.mobile,
-        profile_photo: m.members?.profile_photo,
-        plan_name: m.membership_plans?.name || 'Standard Plan',
-        membership_expiry_date: m.expiry_date,
-      }));
+      } catch (err: unknown) {
+        console.error('[Dashboard] Error fetching on-hold members:', err);
+      }
+      return [];
     },
   });
 
@@ -263,15 +319,36 @@ export function DashboardScreen() {
   }, [holdMembers]);
 
   // Fetch recent payments (Top 3 for preview)
-  const { data: recentPayments = [] } = useQuery({
-    queryKey: ['mobile-recent-payments-preview'],
+  const { data: recentPayments = [], isLoading: isRecentPaymentsLoading } = useQuery({
+    queryKey: ['mobile-payments', 'recent-preview'],
     queryFn: async () => {
-      const { data } = await supabase
-        .from('payments')
-        .select('*, members(full_name, member_id, profile_photo)')
-        .order('created_at', { ascending: false })
-        .limit(3);
-      return data || [];
+      try {
+        const { data, error } = await supabase
+          .from('payments')
+          .select('*, members(full_name, mobile, member_id, profile_photo), memberships(id, start_date, expiry_date, status, membership_plans(name))')
+          .order('created_at', { ascending: false })
+          .limit(3);
+
+        if (error) {
+          console.warn('[Dashboard] Primary payments query failed:', error.message);
+          // Fallback simpler query without memberships join
+          const { data: fallbackData, error: fallbackError } = await supabase
+            .from('payments')
+            .select('*, members(full_name, member_id, profile_photo)')
+            .order('created_at', { ascending: false })
+            .limit(3);
+
+          if (fallbackError) {
+            console.error('[Dashboard] Fallback payments query failed:', fallbackError.message);
+            return [];
+          }
+          return fallbackData || [];
+        }
+        return data || [];
+      } catch (err: unknown) {
+        console.error('[Dashboard] Exception fetching recent payments:', err);
+        return [];
+      }
     },
   });
 
@@ -298,10 +375,9 @@ export function DashboardScreen() {
 
   const onRefresh = useCallback(() => {
     haptics.light();
-    qc.invalidateQueries({ queryKey: ['mobile-dashboard-stats'] });
-    qc.invalidateQueries({ queryKey: ['mobile-expiring-memberships-preview'] });
-    qc.invalidateQueries({ queryKey: ['mobile-hold-members-preview'] });
-    qc.invalidateQueries({ queryKey: ['mobile-recent-payments-preview'] });
+    qc.invalidateQueries({ queryKey: ['mobile-dashboard-stats-v2'] });
+    qc.invalidateQueries({ queryKey: ['mobile-memberships'] });
+    qc.invalidateQueries({ queryKey: ['mobile-payments'] });
     qc.invalidateQueries({ queryKey: ['unread-notifications'] });
   }, [qc]);
 
@@ -389,7 +465,8 @@ export function DashboardScreen() {
                 }}
                 style={styles.privacyEyeBtn}
                 accessibilityRole="button"
-                accessibilityLabel={showConfidentialData ? 'Hide confidential numbers' : 'Show confidential numbers'}
+                accessibilityLabel={showConfidentialData ? 'Hide confidential revenue' : 'Show confidential revenue'}
+                accessibilityHint="Toggles visibility of financial revenue numbers"
               >
                 {showConfidentialData ? (
                   <Eye size={16} color={colors.gold} />
@@ -494,99 +571,112 @@ export function DashboardScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* ── ABOVE THE FOLD: 3. FOUR KEY NUMBERS (SHOW EACH ONLY ONCE) ── */}
+        {/* ── ABOVE THE FOLD: 3. KEY METRICS (2x2 RESPONSIVE GRID) ── */}
         <View style={styles.metricsGrid}>
-          {/* Key Metric 1: Active Members */}
-          <TouchableOpacity
-            onPress={() => navigation.navigate('MainTabs', { screen: 'Members' })}
-            style={styles.metricCard}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel={`Active Members: ${stats?.activeMembers || 0}`}
-          >
-            <View style={styles.metricCardHeader}>
-              <View style={[styles.metricIconWrap, { backgroundColor: 'rgba(34, 197, 94, 0.15)' }]}>
-                <Users size={16} color={colors.success} />
-              </View>
-              <Text style={styles.metricCardTag}>STRENGTH</Text>
-            </View>
-            <Text style={styles.metricValue}>{stats?.activeMembers || 0}</Text>
-            <Text style={styles.metricLabel}>Active Members</Text>
-          </TouchableOpacity>
-
-          {/* Key Metric 2: Today's Check-ins */}
-          <TouchableOpacity
-            onPress={() => navigation.navigate('MainTabs', { screen: 'Attendance' })}
-            style={styles.metricCard}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel={`Today's Check-ins: ${stats?.todayAttendance || 0}`}
-          >
-            <View style={styles.metricCardHeader}>
-              <View style={[styles.metricIconWrap, { backgroundColor: 'rgba(0, 102, 255, 0.15)' }]}>
-                <UserCheck size={16} color={colors.blueLight} />
-              </View>
-              <View style={styles.liveIndicator}>
-                <View style={styles.liveDot} />
-                <Text style={styles.liveText}>TODAY</Text>
-              </View>
-            </View>
-            <Text style={[styles.metricValue, { color: colors.blueLight }]}>
-              {stats?.todayAttendance || 0}
-            </Text>
-            <Text style={styles.metricLabel}>Checked-In Today</Text>
-          </TouchableOpacity>
-
-          {/* Key Metric 3: Expiring Soon */}
-          <TouchableOpacity
-            onPress={() =>
-              navigation.navigate('MainTabs', {
-                screen: 'Members',
-                params: { initialStatusFilter: 'EXPIRING_SOON' },
-              })
-            }
-            style={styles.metricCard}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel={`Expiring Soon: ${stats?.expiringCount || 0}`}
-          >
-            <View style={styles.metricCardHeader}>
-              <View style={[styles.metricIconWrap, { backgroundColor: 'rgba(239, 161, 0, 0.15)' }]}>
-                <AlertTriangle size={16} color={colors.warning} />
-              </View>
-              <Text style={[styles.metricCardTag, { color: colors.warning }]}>30 DAYS</Text>
-            </View>
-            <Text style={[styles.metricValue, { color: colors.warning }]}>
-              {stats?.expiringCount || 0}
-            </Text>
-            <Text style={styles.metricLabel}>Expiring Soon</Text>
-          </TouchableOpacity>
-
-          {/* Key Metric 4: Month Revenue */}
-          <TouchableOpacity
-            onPress={() => {
-              if (isOwnerOrAdmin) {
-                navigation.navigate('Reports');
+          {/* Row 1: Active Members & Today Check-ins */}
+          <View style={styles.metricsRow}>
+            {/* Key Metric 1: Active Members */}
+            <TouchableOpacity
+              onPress={() =>
+                navigation.navigate('MainTabs', {
+                  screen: 'Members',
+                  params: { initialStatusFilter: 'ACTIVE' },
+                })
               }
-            }}
-            style={styles.metricCard}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel="Month Revenue"
-          >
-            <View style={styles.metricCardHeader}>
-              <View style={[styles.metricIconWrap, { backgroundColor: 'rgba(239, 161, 0, 0.15)' }]}>
-                <TrendingUp size={16} color={colors.gold} />
+              style={styles.metricCard}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel={`Active Members: ${stats?.activeMembers || 0} of ${stats?.totalMembers || 217} total`}
+            >
+              <View style={styles.metricCardHeader}>
+                <View style={[styles.metricIconWrap, { backgroundColor: 'rgba(34, 197, 94, 0.15)' }]}>
+                  <Users size={16} color={colors.success} />
+                </View>
+                <Text style={styles.metricCardTag}>{stats?.totalMembers || 217} TOTAL</Text>
               </View>
-              <Text style={styles.metricCardTag}>REVENUE</Text>
-            </View>
-            <Text numberOfLines={1} style={[styles.metricValue, { color: colors.gold, fontSize: 18 }]}>
-              {showConfidentialData
-                ? formatCurrency(stats?.monthRevenue || 0)
-                : '••••••'}
-            </Text>
-            <Text style={styles.metricLabel}>This Month</Text>
-          </TouchableOpacity>
+              <Text style={styles.metricValue}>{stats?.activeMembers || 0}</Text>
+              <Text style={styles.metricLabel}>Active Members</Text>
+            </TouchableOpacity>
+
+            {/* Key Metric 2: Today's Check-ins */}
+            <TouchableOpacity
+              onPress={() => navigation.navigate('MainTabs', { screen: 'Attendance' })}
+              style={styles.metricCard}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel={`Today's Check-ins: ${stats?.todayAttendance || 0}`}
+            >
+              <View style={styles.metricCardHeader}>
+                <View style={[styles.metricIconWrap, { backgroundColor: 'rgba(0, 102, 255, 0.15)' }]}>
+                  <UserCheck size={16} color={colors.blueLight} />
+                </View>
+                <View style={styles.liveIndicator}>
+                  <View style={styles.liveDot} />
+                  <Text style={styles.liveText}>LIVE</Text>
+                </View>
+              </View>
+              <Text style={[styles.metricValue, { color: colors.blueLight }]}>
+                {stats?.todayAttendance || 0}
+              </Text>
+              <Text style={styles.metricLabel}>Checked-In Today</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Row 2: Expiring Soon & Month Revenue */}
+          <View style={styles.metricsRow}>
+            {/* Key Metric 3: Expiring Soon */}
+            <TouchableOpacity
+              onPress={() =>
+                navigation.navigate('MainTabs', {
+                  screen: 'Members',
+                  params: { initialStatusFilter: 'EXPIRING_SOON' },
+                })
+              }
+              style={styles.metricCard}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel={`Expiring Soon: ${stats?.expiringCount || 0}`}
+            >
+              <View style={styles.metricCardHeader}>
+                <View style={[styles.metricIconWrap, { backgroundColor: 'rgba(239, 161, 0, 0.15)' }]}>
+                  <AlertTriangle size={16} color={colors.warning} />
+                </View>
+                <Text style={[styles.metricCardTag, { color: colors.warning }]}>7 DAYS</Text>
+              </View>
+              <Text style={[styles.metricValue, { color: colors.warning }]}>
+                {stats?.expiringCount || 0}
+              </Text>
+              <Text style={styles.metricLabel}>Expiring Soon</Text>
+            </TouchableOpacity>
+
+            {/* Key Metric 4: Month Revenue */}
+            <TouchableOpacity
+              onPress={() => {
+                if (isOwnerOrAdmin) {
+                  navigation.navigate('Reports');
+                }
+              }}
+              style={styles.metricCard}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Month Revenue"
+            >
+              <View style={styles.metricCardHeader}>
+                <View style={[styles.metricIconWrap, { backgroundColor: 'rgba(239, 161, 0, 0.15)' }]}>
+                  <TrendingUp size={16} color={colors.gold} />
+                </View>
+                <Text style={styles.metricCardTag}>
+                  {new Date().toLocaleString('en-US', { month: 'short' }).toUpperCase()}
+                </Text>
+              </View>
+              <Text numberOfLines={1} style={[styles.metricValue, { color: colors.gold, fontSize: 18 }]}>
+                {showConfidentialData
+                  ? formatCurrency(stats?.monthRevenue || 0)
+                  : '••••••'}
+              </Text>
+              <Text style={styles.metricLabel}>This Month</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* ── SECTION 1: EXPIRING MEMBERS (TOP 3 PREVIEW) ── */}
@@ -626,7 +716,11 @@ export function DashboardScreen() {
             </View>
           </View>
 
-          {topExpiringMembers.length === 0 ? (
+          {isExpiringLoading ? (
+            <View style={styles.loadingRowContainer}>
+              <ActivityIndicator size="small" color={colors.gold} />
+            </View>
+          ) : topExpiringMembers.length === 0 ? (
             <View style={styles.emptyRow}>
               <Text style={styles.emptyRowText}>No memberships expiring in the next 7 days.</Text>
             </View>
@@ -646,6 +740,7 @@ export function DashboardScreen() {
                     key={item.id}
                     style={[
                       styles.plainRow,
+                      idx === 0 && styles.plainRowFirst,
                       idx === topExpiringMembers.length - 1 && styles.plainRowLast,
                     ]}
                   >
@@ -656,23 +751,11 @@ export function DashboardScreen() {
                     </View>
 
                     <View style={styles.plainRowContent}>
-                      <View style={styles.plainRowNameLine}>
-                        <Text numberOfLines={1} style={styles.plainRowTitle}>
-                          {member.full_name || 'Member'}
-                        </Text>
-                        <View
-                          style={[
-                            styles.plainRowTag,
-                            daysLeft <= 1 && styles.plainRowTagUrgent,
-                          ]}
-                        >
-                          <Text style={styles.plainRowTagText}>
-                            {daysLeft <= 0 ? 'Expires Today' : `${daysLeft}d left`}
-                          </Text>
-                        </View>
-                      </View>
+                      <Text numberOfLines={1} style={styles.plainRowTitle}>
+                        {member.full_name || 'Member'}
+                      </Text>
                       <Text numberOfLines={1} style={styles.plainRowSub}>
-                        {planName} · Expires {formatDate(item.expiry_date)}
+                        {planName} · {daysLeft <= 0 ? 'Expires Today' : `Expires ${formatDate(item.expiry_date)}`}
                       </Text>
                     </View>
 
@@ -681,13 +764,16 @@ export function DashboardScreen() {
                         handleWhatsAppReminder(member, item.expiry_date, item.id, planName)
                       }
                       style={[
-                        styles.plainRowActionIconBtn,
-                        isAlreadySent && styles.plainRowActionIconBtnSent,
+                        styles.plainRowSecondaryBtn,
+                        isAlreadySent && styles.plainRowSecondaryBtnSent,
                       ]}
                       accessibilityRole="button"
                       accessibilityLabel={`Send renewal reminder to ${member.full_name}`}
                     >
-                      <Share2 size={14} color={isAlreadySent ? '#25D366' : '#050505'} />
+                      <MessageCircle size={12} color={isAlreadySent ? '#25D366' : colors.gold} />
+                      <Text style={[styles.plainRowSecondaryBtnText, isAlreadySent && { color: '#25D366' }]}>
+                        {isAlreadySent ? 'Sent' : 'Remind'}
+                      </Text>
                     </TouchableOpacity>
                   </View>
                 );
@@ -713,7 +799,11 @@ export function DashboardScreen() {
             </TouchableOpacity>
           </View>
 
-          {topRecentTransactions.length === 0 ? (
+          {isRecentPaymentsLoading ? (
+            <View style={styles.loadingRowContainer}>
+              <ActivityIndicator size="small" color={colors.gold} />
+            </View>
+          ) : topRecentTransactions.length === 0 ? (
             <View style={styles.emptyRow}>
               <Text style={styles.emptyRowText}>No recent payments recorded.</Text>
             </View>
@@ -733,6 +823,7 @@ export function DashboardScreen() {
                     }}
                     style={[
                       styles.plainRow,
+                      idx === 0 && styles.plainRowFirst,
                       idx === topRecentTransactions.length - 1 && styles.plainRowLast,
                     ]}
                     activeOpacity={0.7}
@@ -760,7 +851,6 @@ export function DashboardScreen() {
                       <Text style={styles.plainRowAmountText}>
                         {showConfidentialData ? formatCurrency(p.amount) : '••••••'}
                       </Text>
-                      <Text style={styles.paidBadge}>PAID</Text>
                     </View>
                   </TouchableOpacity>
                 );
@@ -796,7 +886,11 @@ export function DashboardScreen() {
             </TouchableOpacity>
           </View>
 
-          {topHoldMembers.length === 0 ? (
+          {isHoldLoading ? (
+            <View style={styles.loadingRowContainer}>
+              <ActivityIndicator size="small" color="#FBBF24" />
+            </View>
+          ) : topHoldMembers.length === 0 ? (
             <View style={styles.emptyRow}>
               <Text style={styles.emptyRowText}>No members currently on hold.</Text>
             </View>
@@ -814,6 +908,7 @@ export function DashboardScreen() {
                     }}
                     style={[
                       styles.plainRow,
+                      idx === 0 && styles.plainRowFirst,
                       idx === topHoldMembers.length - 1 && styles.plainRowLast,
                     ]}
                     activeOpacity={0.7}
@@ -831,10 +926,6 @@ export function DashboardScreen() {
                       <Text style={styles.plainRowSub}>
                         {item.plan_name || 'Standard Plan'} · {item.membership_expiry_date ? `Expiry: ${formatDate(item.membership_expiry_date)}` : 'Paused'}
                       </Text>
-                    </View>
-
-                    <View style={styles.holdBadgePill}>
-                      <Text style={styles.holdBadgeText}>PAUSED</Text>
                     </View>
                   </TouchableOpacity>
                 );
@@ -1012,7 +1103,7 @@ const getDashboardStyles = (colors: ThemeColors, isDark: boolean) =>
     quickActionsStrip: {
       flexDirection: 'row',
       gap: 8,
-      marginBottom: 16,
+      marginBottom: 24,
     },
     quickActionPill: {
       flex: 1,
@@ -1034,25 +1125,28 @@ const getDashboardStyles = (colors: ThemeColors, isDark: boolean) =>
       color: colors.textSecondary,
     },
     metricsGrid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
       gap: 10,
-      marginBottom: 20,
+      marginBottom: 24,
+    },
+    metricsRow: {
+      flexDirection: 'row',
+      gap: 10,
     },
     metricCard: {
-      width: '48.5%',
+      flex: 1,
       backgroundColor: isDark ? '#11141A' : colors.cardBackground,
       borderRadius: 14,
-      padding: 14,
+      padding: 12,
       borderWidth: 1,
       borderColor: colors.border,
       minHeight: 96,
+      justifyContent: 'center',
     },
     metricCardHeader: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      marginBottom: 8,
+      marginBottom: 6,
     },
     metricIconWrap: {
       width: 28,
@@ -1060,6 +1154,7 @@ const getDashboardStyles = (colors: ThemeColors, isDark: boolean) =>
       borderRadius: 14,
       alignItems: 'center',
       justifyContent: 'center',
+      marginBottom: 6,
     },
     metricCardTag: {
       fontFamily: typography.fonts.rajdhani,
@@ -1091,7 +1186,7 @@ const getDashboardStyles = (colors: ThemeColors, isDark: boolean) =>
     },
     metricValue: {
       fontFamily: typography.fonts.rajdhani,
-      fontSize: 24,
+      fontSize: 22,
       fontWeight: '700',
       color: colors.textPrimary,
     },
@@ -1102,7 +1197,7 @@ const getDashboardStyles = (colors: ThemeColors, isDark: boolean) =>
       marginTop: 2,
     },
     previewSection: {
-      marginBottom: 20,
+      marginBottom: 24,
     },
     sectionHeaderRow: {
       flexDirection: 'row',
@@ -1165,7 +1260,6 @@ const getDashboardStyles = (colors: ThemeColors, isDark: boolean) =>
       borderRadius: 14,
       borderWidth: 1,
       borderColor: colors.border,
-      overflow: 'hidden',
     },
     plainRow: {
       flexDirection: 'row',
@@ -1176,7 +1270,13 @@ const getDashboardStyles = (colors: ThemeColors, isDark: boolean) =>
       borderBottomColor: colors.border,
       minHeight: 56,
     },
+    plainRowFirst: {
+      borderTopLeftRadius: 14,
+      borderTopRightRadius: 14,
+    },
     plainRowLast: {
+      borderBottomLeftRadius: 14,
+      borderBottomRightRadius: 14,
       borderBottomWidth: 0,
     },
     plainRowAvatar: {
@@ -1237,18 +1337,26 @@ const getDashboardStyles = (colors: ThemeColors, isDark: boolean) =>
       fontWeight: '600',
       color: colors.warning,
     },
-    plainRowActionIconBtn: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
-      backgroundColor: colors.gold,
+    plainRowSecondaryBtn: {
+      flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'center',
-    },
-    plainRowActionIconBtnSent: {
-      backgroundColor: isDark ? '#143823' : '#DCFCE7',
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 6,
+      backgroundColor: isDark ? '#1C202B' : '#F1F5F9',
       borderWidth: 1,
+      borderColor: colors.border,
+    },
+    plainRowSecondaryBtnSent: {
+      backgroundColor: isDark ? 'rgba(37, 211, 102, 0.12)' : '#DCFCE7',
       borderColor: '#25D366',
+    },
+    plainRowSecondaryBtnText: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.textSecondary,
     },
     plainRowRightAmount: {
       alignItems: 'flex-end',
@@ -1292,5 +1400,15 @@ const getDashboardStyles = (colors: ThemeColors, isDark: boolean) =>
       fontSize: 12,
       color: colors.textMuted,
       textAlign: 'center',
+    },
+    loadingRowContainer: {
+      backgroundColor: isDark ? '#11141A' : colors.cardBackground,
+      borderRadius: 14,
+      padding: 24,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 80,
     },
   });

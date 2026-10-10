@@ -24,6 +24,7 @@ import {
   Clock,
   Share2,
   PauseCircle,
+  UserCheck,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { supabase } from '@/api/supabase';
@@ -84,7 +85,8 @@ export function ReportsScreen() {
           const monthStr = getLocalMonthStr(d);
           startDate = `${monthStr}-01`;
           endDate = `${monthStr}-${lastDay}`;
-          label = d.toLocaleString('en-IN', { month: 'short' });
+          // Standard 3-letter month abbreviation like "Sep", "Oct", "Nov"
+          label = d.toLocaleDateString('en-US', { month: 'short' }).slice(0, 3);
         } else {
           const year = now.getFullYear() - i;
           startDate = `${year}-01-01`;
@@ -114,6 +116,29 @@ export function ReportsScreen() {
         maxRevenue,
         averageRevenue: Math.round(totalRevenue / count),
       };
+    },
+  });
+
+  // Attendance Trend (Last 7 Days Check-ins)
+  const { data: attendanceTrend } = useQuery({
+    queryKey: ['mobile-reports-attendance-trend'],
+    queryFn: async () => {
+      const results: { label: string; count: number }[] = [];
+      const now = new Date();
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(d.getDate() - i);
+        const dateStr = getLocalDateStr(d);
+        const label = d.toLocaleDateString('en-IN', { weekday: 'short' });
+        const { count } = await supabase
+          .from('attendance')
+          .select('*', { count: 'exact', head: true })
+          .eq('date', dateStr);
+        results.push({ label, count: count || 0 });
+      }
+      const maxCount = Math.max(...results.map(r => r.count), 1);
+      const totalCount = results.reduce((sum, r) => sum + r.count, 0);
+      return { bars: results, maxCount, totalCount };
     },
   });
 
@@ -156,11 +181,18 @@ export function ReportsScreen() {
     queryFn: async () => {
       const { data: plans } = await supabase
         .from('membership_plans')
-        .select('id, name, price')
+        .select('id, name, price, duration_days, duration_type')
         .eq('active', true);
 
       if (!plans || plans.length === 0) return [];
-      const results: { id: string; name: string; price: number; count: number }[] = [];
+      const results: {
+        id: string;
+        name: string;
+        price: number;
+        duration_days?: number;
+        duration_type?: string;
+        count: number;
+      }[] = [];
 
       for (const plan of plans) {
         const { count } = await supabase
@@ -171,6 +203,8 @@ export function ReportsScreen() {
           id: plan.id,
           name: plan.name,
           price: Number(plan.price || 0),
+          duration_days: plan.duration_days,
+          duration_type: plan.duration_type,
           count: count || 0,
         });
       }
@@ -217,6 +251,36 @@ export function ReportsScreen() {
 
   const maxPlanCount = Math.max(...(popularPlans || []).map(p => p.count), 1);
 
+  // Lakh / thousand format helper for bar labels
+  const formatBarValue = (val: number) => {
+    if (val <= 0) return '';
+    if (val >= 100000) {
+      const l = val / 100000;
+      return `₹${l % 1 === 0 ? l.toFixed(0) : l.toFixed(1)}L`;
+    }
+    if (val >= 1000) {
+      return `₹${Math.round(val / 1000)}k`;
+    }
+    return `₹${val}`;
+  };
+
+  // Plan duration display helper to distinguish duplicate plan names
+  const formatPlanDuration = (days?: number, type?: string) => {
+    if (type === 'ANNUAL' || days === 365) return '1 Year';
+    if (type === 'QUARTERLY' || days === 90) return '3 Months';
+    if (type === 'HALF_YEARLY' || days === 180) return '6 Months';
+    if (type === 'MONTHLY' || days === 30) return '1 Month';
+    if (days) return `${days} Days`;
+    return type ? type.charAt(0) + type.slice(1).toLowerCase() : 'Custom';
+  };
+
+  // Stacked bar distribution percentages
+  const healthTotal = (memberStats?.active ?? 0) + (memberStats?.expiring ?? 0) + (memberStats?.expired ?? 0) + (memberStats?.hold ?? 0);
+  const activePct = healthTotal > 0 ? ((memberStats?.active ?? 0) / healthTotal) * 100 : 0;
+  const expiringPct = healthTotal > 0 ? ((memberStats?.expiring ?? 0) / healthTotal) * 100 : 0;
+  const expiredPct = healthTotal > 0 ? ((memberStats?.expired ?? 0) / healthTotal) * 100 : 0;
+  const holdPct = healthTotal > 0 ? ((memberStats?.hold ?? 0) / healthTotal) * 100 : 0;
+
   return (
     <View style={styles.container}>
       <FVEHeader
@@ -229,13 +293,15 @@ export function ReportsScreen() {
             disabled={sharing || !reportData}
             style={styles.shareBtn}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Export PDF Report"
           >
             {sharing ? (
               <ActivityIndicator size={14} color={colors.gold} />
             ) : (
               <>
-                <Share2 size={15} color={colors.gold} />
-                <Text style={styles.shareBtnText}>PDF</Text>
+                <Share2 size={14} color={colors.gold} />
+                <Text style={styles.shareBtnText}>Export PDF</Text>
               </>
             )}
           </TouchableOpacity>
@@ -254,7 +320,7 @@ export function ReportsScreen() {
           />
         }
       >
-        {/* Period Selector Tabs with Native Ripple */}
+        {/* Period Selector Tabs with 44px Height */}
         <View style={styles.periodRow}>
           {(['daily', 'weekly', 'monthly', 'yearly'] as const).map(p => {
             const isSelected = period === p;
@@ -278,10 +344,10 @@ export function ReportsScreen() {
           })}
         </View>
 
-        {/* Overview KPI Cards */}
+        {/* Overview KPI Cards - ~90px Height */}
         <View style={styles.kpiRow}>
           <View style={styles.kpiCard}>
-            <Text style={styles.kpiLabel}>PERIOD INFLOW</Text>
+            <Text style={styles.kpiLabel}>{period.toUpperCase()} INFLOW</Text>
             <Text style={styles.kpiValue}>
               {formatCurrency(reportData?.totalRevenue || 0)}
             </Text>
@@ -295,36 +361,37 @@ export function ReportsScreen() {
           </View>
         </View>
 
-        {/* Custom Native Bar Chart */}
+        {/* Custom Native Bar Chart - ~200px Height Card */}
         <View style={styles.chartCard}>
           <View style={styles.chartHeader}>
-            <BarChart3 size={18} color={colors.gold} />
+            <BarChart3 size={17} color={colors.gold} />
             <Text style={styles.chartTitle}>REVENUE INFLOW TREND</Text>
           </View>
 
           <View style={styles.chartContainer}>
             {(reportData?.bars || []).map((item, index) => {
               const max = reportData?.maxRevenue || 1;
-              const barHeightPct = Math.max(8, Math.round((item.revenue / max) * 100));
+              const hasRev = item.revenue > 0;
+              const barHeightPct = hasRev ? Math.max(8, Math.round((item.revenue / max) * 100)) : 0;
 
               return (
                 <View key={index} style={styles.barColumn}>
                   <Text style={styles.barValueText}>
-                    {item.revenue >= 1000
-                      ? `₹${Math.round(item.revenue / 1000)}k`
-                      : `₹${item.revenue}`}
+                    {formatBarValue(item.revenue)}
                   </Text>
                   <View style={styles.barTrack}>
-                    <View
-                      style={[
-                        styles.barFill,
-                        {
-                          height: `${barHeightPct}%`,
-                          backgroundColor:
-                            barHeightPct > 60 ? colors.gold : colors.goldDark,
-                        },
-                      ]}
-                    />
+                    {hasRev && (
+                      <View
+                        style={[
+                          styles.barFill,
+                          {
+                            height: `${barHeightPct}%`,
+                            backgroundColor:
+                              barHeightPct > 60 ? colors.gold : colors.goldDark,
+                          },
+                        ]}
+                      />
+                    )}
                   </View>
                   <Text style={styles.barLabel}>{item.label}</Text>
                 </View>
@@ -333,57 +400,106 @@ export function ReportsScreen() {
           </View>
         </View>
 
-        {/* Membership Health Distribution */}
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionHeader}>
-            <Users size={18} color={colors.gold} />
-            <Text style={styles.sectionTitle}>MEMBERSHIP HEALTH</Text>
+        {/* Attendance Trend Chart - ~200px Height Card */}
+        <View style={styles.chartCard}>
+          <View style={styles.chartHeader}>
+            <UserCheck size={17} color={colors.blueLight} />
+            <Text style={styles.chartTitle}>ATTENDANCE TREND (7 DAYS)</Text>
+            <View style={{ flex: 1 }} />
+            <Text style={[styles.kpiLabel, { color: colors.blueLight, marginBottom: 0 }]}>
+              {attendanceTrend?.totalCount || 0} TOTAL
+            </Text>
           </View>
 
-          <View style={styles.healthGrid}>
-            <View style={[styles.healthItem, { borderColor: 'rgba(34, 197, 94, 0.3)' }]}>
-              <CheckCircle2 size={16} color={colors.success} />
-              <Text style={[styles.healthVal, { color: colors.success }]}>
-                {memberStats?.active ?? 0}
-              </Text>
-              <Text style={styles.healthLabel}>ACTIVE</Text>
-            </View>
+          <View style={styles.chartContainer}>
+            {(attendanceTrend?.bars || []).map((item, index) => {
+              const max = attendanceTrend?.maxCount || 1;
+              const hasCount = item.count > 0;
+              const barHeightPct = hasCount ? Math.max(8, Math.round((item.count / max) * 100)) : 0;
 
-            <View style={[styles.healthItem, { borderColor: 'rgba(245, 158, 11, 0.3)' }]}>
-              <Clock size={16} color="#F59E0B" />
-              <Text style={[styles.healthVal, { color: '#F59E0B' }]}>
-                {memberStats?.expiring ?? 0}
-              </Text>
-              <Text style={styles.healthLabel}>EXPIRING</Text>
-            </View>
+              return (
+                <View key={index} style={styles.barColumn}>
+                  <Text style={[styles.barValueText, { color: colors.blueLight }]}>
+                    {hasCount ? item.count : ''}
+                  </Text>
+                  <View style={styles.barTrack}>
+                    {hasCount && (
+                      <View
+                        style={[
+                          styles.barFill,
+                          {
+                            height: `${barHeightPct}%`,
+                            backgroundColor:
+                              barHeightPct > 60 ? colors.blueLight : 'rgba(0, 102, 255, 0.45)',
+                          },
+                        ]}
+                      />
+                    )}
+                  </View>
+                  <Text style={styles.barLabel}>{item.label}</Text>
+                </View>
+              );
+            })}
+          </View>
+        </View>
 
-            <View style={[styles.healthItem, { borderColor: 'rgba(239, 68, 68, 0.3)' }]}>
-              <AlertTriangle size={16} color={colors.error} />
-              <Text style={[styles.healthVal, { color: colors.error }]}>
-                {memberStats?.expired ?? 0}
-              </Text>
-              <Text style={styles.healthLabel}>EXPIRED</Text>
-            </View>
-
-            <View style={[styles.healthItem, { borderColor: 'rgba(168, 85, 247, 0.3)' }]}>
-              <PauseCircle size={16} color="#C084FC" />
-              <Text style={[styles.healthVal, { color: '#C084FC' }]}>
-                {memberStats?.hold ?? 0}
-              </Text>
-              <Text style={styles.healthLabel}>ON HOLD</Text>
-            </View>
-
-            <View style={[styles.healthItem, { borderColor: 'rgba(239, 161, 0, 0.3)' }]}>
+        {/* Membership Health - Compact Stacked Bar & Row */}
+        <View style={styles.healthCompactCard}>
+          <View style={styles.healthHeaderRow}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Users size={16} color={colors.gold} />
-              <Text style={[styles.healthVal, { color: colors.gold }]}>
-                {memberStats?.total ?? 0}
-              </Text>
-              <Text style={styles.healthLabel}>TOTAL</Text>
+              <Text style={styles.healthCardTitle}>MEMBERSHIP HEALTH</Text>
+            </View>
+            <Text style={styles.healthTotalBadge}>
+              {memberStats?.total ?? 0} MEMBERS TOTAL
+            </Text>
+          </View>
+
+          {/* Stacked Proportional Bar */}
+          <View style={styles.stackedBarContainer}>
+            {activePct > 0 && (
+              <View style={[styles.stackedSegment, { width: `${activePct}%`, backgroundColor: colors.success }]} />
+            )}
+            {expiringPct > 0 && (
+              <View style={[styles.stackedSegment, { width: `${expiringPct}%`, backgroundColor: '#F59E0B' }]} />
+            )}
+            {expiredPct > 0 && (
+              <View style={[styles.stackedSegment, { width: `${expiredPct}%`, backgroundColor: colors.error }]} />
+            )}
+            {holdPct > 0 && (
+              <View style={[styles.stackedSegment, { width: `${holdPct}%`, backgroundColor: '#C084FC' }]} />
+            )}
+          </View>
+
+          {/* Compact Single Row of Metrics */}
+          <View style={styles.healthMetricRow}>
+            <View style={styles.healthPill}>
+              <View style={[styles.healthDot, { backgroundColor: colors.success }]} />
+              <Text style={styles.healthPillCount}>{memberStats?.active ?? 0}</Text>
+              <Text style={styles.healthPillLabel}>Active</Text>
+            </View>
+
+            <View style={styles.healthPill}>
+              <View style={[styles.healthDot, { backgroundColor: '#F59E0B' }]} />
+              <Text style={styles.healthPillCount}>{memberStats?.expiring ?? 0}</Text>
+              <Text style={styles.healthPillLabel}>Expiring</Text>
+            </View>
+
+            <View style={styles.healthPill}>
+              <View style={[styles.healthDot, { backgroundColor: colors.error }]} />
+              <Text style={styles.healthPillCount}>{memberStats?.expired ?? 0}</Text>
+              <Text style={styles.healthPillLabel}>Expired</Text>
+            </View>
+
+            <View style={styles.healthPill}>
+              <View style={[styles.healthDot, { backgroundColor: '#C084FC' }]} />
+              <Text style={styles.healthPillCount}>{memberStats?.hold ?? 0}</Text>
+              <Text style={styles.healthPillLabel}>Hold</Text>
             </View>
           </View>
         </View>
 
-        {/* Popular Membership Plans Ranking */}
+        {/* Popular Membership Plans Ranking - With Duration & Price */}
         <View style={styles.sectionCard}>
           <View style={styles.sectionHeader}>
             <Award size={18} color={colors.gold} />
@@ -395,13 +511,19 @@ export function ReportsScreen() {
           ) : (
             popularPlans.map((plan, idx) => {
               const widthPct = Math.max(12, Math.round((plan.count / maxPlanCount) * 100));
+              const durationStr = formatPlanDuration(plan.duration_days, plan.duration_type);
 
               return (
                 <View key={plan.id} style={styles.planRankRow}>
                   <View style={styles.planRankTop}>
                     <View style={styles.planNameWrap}>
                       <Text style={styles.planRankBadge}>#{idx + 1}</Text>
-                      <Text style={styles.planNameText}>{plan.name}</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.planNameText} numberOfLines={1}>{plan.name}</Text>
+                        <Text style={styles.planSubMeta}>
+                          {durationStr} · {formatCurrency(plan.price)}
+                        </Text>
+                      </View>
                     </View>
                     <Text style={styles.planCountText}>
                       {plan.count} {plan.count === 1 ? 'member' : 'members'}
@@ -449,7 +571,7 @@ const getReportsStyles = (colors: ThemeColors, isDark: boolean) =>
       backgroundColor: colors.bgSecondary,
       borderWidth: 1,
       borderColor: colors.borderDefault,
-      paddingVertical: 10,
+      height: 44,
       minHeight: 44,
       borderRadius: 10,
       alignItems: 'center',
@@ -480,8 +602,12 @@ const getReportsStyles = (colors: ThemeColors, isDark: boolean) =>
       backgroundColor: colors.card,
       borderWidth: 1,
       borderColor: isDark ? 'rgba(239, 161, 0, 0.2)' : colors.goldBorder,
-      padding: 14,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
       borderRadius: 14,
+      height: 90,
+      minHeight: 90,
+      justifyContent: 'center',
       elevation: isDark ? 0 : 2,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 1 },
@@ -507,8 +633,11 @@ const getReportsStyles = (colors: ThemeColors, isDark: boolean) =>
       borderWidth: 1,
       borderColor: colors.borderDefault,
       borderRadius: 16,
-      padding: 16,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
       marginBottom: 16,
+      height: 200,
+      minHeight: 200,
       elevation: isDark ? 0 : 2,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 1 },
@@ -519,11 +648,11 @@ const getReportsStyles = (colors: ThemeColors, isDark: boolean) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
-      marginBottom: 16,
+      marginBottom: 8,
     },
     chartTitle: {
       fontFamily: typography.fonts.rajdhani,
-      fontSize: typography.sizes.md,
+      fontSize: 13,
       fontWeight: '700',
       color: colors.textPrimary,
       letterSpacing: 0.5,
@@ -532,8 +661,8 @@ const getReportsStyles = (colors: ThemeColors, isDark: boolean) =>
       flexDirection: 'row',
       alignItems: 'flex-end',
       justifyContent: 'space-between',
-      height: 150,
-      paddingTop: 10,
+      height: 125,
+      paddingTop: 6,
     },
     barColumn: {
       flex: 1,
@@ -546,26 +675,97 @@ const getReportsStyles = (colors: ThemeColors, isDark: boolean) =>
       fontSize: 9,
       fontWeight: '600',
       color: colors.textMuted,
-      marginBottom: 4,
+      marginBottom: 3,
     },
     barTrack: {
-      width: 20,
-      height: 100,
+      width: 18,
+      height: 75,
       backgroundColor: colors.bgTertiary,
-      borderRadius: 6,
+      borderRadius: 5,
       justifyContent: 'flex-end',
       overflow: 'hidden',
     },
     barFill: {
       width: '100%',
-      borderRadius: 6,
+      borderRadius: 5,
     },
     barLabel: {
       fontFamily: typography.fonts.inter,
       fontSize: 10,
       fontWeight: '600',
       color: colors.textSecondary,
-      marginTop: 6,
+      marginTop: 4,
+    },
+    // Membership Health Stacked Bar & Compact Row
+    healthCompactCard: {
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.borderDefault,
+      borderRadius: 16,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      marginBottom: 16,
+    },
+    healthHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 10,
+    },
+    healthCardTitle: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      letterSpacing: 0.5,
+    },
+    healthTotalBadge: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.gold,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : 'rgba(239, 161, 0, 0.08)',
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+      borderRadius: 6,
+    },
+    stackedBarContainer: {
+      height: 10,
+      borderRadius: 5,
+      backgroundColor: colors.bgTertiary,
+      flexDirection: 'row',
+      overflow: 'hidden',
+      marginBottom: 12,
+    },
+    stackedSegment: {
+      height: '100%',
+    },
+    healthMetricRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    healthPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+    },
+    healthDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+    healthPillCount: {
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.textPrimary,
+    },
+    healthPillLabel: {
+      fontFamily: typography.fonts.inter,
+      fontSize: 10,
+      fontWeight: '500',
+      color: colors.textMuted,
     },
     sectionCard: {
       backgroundColor: colors.card,
@@ -593,34 +793,6 @@ const getReportsStyles = (colors: ThemeColors, isDark: boolean) =>
       color: colors.textPrimary,
       letterSpacing: 0.5,
     },
-    healthGrid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 8,
-    },
-    healthItem: {
-      minWidth: '28%',
-      flexGrow: 1,
-      backgroundColor: colors.bgSecondary,
-      borderWidth: 1,
-      borderRadius: 12,
-      paddingVertical: 12,
-      paddingHorizontal: 8,
-      alignItems: 'center',
-      gap: 4,
-    },
-    healthVal: {
-      fontFamily: typography.fonts.rajdhani,
-      fontSize: 18,
-      fontWeight: '700',
-    },
-    healthLabel: {
-      fontFamily: typography.fonts.inter,
-      fontSize: 9,
-      fontWeight: '600',
-      color: colors.textMuted,
-      letterSpacing: 0.3,
-    },
     emptyPlansText: {
       fontFamily: typography.fonts.inter,
       fontSize: 12,
@@ -640,7 +812,7 @@ const getReportsStyles = (colors: ThemeColors, isDark: boolean) =>
     planNameWrap: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 6,
+      gap: 8,
       flex: 1,
       marginRight: 8,
     },
@@ -660,6 +832,13 @@ const getReportsStyles = (colors: ThemeColors, isDark: boolean) =>
       fontWeight: '600',
       color: colors.textPrimary,
       flexShrink: 1,
+    },
+    planSubMeta: {
+      fontFamily: typography.fonts.inter,
+      fontSize: 10.5,
+      fontWeight: '500',
+      color: colors.textMuted,
+      marginTop: 1,
     },
     planCountText: {
       fontFamily: typography.fonts.rajdhani,
