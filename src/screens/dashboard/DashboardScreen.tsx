@@ -137,6 +137,7 @@ export function DashboardScreen() {
         membersWithMembershipsRes,
         todayAttRes,
         monthRevenueRes,
+        newMembersRes,
       ] = await Promise.all([
         supabase
           .from('members')
@@ -152,6 +153,12 @@ export function DashboardScreen() {
           .select('amount')
           .gte('payment_date', monthStart)
           .lte('payment_date', monthEnd),
+
+        supabase
+          .from('members')
+          .select('*', { count: 'exact', head: true })
+          .gte('joining_date', monthStart)
+          .lte('joining_date', monthEnd),
       ]);
 
       const rawMembers = (membersWithMembershipsRes.data || []) as unknown as {
@@ -228,6 +235,7 @@ export function DashboardScreen() {
         todayAttendance: todayAttRes.count || 0,
         monthRevenue: totalRevenue,
         expiringCount: expiringCount,
+        newMembersThisMonth: newMembersRes.count || 0,
       };
     },
   });
@@ -675,6 +683,32 @@ export function DashboardScreen() {
                   : '••••••'}
               </Text>
               <Text style={styles.metricLabel}>This Month</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Row 3: New Members Joined This Month */}
+          <View style={styles.metricsRow}>
+            <TouchableOpacity
+              onPress={() =>
+                navigation.navigate('MainTabs', {
+                  screen: 'Members',
+                })
+              }
+              style={[styles.metricCard, { flex: 1 }]}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel={`New This Month: ${stats?.newMembersThisMonth || 0}`}
+            >
+              <View style={styles.metricCardHeader}>
+                <View style={[styles.metricIconWrap, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
+                  <UserPlus size={16} color="#10B981" />
+                </View>
+                <Text style={[styles.metricCardTag, { color: '#10B981' }]}>JOINED</Text>
+              </View>
+              <Text style={[styles.metricValue, { color: '#10B981' }]}>
+                {stats?.newMembersThisMonth || 0}
+              </Text>
+              <Text style={styles.metricLabel}>New Members Joined This Month</Text>
             </TouchableOpacity>
           </View>
         </View>

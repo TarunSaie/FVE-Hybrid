@@ -11,6 +11,8 @@ export interface ReportPdfData {
   totalRevenue: number;
   averageRevenue: number;
   bars: { label: string; revenue: number }[];
+  newMembersBars?: { label: string; count: number }[];
+  totalNewMembers?: number;
   memberStats?: {
     active: number;
     expiring: number;
@@ -250,6 +252,37 @@ export function generateReportHtml(data: ReportPdfData): string {
         </tbody>
       </table>
     </div>
+
+    ${
+      (data.newMembersBars || []).length > 0
+        ? `
+    <!-- New Member Registrations Section -->
+    <div class="content-section" style="padding-top: 0;">
+      <h2 class="section-title">New Member Registrations (${data.totalNewMembers ?? 0} Total Athletes)</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Period Interval</th>
+            <th style="text-align: right;">New Athletes Joined</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${(data.newMembersBars || [])
+            .map(
+              b => `
+            <tr>
+              <td style="padding: 10px 14px; border-bottom: 1px solid #222; color: #E0E0E0; font-weight: 600;">${b.label}</td>
+              <td style="padding: 10px 14px; border-bottom: 1px solid #222; color: #10B981; font-weight: 700; text-align: right;">${b.count} athletes</td>
+            </tr>
+          `
+            )
+            .join('')}
+        </tbody>
+      </table>
+    </div>
+    `
+        : ''
+    }
 
     ${
       (data.popularPlans || []).length > 0

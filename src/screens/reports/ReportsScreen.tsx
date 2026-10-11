@@ -25,6 +25,7 @@ import {
   Share2,
   PauseCircle,
   UserCheck,
+  UserPlus,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { supabase } from '@/api/supabase';
@@ -48,7 +49,7 @@ export function ReportsScreen() {
   const { data: reportData, isLoading, refetch } = useQuery({
     queryKey: ['mobile-revenue-report', period],
     queryFn: async () => {
-      const results: { label: string; revenue: number }[] = [];
+      const results: { label: string; revenue: number; newMembers: number }[] = [];
       const now = new Date();
       const count =
         period === 'daily'
@@ -94,27 +95,39 @@ export function ReportsScreen() {
           label = `${year}`;
         }
 
-        const { data: payments } = await supabase
-          .from('payments')
-          .select('amount')
-          .gte('payment_date', startDate)
-          .lte('payment_date', endDate);
+        const [paymentsRes, membersRes] = await Promise.all([
+          supabase
+            .from('payments')
+            .select('amount')
+            .gte('payment_date', startDate)
+            .lte('payment_date', endDate),
+          supabase
+            .from('members')
+            .select('*', { count: 'exact', head: true })
+            .gte('joining_date', startDate)
+            .lte('joining_date', endDate),
+        ]);
 
-        const total = (payments || []).reduce(
+        const total = (paymentsRes.data || []).reduce(
           (sum, p) => sum + Number(p.amount || 0),
           0
         );
-        results.push({ label, revenue: total });
+        const newMembers = membersRes.count || 0;
+        results.push({ label, revenue: total, newMembers });
       }
 
       const totalRevenue = results.reduce((sum, r) => sum + r.revenue, 0);
       const maxRevenue = Math.max(...results.map(r => r.revenue), 1);
+      const totalNewMembers = results.reduce((sum, r) => sum + r.newMembers, 0);
+      const maxNewMembers = Math.max(...results.map(r => r.newMembers), 1);
 
       return {
         bars: results,
         totalRevenue,
         maxRevenue,
         averageRevenue: Math.round(totalRevenue / count),
+        totalNewMembers,
+        maxNewMembers,
       };
     },
   });
@@ -237,6 +250,8 @@ export function ReportsScreen() {
         totalRevenue: reportData.totalRevenue,
         averageRevenue: reportData.averageRevenue,
         bars: reportData.bars,
+        newMembersBars: reportData.bars.map(b => ({ label: b.label, count: b.newMembers })),
+        totalNewMembers: reportData.totalNewMembers,
         memberStats,
         popularPlans,
       });
@@ -354,14 +369,14 @@ export function ReportsScreen() {
           </View>
 
           <View style={styles.kpiCard}>
-            <Text style={styles.kpiLabel}>AVG / {period.toUpperCase()}</Text>
-            <Text style={[styles.kpiValue, { color: colors.blueLight }]}>
-              {formatCurrency(reportData?.averageRevenue || 0)}
+            <Text style={styles.kpiLabel}>NEW ATHLETES</Text>
+            <Text style={[styles.kpiValue, { color: '#10B981' }]}>
+              {reportData?.totalNewMembers || 0}
             </Text>
           </View>
         </View>
 
-        {/* Custom Native Bar Chart - ~200px Height Card */}
+        {/* Custom Native Bar Chart - Revenue Inflow Trend */}
         <View style={styles.chartCard}>
           <View style={styles.chartHeader}>
             <BarChart3 size={17} color={colors.gold} />
@@ -388,6 +403,49 @@ export function ReportsScreen() {
                             height: `${barHeightPct}%`,
                             backgroundColor:
                               barHeightPct > 60 ? colors.gold : colors.goldDark,
+                          },
+                        ]}
+                      />
+                    )}
+                  </View>
+                  <Text style={styles.barLabel}>{item.label}</Text>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* New Athlete Registrations Chart */}
+        <View style={styles.chartCard}>
+          <View style={styles.chartHeader}>
+            <UserPlus size={17} color="#10B981" />
+            <Text style={styles.chartTitle}>NEW ATHLETES JOINED ({period.toUpperCase()})</Text>
+            <View style={{ flex: 1 }} />
+            <Text style={[styles.kpiLabel, { color: '#10B981', marginBottom: 0 }]}>
+              {reportData?.totalNewMembers || 0} TOTAL
+            </Text>
+          </View>
+
+          <View style={styles.chartContainer}>
+            {(reportData?.bars || []).map((item, index) => {
+              const max = reportData?.maxNewMembers || 1;
+              const hasMembers = item.newMembers > 0;
+              const barHeightPct = hasMembers ? Math.max(12, Math.round((item.newMembers / max) * 100)) : 0;
+
+              return (
+                <View key={index} style={styles.barColumn}>
+                  <Text style={[styles.barValueText, { color: '#10B981' }]}>
+                    {hasMembers ? item.newMembers : ''}
+                  </Text>
+                  <View style={styles.barTrack}>
+                    {hasMembers && (
+                      <View
+                        style={[
+                          styles.barFill,
+                          {
+                            height: `${barHeightPct}%`,
+                            backgroundColor:
+                              barHeightPct > 60 ? '#10B981' : 'rgba(16, 185, 129, 0.55)',
                           },
                         ]}
                       />
