@@ -18,6 +18,7 @@ import { BrandStudioScreen } from '@/screens/settings/BrandStudioScreen';
 import { DailyPassScreen } from '@/screens/daily-pass/DailyPassScreen';
 import { RenewalBatchScreen } from '@/screens/notifications/RenewalBatchScreen';
 import { PlanDistributionScreen } from '@/screens/plans/PlanDistributionScreen';
+import { FestivalCalendarScreen } from '@/screens/notifications/FestivalCalendarScreen';
 import { RootStackParamList } from './types';
 import { useNotificationSoundListener } from '@/hooks/useNotificationSoundListener';
 import { useRenewalAlerts } from '@/hooks/useRenewalAlerts';
@@ -64,6 +65,7 @@ export function RootNavigator() {
           <Stack.Screen name="BrandStudio" component={BrandStudioScreen} />
           <Stack.Screen name="RenewalBatch" component={RenewalBatchScreen} />
           <Stack.Screen name="PlanDistribution" component={PlanDistributionScreen} />
+          <Stack.Screen name="FestivalCalendar" component={FestivalCalendarScreen} />
         </>
       )}
     </Stack.Navigator>

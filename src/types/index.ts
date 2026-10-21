@@ -325,3 +325,28 @@ export interface RenewalMessageRecord {
   channel?: 'whatsapp' | 'sms' | 'email';
 }
 
+export type FestivalEventType = 'FESTIVAL' | 'HOLIDAY' | 'GYM_EVENT' | 'CLOSURE' | 'SPECIAL_OFFER' | 'OTHER';
+
+export interface FestivalEvent {
+  id: string;
+  title: string;
+  description: string | null;
+  event_date: string;
+  event_type: FestivalEventType;
+  emoji: string | null;
+  color_tag: string | null;
+  is_recurring: boolean;
+  recurrence_year: number | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const FESTIVAL_EVENT_TYPES: { value: FestivalEventType; label: string }[] = [
+  { value: 'FESTIVAL',      label: 'Festival' },
+  { value: 'HOLIDAY',       label: 'Public Holiday' },
+  { value: 'GYM_EVENT',     label: 'Gym Event' },
+  { value: 'CLOSURE',       label: 'Gym Closure' },
+  { value: 'SPECIAL_OFFER', label: 'Special Offer' },
+  { value: 'OTHER',         label: 'Other' },
+];

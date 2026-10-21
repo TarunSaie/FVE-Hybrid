@@ -22,6 +22,7 @@ import {
   Trash2,
   Cake,
   MessageCircle,
+  CalendarDays,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEEmptyState } from '@/components/common/FVEEmptyState';
@@ -191,7 +192,7 @@ export function NotificationsScreen() {
   const styles = useMemo(() => getNotificationsStyles(colors, isDark), [colors, isDark]);
   const { user } = useAuth();
   const qc = useQueryClient();
-  const [filter, setFilter] = useState<'all' | 'unread'>('all');
+  const [filter, setFilter] = useState<'all' | 'unread' | 'birthday'>('all');
 
   // Infinite query for virtualization and pagination
   const {
@@ -215,6 +216,8 @@ export function NotificationsScreen() {
 
       if (filter === 'unread') {
         query = query.eq('read', false);
+      } else if (filter === 'birthday') {
+        query = query.eq('type', 'BIRTHDAY');
       }
 
       const { data, error } = await query.range(from, to);
@@ -265,10 +268,27 @@ export function NotificationsScreen() {
     enabled: !!user?.id,
   });
 
+  // Query birthday notification count for segmented control
+  const { data: birthdayCount = 0 } = useQuery({
+    queryKey: ['mobile-notifications-birthday-count', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return 0;
+      const { count, error } = await supabase
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .or(`user_id.eq.${user.id},user_id.is.null`)
+        .eq('type', 'BIRTHDAY');
+      if (error) return 0;
+      return count ?? 0;
+    },
+    enabled: !!user?.id,
+  });
+
   const invalidateAll = useCallback(() => {
     qc.invalidateQueries({ queryKey: ['mobile-notifications-paged'] });
     qc.invalidateQueries({ queryKey: ['mobile-notifications-total-count'] });
     qc.invalidateQueries({ queryKey: ['mobile-notifications-unread-count'] });
+    qc.invalidateQueries({ queryKey: ['mobile-notifications-birthday-count'] });
     qc.invalidateQueries({ queryKey: ['mobile-notifications'] });
     qc.invalidateQueries({ queryKey: ['unread-notifications'] });
     qc.invalidateQueries({ queryKey: ['unread-notifications-count'] });
@@ -398,7 +418,7 @@ export function NotificationsScreen() {
         }
       />
 
-      {/* Segmented Control for All / Unread */}
+      {/* Segmented Control for All / Unread / Birthday */}
       <View style={styles.segmentedContainer}>
         <View style={styles.segmentedControl}>
           <TouchableOpacity
@@ -408,6 +428,9 @@ export function NotificationsScreen() {
             }}
             style={[styles.segmentBtn, filter === 'all' && styles.segmentBtnActive]}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityState={{ selected: filter === 'all' }}
+            accessibilityLabel={`All notifications, ${totalCount} total`}
           >
             <Text
               style={[
@@ -426,6 +449,9 @@ export function NotificationsScreen() {
             }}
             style={[styles.segmentBtn, filter === 'unread' && styles.segmentBtnActive]}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityState={{ selected: filter === 'unread' }}
+            accessibilityLabel={`Unread notifications, ${unreadCount} unread`}
           >
             <Text
               style={[
@@ -434,6 +460,27 @@ export function NotificationsScreen() {
               ]}
             >
               Unread ({unreadCount})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => {
+              haptics.selection();
+              setFilter('birthday');
+            }}
+            style={[styles.segmentBtn, filter === 'birthday' && styles.segmentBtnBirthday]}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityState={{ selected: filter === 'birthday' }}
+            accessibilityLabel={`Birthday notifications, ${birthdayCount} total`}
+          >
+            <Text
+              style={[
+                styles.segmentText,
+                filter === 'birthday' && styles.segmentTextBirthday,
+              ]}
+            >
+              🎂 ({birthdayCount})
             </Text>
           </TouchableOpacity>
         </View>
@@ -455,6 +502,28 @@ export function NotificationsScreen() {
             <View>
               <Text style={styles.batchBannerTitle}>RENEWAL REMINDERS</Text>
               <Text style={styles.batchBannerSub}>Launch batch WhatsApp expiry queue</Text>
+            </View>
+          </View>
+          <Text style={styles.batchBannerArrow}>❯</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Quick Access to Festival Calendar */}
+      <View style={{ paddingHorizontal: 16, paddingBottom: 6 }}>
+        <TouchableOpacity
+          onPress={() => navigation.navigate('FestivalCalendar')}
+          style={styles.batchBanner}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Open Festival Calendar"
+        >
+          <View style={styles.batchBannerLeft}>
+            <View style={styles.batchBannerIconPill}>
+              <CalendarDays size={15} color={colors.gold} />
+            </View>
+            <View>
+              <Text style={styles.batchBannerTitle}>FESTIVAL CALENDAR</Text>
+              <Text style={styles.batchBannerSub}>View & manage shared festival events</Text>
             </View>
           </View>
           <Text style={styles.batchBannerArrow}>❯</Text>
@@ -510,10 +579,18 @@ export function NotificationsScreen() {
           !isLoading ? (
             <FVEEmptyState
               icon={<Bell size={40} color={colors.gold} />}
-              title={filter === 'unread' ? 'No Unread Notifications' : 'No Notifications'}
+              title={
+                filter === 'unread'
+                  ? 'No Unread Notifications'
+                  : filter === 'birthday'
+                  ? 'No Birthday Notifications'
+                  : 'No Notifications'
+              }
               description={
                 filter === 'unread'
                   ? 'All caught up! You have zero unread alerts.'
+                  : filter === 'birthday'
+                  ? 'Birthday notifications for members will appear here.'
                   : 'System alerts and renewal reminders will show up here.'
               }
             />
@@ -599,6 +676,15 @@ const getNotificationsStyles = (colors: ThemeColors, isDark: boolean) =>
       letterSpacing: 0.5,
     },
     segmentTextActive: {
+      color: colors.gold,
+    },
+    segmentBtnBirthday: {
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.16)' : 'rgba(217, 130, 0, 0.12)',
+      borderWidth: 1,
+      borderColor: colors.goldBorder,
+      borderRadius: 8,
+    },
+    segmentTextBirthday: {
       color: colors.gold,
     },
     batchBanner: {

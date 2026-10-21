@@ -45,6 +45,31 @@ export async function openWhatsAppLink(phone: string, message: string): Promise<
 }
 
 /**
+  * Builds a personalized festival greeting message for WhatsApp broadcast.
+  */
+export function buildFestivalGreetingMessage(
+  memberName: string,
+  festivalTitle: string,
+  emoji: string = '🎉',
+  announcement?: string | null,
+  gymName?: string,
+): string {
+  const gym = gymName || 'FitVerse Elite';
+  const cleanEmoji = emoji?.trim() || '🎉';
+  const noticeLine = announcement?.trim()
+    ? `\n\n📌 *Special Announcement:* ${announcement.trim()}`
+    : '';
+
+  return (
+    `Hi *${memberName}*,\n\n` +
+    `${cleanEmoji} *Happy ${festivalTitle}!* ${cleanEmoji}\n\n` +
+    `Wishing you and your family immense strength, health, happiness, and prosperity from all of us at *${gym}*! 💪✨` +
+    noticeLine +
+    `\n\n— Team ${gym}`
+  );
+}
+
+/**
  * Generates an FVE receipt number (e.g. FVE-2026-7A9X).
  */
 export function generateReceiptNumber(): string {

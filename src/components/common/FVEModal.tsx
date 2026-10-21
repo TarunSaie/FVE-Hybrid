@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback, useState } from 'react';
 import {
   Modal,
   View,
@@ -10,8 +10,9 @@ import {
   Animated,
   PanResponder,
   ScrollView,
-  KeyboardAvoidingView,
   Platform,
+  Keyboard,
+  KeyboardEvent,
   StyleProp,
   ViewStyle,
   useWindowDimensions,
@@ -49,17 +50,74 @@ export function FVEModal({
   const { height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const bottomInset = Math.max(insets.bottom, 16);
+  const topInset = Math.max(insets.top, 24);
 
-  // Default long-sheet height is ~85% of screen; short sheets dynamically size to content
-  const resolvedMaxHeight = maxHeight ?? Math.round(screenHeight * 0.85);
+  // Parse numeric maxHeight whether passed as number, percent string, or defaulted to 85%
+  const resolvedMaxHeight = typeof maxHeight === 'number'
+    ? maxHeight
+    : typeof maxHeight === 'string' && maxHeight.endsWith('%')
+    ? Math.round(screenHeight * (parseFloat(maxHeight) / 100))
+    : Math.round(screenHeight * 0.85);
+
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const keyboardPaddingAnim = useRef(new Animated.Value(0)).current;
 
   const translateY = useRef(new Animated.Value(screenHeight)).current;
   const currentOffset = useRef(0);
   const isClosingRef = useRef(false);
 
+  // Keyboard avoidance: On Android, KeyboardAvoidingView inside a translucent Modal
+  // does not work because Modal runs in its own Dialog window where adjustResize is ignored.
+  // Explicitly tracking Keyboard events and animating paddingBottom + clamping maxHeight ensures
+  // the sheet sits directly above the soft keyboard and never gets pushed off the top of the screen.
+  useEffect(() => {
+    if (!visible) {
+      setKeyboardHeight(0);
+      keyboardPaddingAnim.setValue(0);
+      return;
+    }
+
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const onKeyboardShow = (e: KeyboardEvent) => {
+      const kh = e.endCoordinates ? e.endCoordinates.height : 0;
+      setKeyboardHeight(kh);
+      Animated.timing(keyboardPaddingAnim, {
+        toValue: kh,
+        duration: Platform.OS === 'ios' ? (e.duration || 250) : 160,
+        useNativeDriver: false,
+      }).start();
+    };
+
+    const onKeyboardHide = (e?: KeyboardEvent) => {
+      setKeyboardHeight(0);
+      Animated.timing(keyboardPaddingAnim, {
+        toValue: 0,
+        duration: Platform.OS === 'ios' ? (e?.duration || 200) : 160,
+        useNativeDriver: false,
+      }).start();
+    };
+
+    const showSub = Keyboard.addListener(showEvent, onKeyboardShow);
+    const hideSub = Keyboard.addListener(hideEvent, onKeyboardHide);
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [visible, keyboardPaddingAnim]);
+
+  // When keyboard is visible, clamp sheet's maxHeight so the header and close button stay in view
+  const availableScreenHeight = screenHeight - keyboardHeight - topInset - 16;
+  const activeMaxHeight = keyboardHeight > 0
+    ? Math.min(resolvedMaxHeight, Math.max(availableScreenHeight, 180))
+    : resolvedMaxHeight;
+
   const closeWithAnimation = useCallback(() => {
     if (isClosingRef.current) return;
     isClosingRef.current = true;
+    Keyboard.dismiss();
     haptics.light();
     Animated.timing(translateY, {
       toValue: screenHeight,
@@ -120,6 +178,7 @@ export function FVEModal({
       onPanResponderTerminationRequest: () => false,
       onShouldBlockNativeResponder: () => true,
       onPanResponderGrant: () => {
+        Keyboard.dismiss();
         translateY.stopAnimation();
         // @ts-ignore - access synchronous current animated value safely
         const liveVal =
@@ -135,7 +194,6 @@ export function FVEModal({
           translateY.setValue(dy);
         } else {
           // Dragging up towards top: rubber-band resistance (max ~28px upward displacement)
-          // Short sheets size to content and never jump/expand to leave empty space
           const upwardTravel = Math.max(-28, dy * 0.18);
           translateY.setValue(upwardTravel);
         }
@@ -212,9 +270,14 @@ export function FVEModal({
         {/* Backdrop tap to dismiss */}
         <Pressable style={StyleSheet.absoluteFill} onPress={closeWithAnimation} />
 
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.keyboardAvoid}
+        {/* Keyboard-Aware Sheet Wrapper: animates paddingBottom when soft keyboard shows */}
+        <Animated.View
+          style={[
+            styles.sheetContainer,
+            {
+              paddingBottom: keyboardPaddingAnim,
+            },
+          ]}
           pointerEvents="box-none"
         >
           <Animated.View
@@ -223,7 +286,7 @@ export function FVEModal({
               {
                 backgroundColor: sheetBg,
                 borderColor: sheetBorder,
-                maxHeight: resolvedMaxHeight,
+                maxHeight: activeMaxHeight,
                 transform: [{ translateY }],
               },
             ]}
@@ -266,16 +329,17 @@ export function FVEModal({
               </TouchableOpacity>
             </View>
 
-            {/* Dynamic Content: short sheets size to content, long sheets scroll up to max 85% */}
+            {/* Dynamic Content: short sheets size to content, long sheets scroll up to activeMaxHeight */}
             {scrollable ? (
               <ScrollView
                 style={styles.body}
                 contentContainerStyle={[
                   styles.bodyContent,
-                  { paddingBottom: footer ? 16 : bottomInset + 16 },
+                  { paddingBottom: footer ? 16 : (keyboardHeight > 0 ? 16 : bottomInset + 16) },
                   contentContainerStyle,
                 ]}
                 keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
                 nestedScrollEnabled={true}
                 showsVerticalScrollIndicator={false}
                 bounces={true}
@@ -287,7 +351,7 @@ export function FVEModal({
                 style={[
                   styles.body,
                   styles.bodyContent,
-                  { paddingBottom: footer ? 16 : bottomInset + 16 },
+                  { paddingBottom: footer ? 16 : (keyboardHeight > 0 ? 16 : bottomInset + 16) },
                   contentContainerStyle,
                 ]}
               >
@@ -301,7 +365,7 @@ export function FVEModal({
                 style={[
                   styles.footerContainer,
                   {
-                    paddingBottom: bottomInset + 8,
+                    paddingBottom: keyboardHeight > 0 ? 12 : bottomInset + 8,
                     borderTopColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.borderLight,
                     backgroundColor: sheetBg,
                   },
@@ -311,7 +375,7 @@ export function FVEModal({
               </View>
             )}
           </Animated.View>
-        </KeyboardAvoidingView>
+        </Animated.View>
       </View>
     </Modal>
   );
@@ -322,7 +386,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'flex-end',
   },
-  keyboardAvoid: {
+  sheetContainer: {
     width: '100%',
     justifyContent: 'flex-end',
   },

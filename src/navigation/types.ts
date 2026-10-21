@@ -26,6 +26,7 @@ export type RootStackParamList = {
   DailyPass: undefined;
   RenewalBatch: undefined;
   PlanDistribution: undefined;
+  FestivalCalendar: undefined;
 };
 
 
