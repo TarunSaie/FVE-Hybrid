@@ -18,24 +18,42 @@ export async function checkAndNotifyBirthdays(): Promise<number> {
     const currentMonth = today.getMonth() + 1;
     const currentDay = today.getDate();
 
-    // 1. Fetch all members who have a date_of_birth set
+    // 1. Fetch all members with date_of_birth and their memberships to verify active registration
     const { data: members, error: membersErr } = await supabase
       .from('members')
-      .select('id, member_id, full_name, date_of_birth')
+      .select('id, member_id, full_name, mobile, date_of_birth, memberships(id, status, expiry_date)')
       .not('date_of_birth', 'is', null);
 
     if (membersErr || !members || members.length === 0) {
       return 0;
     }
 
-    // 2. Filter members whose birthday matches today (regardless of birth year)
-    const birthdayMembers = members.filter(m => {
+    const todayStr = getLocalDateStr();
+
+    // 2. Filter active registered members whose birthday matches today (regardless of birth year)
+    const birthdayMembers = (members as unknown as Array<{
+      id: string;
+      member_id: string;
+      full_name: string;
+      mobile: string | null;
+      date_of_birth: string | null;
+      memberships?: Array<{ id: string; status: string; expiry_date: string | null }>;
+    }>).filter(m => {
       if (!m.date_of_birth) return false;
-      const parts = m.date_of_birth.split('-');
+      const parts = m.date_of_birth.split('T')[0].split('-');
       if (parts.length < 3) return false;
       const month = parseInt(parts[1], 10);
       const day = parseInt(parts[2], 10);
-      return month === currentMonth && day === currentDay;
+      if (month !== currentMonth || day !== currentDay) return false;
+
+      // Must be an active registered member with an unexpired/active membership
+      const hasActiveMembership = (m.memberships || []).some(
+        ms =>
+          ms.status === 'ACTIVE' ||
+          ms.status === 'EXPIRING_SOON' ||
+          (ms.expiry_date && ms.expiry_date >= todayStr)
+      );
+      return hasActiveMembership;
     });
 
     if (birthdayMembers.length === 0) {
@@ -53,7 +71,6 @@ export async function checkAndNotifyBirthdays(): Promise<number> {
     }
 
     // 4. Fetch notifications created today to prevent duplicate birthday alerts
-    const todayStr = getLocalDateStr();
     const todayStart = `${todayStr}T00:00:00`;
     const { data: existingNotifs, error: notifErr } = await supabase
       .from('notifications')
@@ -80,13 +97,17 @@ export async function checkAndNotifyBirthdays(): Promise<number> {
     }[] = [];
 
     for (const member of birthdayMembers) {
-      const memberDisplayId = member.member_id || member.id.substring(0, 8);
+      const memberDisplayId = member.member_id || member.id;
       const title = '🎂 Happy Birthday!';
-      const message = `Happy Birthday to ${member.full_name} (ID: ${memberDisplayId})! Today is their birthday.`;
+      const message = `Happy Birthday to ${member.full_name} (ID: ${memberDisplayId})! Today is their birthday. Tap to send WhatsApp greeting.`;
 
       for (const admin of admins) {
-        const dedupeKey = `${admin.id}|${message}`;
-        if (!existingKeySet.has(dedupeKey)) {
+        // Also check if admin was already notified for this member today
+        const wasNotified = (existingNotifs || []).some(
+          en => en.user_id === admin.id && (en.message.includes(memberDisplayId) || en.message.includes(member.full_name))
+        );
+        const dedupeKey = `${admin.id}|${memberDisplayId}`;
+        if (!wasNotified && !existingKeySet.has(dedupeKey)) {
           existingKeySet.add(dedupeKey);
           newNotifications.push({
             user_id: admin.id,

@@ -26,6 +26,7 @@ import {
   Clock,
   Phone,
   AlertCircle,
+  Edit,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEInput } from '@/components/common/FVEInput';
@@ -41,7 +42,13 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { formatCurrency } from '@/utils/format';
-import { formatDate, getLocalDateStr, getLocalMonthStr } from '@/utils/date';
+import {
+  formatDate,
+  getLocalDateStr,
+  getLocalMonthStr,
+  getPrevDayStr,
+  getNextDayStr,
+} from '@/utils/date';
 import { haptics } from '@/utils/haptics';
 
 export function DailyPassScreen() {
@@ -104,44 +111,22 @@ export function DailyPassScreen() {
     },
   });
 
-  // Query stats for today (live operational stats)
-  const { data: todayStats } = useQuery({
-    queryKey: ['mobile-daily-passes-today-stats', today],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('daily_passes')
-        .select('amount, payment_status')
-        .eq('pass_date', today);
-
-      if (error) throw error;
-
-      const total = data?.length ?? 0;
-      const revenue = (data ?? [])
-        .filter((p) => p.payment_status === 'PAID')
-        .reduce((sum, p) => sum + Number(p.amount || 0), 0);
-      const pending = (data ?? []).filter((p) => p.payment_status === 'PENDING').length;
-
-      return { total, revenue, pending };
-    },
-  });
-
-  // Monthly stats calculated from the returned passes array when in month mode
-  const monthStats = useMemo(() => {
-    if (filterMode !== 'month') return null;
+  // Active stats calculated dynamically from the fetched passes for the selected period
+  const activeStats = useMemo(() => {
     const total = passes.length;
     const revenue = passes
       .filter((p) => p.payment_status === 'PAID')
       .reduce((sum, p) => sum + Number(p.amount || 0), 0);
     const pending = passes.filter((p) => p.payment_status === 'PENDING').length;
     return { total, revenue, pending };
-  }, [filterMode, passes]);
+  }, [passes]);
 
   const filteredPasses = useMemo(() => {
     const term = debouncedSearch.trim().toLowerCase();
     if (!term) return passes;
     return passes.filter(
       (p) =>
-        p.visitor_name.toLowerCase().includes(term) ||
+        (p.visitor_name || '').toLowerCase().includes(term) ||
         (p.mobile && p.mobile.includes(term)) ||
         (p.purpose && p.purpose.toLowerCase().includes(term))
     );
@@ -150,22 +135,17 @@ export function DailyPassScreen() {
   const onRefresh = useCallback(() => {
     haptics.light();
     qc.invalidateQueries({ queryKey: ['mobile-daily-passes'] });
-    qc.invalidateQueries({ queryKey: ['mobile-daily-passes-today-stats'] });
   }, [qc]);
 
   // Date Navigation handlers
   const handlePrevDay = () => {
     haptics.light();
-    const d = new Date(dateFilter);
-    d.setDate(d.getDate() - 1);
-    setDateFilter(getLocalDateStr(d));
+    setDateFilter((prev) => getPrevDayStr(prev));
   };
 
   const handleNextDay = () => {
     haptics.light();
-    const d = new Date(dateFilter);
-    d.setDate(d.getDate() + 1);
-    setDateFilter(getLocalDateStr(d));
+    setDateFilter((prev) => getNextDayStr(prev));
   };
 
   const handleToday = () => {
@@ -203,13 +183,13 @@ export function DailyPassScreen() {
   const isToday = dateFilter === today;
   const isCurrentMonth = monthFilter === currentMonth;
 
-  const activeStats =
-    filterMode === 'month' && monthStats
-      ? monthStats
-      : todayStats ?? { total: 0, revenue: 0, pending: 0 };
-
   const statsPeriodLabel =
     filterMode === 'month' ? formattedMonthLabel : isToday ? 'Today' : formatDate(dateFilter);
+
+  const statPassesLabel =
+    filterMode === 'month' ? `${formattedMonthLabel} PASSES` : isToday ? 'TODAY PASSES' : 'DAY PASSES';
+  const statRevenueLabel =
+    filterMode === 'month' ? `${formattedMonthLabel} REVENUE` : isToday ? 'TODAY REVENUE' : 'DAY REVENUE';
 
   const handleDelete = (pass: DailyPass) => {
     if (!isOwnerOrAdmin) return;
@@ -228,7 +208,6 @@ export function DailyPassScreen() {
               if (error) throw error;
               haptics.success();
               qc.invalidateQueries({ queryKey: ['mobile-daily-passes'] });
-              qc.invalidateQueries({ queryKey: ['mobile-daily-passes-today-stats'] });
             } catch (err: unknown) {
               haptics.error();
               Alert.alert('Error', (err as Error).message || 'Failed to delete pass');
@@ -341,11 +320,24 @@ export function DailyPassScreen() {
         {isOwnerOrAdmin && (
           <View style={styles.cardFooter}>
             <TouchableOpacity
+              style={styles.editButton}
+              onPress={() => {
+                haptics.light();
+                setSelectedPass(item);
+                setModalVisible(true);
+              }}
+              activeOpacity={0.7}
+            >
+              <Edit size={13} color={colors.gold} />
+              <Text style={styles.editText}>Edit</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
               style={styles.deleteButton}
               onPress={() => handleDelete(item)}
               activeOpacity={0.7}
             >
-              <Trash2 size={14} color={colors.error} />
+              <Trash2 size={13} color={colors.error} />
               <Text style={styles.deleteText}>Delete</Text>
             </TouchableOpacity>
           </View>
@@ -394,8 +386,8 @@ export function DailyPassScreen() {
             <View style={styles.statsRow}>
               <View style={[styles.statCard, styles.statCardPasses]}>
                 <View style={styles.statHeader}>
-                  <Text style={styles.statLabel}>
-                    {filterMode === 'month' ? `${formattedMonthLabel} PASSES` : 'TODAY PASSES'}
+                  <Text style={styles.statLabel} numberOfLines={1}>
+                    {statPassesLabel}
                   </Text>
                   <Users size={14} color={colors.gold} />
                 </View>
@@ -406,8 +398,8 @@ export function DailyPassScreen() {
 
               <View style={[styles.statCard, styles.statCardRevenue]}>
                 <View style={styles.statHeader}>
-                  <Text style={styles.statLabel}>
-                    {filterMode === 'month' ? `${formattedMonthLabel} REVENUE` : 'TODAY REVENUE'}
+                  <Text style={styles.statLabel} numberOfLines={1}>
+                    {statRevenueLabel}
                   </Text>
                   <DollarSign size={14} color={colors.success} />
                 </View>
@@ -612,12 +604,15 @@ export function DailyPassScreen() {
 
       <DailyPassFormModal
         visible={modalVisible}
-        onClose={() => setModalVisible(false)}
+        onClose={() => {
+          setModalVisible(false);
+          setSelectedPass(null);
+        }}
         onSaved={() => {
           qc.invalidateQueries({ queryKey: ['mobile-daily-passes'] });
-          qc.invalidateQueries({ queryKey: ['mobile-daily-passes-today-stats'] });
         }}
         pass={selectedPass}
+        defaultDate={filterMode === 'day' ? dateFilter : today}
       />
 
       {/* Date Picker Modal for Day View */}
@@ -977,10 +972,27 @@ const getStyles = (colors: ThemeColors, isDark: boolean) =>
     cardFooter: {
       flexDirection: 'row',
       justifyContent: 'flex-end',
+      alignItems: 'center',
+      gap: 8,
       marginTop: 8,
       paddingTop: 8,
       borderTopWidth: 1,
       borderTopColor: colors.borderLight,
+    },
+    editButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingVertical: 4,
+      paddingHorizontal: 8,
+      borderRadius: 6,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : 'rgba(239, 161, 0, 0.08)',
+    },
+    editText: {
+      fontSize: typography.sizes.xs,
+      fontFamily: typography.fonts.rajdhaniMedium,
+      color: colors.gold,
+      fontWeight: '600',
     },
     deleteButton: {
       flexDirection: 'row',

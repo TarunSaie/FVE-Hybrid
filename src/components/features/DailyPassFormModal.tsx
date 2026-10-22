@@ -19,6 +19,7 @@ interface DailyPassFormModalProps {
   onClose: () => void;
   onSaved: () => void;
   pass?: DailyPass | null;
+  defaultDate?: string;
 }
 
 const PURPOSE_OPTIONS = ['Day Visit', 'Trial Session', 'Guest Visit', 'Other'] as const;
@@ -29,6 +30,7 @@ export function DailyPassFormModal({
   onClose,
   onSaved,
   pass,
+  defaultDate,
 }: DailyPassFormModalProps) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
@@ -38,7 +40,7 @@ export function DailyPassFormModal({
   const [visitorName, setVisitorName] = useState('');
   const [mobile, setMobile] = useState('');
   const [purpose, setPurpose] = useState<string>('Day Visit');
-  const [passDate, setPassDate] = useState(() => getLocalDateStr());
+  const [passDate, setPassDate] = useState(() => defaultDate || getLocalDateStr());
   const [amount, setAmount] = useState('100');
   const [paymentMethod, setPaymentMethod] = useState<string>('Cash');
   const [paymentStatus, setPaymentStatus] = useState<DailyPassPaymentStatus>('PAID');
@@ -50,7 +52,7 @@ export function DailyPassFormModal({
       setVisitorName(pass.visitor_name || '');
       setMobile(pass.mobile || '');
       setPurpose(pass.purpose || 'Day Visit');
-      setPassDate(pass.pass_date || getLocalDateStr());
+      setPassDate(pass.pass_date || defaultDate || getLocalDateStr());
       setAmount(pass.amount || '100');
       setPaymentMethod(pass.payment_method || 'Cash');
       setPaymentStatus(pass.payment_status || 'PAID');
@@ -59,13 +61,13 @@ export function DailyPassFormModal({
       setVisitorName('');
       setMobile('');
       setPurpose('Day Visit');
-      setPassDate(getLocalDateStr());
+      setPassDate(defaultDate || getLocalDateStr());
       setAmount('100');
       setPaymentMethod('Cash');
       setPaymentStatus('PAID');
       setNotes('');
     }
-  }, [pass, visible]);
+  }, [pass, visible, defaultDate]);
 
   const handleSave = async () => {
     if (!visitorName.trim()) {

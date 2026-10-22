@@ -31,8 +31,9 @@ import { supabase } from '@/api/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ThemeColors } from '@/constants/colors';
-import { typography } from '@/constants/typography';
 import { formatDateTime, formatDate, getLocalDateStr } from '@/utils/date';
+import { buildBirthdayWishMessage, openWhatsAppLink } from '@/utils/format';
+import { typography } from '@/constants/typography';
 import { haptics } from '@/utils/haptics';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/types';
@@ -72,6 +73,7 @@ interface SwipeableRowProps {
   item: Notification;
   onPress: () => void;
   onDelete: () => void;
+  onSendBirthdayWish?: () => void;
   getTypeIcon: (type?: string | null) => React.ReactNode;
   colors: ThemeColors;
   styles: ReturnType<typeof getNotificationsStyles>;
@@ -81,6 +83,7 @@ function SwipeableNotificationRow({
   item,
   onPress,
   onDelete,
+  onSendBirthdayWish,
   getTypeIcon,
   styles,
 }: SwipeableRowProps) {
@@ -178,6 +181,20 @@ function SwipeableNotificationRow({
             <Text style={styles.notifMessage} numberOfLines={3}>
               {messageText}
             </Text>
+
+            {item.type?.toUpperCase() === 'BIRTHDAY' && onSendBirthdayWish && (
+              <TouchableOpacity
+                style={styles.birthdayWishBtn}
+                onPress={onSendBirthdayWish}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="Send WhatsApp Birthday Greeting"
+              >
+                <MessageCircle size={13} color="#FFFFFF" />
+                <Text style={styles.birthdayWishBtnText}>Send WhatsApp Wish</Text>
+              </TouchableOpacity>
+            )}
+
             <Text style={styles.notifTime}>{formatDateTime(item.created_at)}</Text>
           </View>
         </TouchableOpacity>
@@ -326,6 +343,82 @@ export function NotificationsScreen() {
     haptics.light();
     await supabase.from('notifications').delete().eq('id', id);
     invalidateAll();
+  };
+
+  const handleSendBirthdayWish = async (item: Notification) => {
+    try {
+      haptics.selection();
+
+      // Extract ID or Name from message
+      const idMatch = item.message.match(/\(ID:\s*([^)]+)\)/i);
+      const nameMatch =
+        item.message.match(/Happy Birthday to\s+(.*?)\s+\(ID:/i) ||
+        item.message.match(/Happy Birthday to\s+([^!]+)/i);
+
+      const memberIdCode = idMatch ? idMatch[1].trim() : null;
+      const memberName = nameMatch ? nameMatch[1].trim() : null;
+
+      let q = supabase
+        .from('members')
+        .select('id, member_id, full_name, mobile');
+
+      if (memberIdCode) {
+        q = q.or(`member_id.eq.${memberIdCode},id.eq.${memberIdCode}`);
+      } else if (memberName) {
+        q = q.ilike('full_name', `%${memberName}%`);
+      }
+
+      const { data: member, error } = await q.limit(1).maybeSingle();
+
+      if (error || !member) {
+        haptics.error();
+        Alert.alert(
+          'Member Profile',
+          'Could not find member profile details for this birthday notification.'
+        );
+        return;
+      }
+
+      if (!member.mobile) {
+        haptics.warning();
+        Alert.alert(
+          'No Mobile Number',
+          `${member.full_name} does not have a recorded mobile phone number. Please update their profile with a valid WhatsApp phone number.`
+        );
+        return;
+      }
+
+      const wishMsg = buildBirthdayWishMessage(member.full_name);
+
+      haptics.medium();
+      Alert.alert(
+        '🎂 Send Birthday Greeting',
+        `Send a personalized WhatsApp birthday wish to ${member.full_name} (${member.mobile})?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Send on WhatsApp',
+            style: 'default',
+            onPress: async () => {
+              haptics.success();
+              await openWhatsAppLink(member.mobile!, wishMsg);
+            },
+          },
+        ]
+      );
+    } catch (err: unknown) {
+      haptics.error();
+      Alert.alert('Error', (err as Error).message || 'Failed to open WhatsApp');
+    }
+  };
+
+  const handleNotificationPress = async (item: Notification) => {
+    if (!item.read) {
+      markAsRead(item.id);
+    }
+    if (item.type?.toUpperCase() === 'BIRTHDAY') {
+      await handleSendBirthdayWish(item);
+    }
   };
 
   const clearReadNotifications = async () => {
@@ -561,8 +654,9 @@ export function NotificationsScreen() {
         renderItem={({ item }) => (
           <SwipeableNotificationRow
             item={item}
-            onPress={() => !item.read && markAsRead(item.id)}
+            onPress={() => handleNotificationPress(item)}
             onDelete={() => deleteSingle(item.id)}
+            onSendBirthdayWish={() => handleSendBirthdayWish(item)}
             getTypeIcon={getTypeIcon}
             colors={colors}
             styles={styles}
@@ -824,6 +918,29 @@ const getNotificationsStyles = (colors: ThemeColors, isDark: boolean) =>
       fontSize: 10,
       fontFamily: typography.fonts.inter,
       marginTop: 4,
+    },
+    birthdayWishBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      alignSelf: 'flex-start',
+      backgroundColor: '#25D366',
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 6,
+      marginTop: 6,
+      shadowColor: '#25D366',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 3,
+      elevation: 2,
+    },
+    birthdayWishBtnText: {
+      color: '#FFFFFF',
+      fontSize: 12,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+      letterSpacing: 0.4,
     },
     loadingMoreFooter: {
       paddingVertical: 16,

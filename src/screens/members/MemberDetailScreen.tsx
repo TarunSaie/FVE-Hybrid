@@ -87,6 +87,7 @@ import {
   buildExpiredAlertMessage,
   buildDailyDietPlanWhatsAppMessage,
   buildWeeklyDietPlanOverviewWhatsAppMessage,
+  buildBirthdayWishMessage,
   getTodayDayOfWeek,
 } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
@@ -790,9 +791,25 @@ export function MemberDetailScreen() {
               </View>
 
               {isBirthdayToday && (
-                <View style={styles.birthdayBadge}>
-                  <Cake size={13} color={colors.gold} />
-                  <Text style={styles.birthdayBadgeText}>🎂 Birthday Today!</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginVertical: 4, flexWrap: 'wrap' }}>
+                  <View style={styles.birthdayBadge}>
+                    <Cake size={13} color={colors.gold} />
+                    <Text style={styles.birthdayBadgeText}>🎂 Birthday Today!</Text>
+                  </View>
+                  {member?.mobile && (
+                    <TouchableOpacity
+                      style={styles.birthdayWishProfileBtn}
+                      onPress={() => {
+                        haptics.medium();
+                        const wishMsg = buildBirthdayWishMessage(member.full_name);
+                        openWhatsAppLink(member.mobile!, wishMsg);
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <MessageCircle size={12} color="#FFFFFF" />
+                      <Text style={styles.birthdayWishProfileBtnText}>Send Wish</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               )}
 
@@ -2106,6 +2123,21 @@ const getMemberDetailStyles = (colors: ThemeColors, isDark: boolean) =>
     },
     birthdayBadgeText: {
       color: colors.gold,
+      fontSize: 11,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    birthdayWishProfileBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      backgroundColor: '#25D366',
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 12,
+    },
+    birthdayWishProfileBtnText: {
+      color: '#FFFFFF',
       fontSize: 11,
       fontFamily: typography.fonts.rajdhani,
       fontWeight: '700',

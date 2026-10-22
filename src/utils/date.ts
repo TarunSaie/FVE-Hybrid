@@ -123,6 +123,23 @@ export function getNextDayStr(dateStr?: string | null): string {
 }
 
 /**
+ * Returns the date string (YYYY-MM-DD) for the day immediately preceding the given date string.
+ * Uses local calendar arithmetic to avoid timezone shifts.
+ */
+export function getPrevDayStr(dateStr?: string | null): string {
+  if (!dateStr) return getLocalDateStr();
+  const cleanStr = dateStr.split('T')[0];
+  const parts = cleanStr.split('-').map(Number);
+  if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+    const d = new Date(parts[0], parts[1] - 1, parts[2] - 1);
+    return getLocalDateStr(d);
+  }
+  const d = new Date(cleanStr);
+  d.setDate(d.getDate() - 1);
+  return getLocalDateStr(d);
+}
+
+/**
  * Finds the latest unexpired expiry date across active and upcoming memberships.
  * This guarantees proper consecutive chaining when a member has multiple future memberships.
  */

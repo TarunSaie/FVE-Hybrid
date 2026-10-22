@@ -179,6 +179,23 @@ export function buildExpiredAlertMessage(
 }
 
 /**
+ * Builds a warm, personalized birthday wish WhatsApp message for an active gym member.
+ */
+export function buildBirthdayWishMessage(
+  memberName: string,
+  gymName?: string
+): string {
+  const gym = gymName || 'FitVerse Elite';
+  return (
+    `🎂 *Happy Birthday, ${memberName}!* 🎉\n\n` +
+    `On behalf of everyone at *${gym}*, we wish you a fantastic day and an incredible year ahead filled with good health, strength, and unstoppable energy! 💪✨\n\n` +
+    `Keep crushing your fitness goals with us!\n\n` +
+    `Have a wonderful celebration! 🎈\n` +
+    `— Team ${gym}`
+  );
+}
+
+/**
  * Safely parse features stored as JSON string, string array, or comma-separated string.
  */
 export function parseFeatures(features: unknown): string[] {
