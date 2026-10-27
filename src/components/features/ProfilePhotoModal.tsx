@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -40,8 +40,19 @@ export function ProfilePhotoModal({
 }: ProfilePhotoModalProps) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
-  const [loading, setLoading] = useState(true);
+
+  const cleanUrl = photoUrl && typeof photoUrl === 'string' ? photoUrl.trim() : null;
+
+  const [loading, setLoading] = useState(Boolean(cleanUrl));
   const [hasError, setHasError] = useState(false);
+
+  // Reset loading and error states whenever modal opens or photoUrl changes
+  useEffect(() => {
+    if (visible) {
+      setLoading(Boolean(cleanUrl));
+      setHasError(false);
+    }
+  }, [visible, cleanUrl]);
 
   const handleClose = () => {
     haptics.light();
@@ -67,7 +78,15 @@ export function ProfilePhotoModal({
             <View style={styles.header}>
               <View style={styles.headerLeft}>
                 <View style={styles.avatarThumbnail}>
-                  <Text style={styles.avatarInitial}>{initial}</Text>
+                  {cleanUrl && !hasError ? (
+                    <Image
+                      source={{ uri: cleanUrl }}
+                      style={styles.thumbnailImg}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <Text style={styles.avatarInitial}>{initial}</Text>
+                  )}
                 </View>
                 <View style={styles.headerTextWrap}>
                   <View style={styles.nameRow}>
@@ -98,21 +117,41 @@ export function ProfilePhotoModal({
 
             {/* Photo Viewing Area */}
             <View style={styles.imageContainer}>
-              {loading && !hasError && (
+              {loading && !hasError && Boolean(cleanUrl) && (
                 <View style={styles.loaderOverlay}>
                   <ActivityIndicator size="large" color={colors.gold} />
                   <Text style={styles.loaderText}>Loading high-res photo...</Text>
                 </View>
               )}
 
-              {hasError || !photoUrl ? (
+              {!cleanUrl ? (
+                <View style={styles.errorContainer}>
+                  <View
+                    style={[
+                      styles.errorIconCircle,
+                      {
+                        backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : colors.goldMuted,
+                        borderColor: colors.goldBorder,
+                      },
+                    ]}
+                  >
+                    <User size={32} color={colors.gold} />
+                  </View>
+                  <Text style={[styles.errorText, { color: colors.textPrimary }]}>
+                    No Photo Available
+                  </Text>
+                  <Text style={styles.errorSubtext}>
+                    No profile photo has been uploaded for this member yet.
+                  </Text>
+                </View>
+              ) : hasError ? (
                 <View style={styles.errorContainer}>
                   <View style={styles.errorIconCircle}>
                     <User size={32} color={colors.error || '#EF4444'} />
                   </View>
                   <Text style={styles.errorText}>Unable to load photo</Text>
                   <Text style={styles.errorSubtext}>
-                    The image is either unavailable or could not be retrieved.
+                    The image is either unavailable or could not be retrieved. Please check your network connection.
                   </Text>
                 </View>
               ) : (
@@ -127,7 +166,7 @@ export function ProfilePhotoModal({
                   bounces={false}
                 >
                   <Image
-                    source={{ uri: photoUrl }}
+                    source={{ uri: cleanUrl }}
                     style={styles.fullImage}
                     resizeMode="contain"
                     onLoad={() => setLoading(false)}
@@ -142,10 +181,14 @@ export function ProfilePhotoModal({
 
             {/* Footer with Hint */}
             <View style={styles.footer}>
-              <View style={styles.hintRow}>
-                <ZoomIn size={14} color={colors.gold} />
-                <Text style={styles.hintText}>Pinch to zoom image</Text>
-              </View>
+              {cleanUrl && !hasError && !loading ? (
+                <View style={styles.hintRow}>
+                  <ZoomIn size={14} color={colors.gold} />
+                  <Text style={styles.hintText}>Pinch to zoom image</Text>
+                </View>
+              ) : (
+                <View style={{ flex: 1 }} />
+              )}
               <TouchableOpacity
                 onPress={handleClose}
                 style={styles.doneBtn}
@@ -168,6 +211,7 @@ interface Styles {
   header: ViewStyle;
   headerLeft: ViewStyle;
   avatarThumbnail: ViewStyle;
+  thumbnailImg: ImageStyle;
   avatarInitial: TextStyle;
   headerTextWrap: ViewStyle;
   nameRow: ViewStyle;
@@ -251,6 +295,12 @@ function getStyles(colors: ThemeColors, isDark: boolean): Styles {
       alignItems: 'center',
       justifyContent: 'center',
       marginRight: 12,
+      overflow: 'hidden',
+    },
+    thumbnailImg: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
     },
     avatarInitial: {
       fontFamily: typography.fonts.rajdhani,

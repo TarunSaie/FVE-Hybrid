@@ -35,8 +35,10 @@ import {
   MessageCircle,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
+import { FVEAvatar } from '@/components/common/FVEAvatar';
 import { MemberFormModal } from '@/components/features/MemberFormModal';
 import { PaymentFormModal } from '@/components/features/PaymentFormModal';
+import { ProfilePhotoModal } from '@/components/features/ProfilePhotoModal';
 import { FVEBadge } from '@/components/common/FVEBadge';
 import { FVELogoLoader } from '@/components/common/FVELogoLoader';
 import { ThemeColors } from '@/constants/colors';
@@ -108,6 +110,11 @@ export function DashboardScreen() {
   const [showMemberModal, setShowMemberModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [preselectedMemberId, setPreselectedMemberId] = useState<string | undefined>(undefined);
+  const [previewMember, setPreviewMember] = useState<{
+    profile_photo?: string | null;
+    full_name: string;
+    member_id?: string | null;
+  } | null>(null);
 
   const { isSent, markSent } = useRenewalMessagingStatus();
 
@@ -485,19 +492,30 @@ export function DashboardScreen() {
             )}
 
             {/* Profile Avatar / Initial */}
-            {user?.avatar_url ? (
-              <Image
-                source={{ uri: user.avatar_url }}
-                style={styles.userAvatarImage}
-                resizeMode="cover"
-              />
-            ) : (
-              <View style={styles.userAvatarInitialWrap}>
-                <Text style={styles.userAvatarInitial}>
-                  {(user?.full_name?.trim()?.charAt(0) || user?.username?.trim()?.charAt(0) || 'O').toUpperCase()}
-                </Text>
-              </View>
-            )}
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => {
+                haptics.selection();
+                navigation.navigate('MainTabs', { screen: 'Settings' });
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="View profile & settings"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              {user?.avatar_url ? (
+                <Image
+                  source={{ uri: user.avatar_url }}
+                  style={styles.userAvatarImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={styles.userAvatarInitialWrap}>
+                  <Text style={styles.userAvatarInitial}>
+                    {(user?.full_name?.trim()?.charAt(0) || user?.username?.trim()?.charAt(0) || 'O').toUpperCase()}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -778,10 +796,20 @@ export function DashboardScreen() {
                       idx === topExpiringMembers.length - 1 && styles.plainRowLast,
                     ]}
                   >
-                    <View style={styles.plainRowAvatar}>
-                      <Text style={styles.plainRowAvatarText}>
-                        {(member.full_name || 'M').charAt(0).toUpperCase()}
-                      </Text>
+                    <View style={{ marginRight: 12 }}>
+                      <FVEAvatar
+                        url={member.profile_photo}
+                        name={member.full_name || 'Member'}
+                        size={36}
+                        onPress={() => {
+                          setPreviewMember({
+                            profile_photo: member.profile_photo,
+                            full_name: member.full_name || 'Member',
+                            member_id: member.member_id,
+                          });
+                        }}
+                        accessibilityLabel={`View full profile photo of ${member.full_name || 'Member'}`}
+                      />
                     </View>
 
                     <View style={styles.plainRowContent}>
@@ -864,13 +892,21 @@ export function DashboardScreen() {
                     accessibilityRole="button"
                     accessibilityLabel={`Payment receipt for ${memberName}: ${formatCurrency(p.amount)}`}
                   >
-                    {photoUrl ? (
-                      <Image source={{ uri: photoUrl }} style={styles.payAvatarImg} />
-                    ) : (
-                      <View style={styles.plainRowAvatar}>
-                        <Text style={styles.plainRowAvatarText}>{initial}</Text>
-                      </View>
-                    )}
+                    <View style={{ marginRight: 12 }}>
+                      <FVEAvatar
+                        url={photoUrl}
+                        name={memberName}
+                        size={36}
+                        onPress={() => {
+                          setPreviewMember({
+                            profile_photo: photoUrl,
+                            full_name: memberName,
+                            member_id: p.members?.member_id,
+                          });
+                        }}
+                        accessibilityLabel={`View full profile photo of ${memberName}`}
+                      />
+                    </View>
 
                     <View style={styles.plainRowContent}>
                       <Text numberOfLines={1} style={styles.plainRowTitle}>
@@ -949,8 +985,20 @@ export function DashboardScreen() {
                     accessibilityRole="button"
                     accessibilityLabel={`View on-hold member ${item.full_name}`}
                   >
-                    <View style={[styles.plainRowAvatar, { backgroundColor: 'rgba(251, 191, 36, 0.15)' }]}>
-                      <Text style={[styles.plainRowAvatarText, { color: '#FBBF24' }]}>{initial}</Text>
+                    <View style={{ marginRight: 12 }}>
+                      <FVEAvatar
+                        url={item.profile_photo}
+                        name={item.full_name}
+                        size={36}
+                        onPress={() => {
+                          setPreviewMember({
+                            profile_photo: item.profile_photo,
+                            full_name: item.full_name || 'Member',
+                            member_id: item.member_id,
+                          });
+                        }}
+                        accessibilityLabel={`View full profile photo of ${item.full_name}`}
+                      />
                     </View>
 
                     <View style={styles.plainRowContent}>
@@ -988,6 +1036,15 @@ export function DashboardScreen() {
           setPreselectedMemberId(undefined);
         }}
         onSaved={onRefresh}
+      />
+
+      {/* Full-Size Member Photo Modal */}
+      <ProfilePhotoModal
+        visible={Boolean(previewMember)}
+        onClose={() => setPreviewMember(null)}
+        photoUrl={previewMember?.profile_photo}
+        memberName={previewMember?.full_name || 'Member'}
+        memberId={previewMember?.member_id}
       />
     </View>
   );

@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { ChevronRight, MoreVertical } from 'lucide-react-native';
 import { Payment } from '@/types';
+import { FVEAvatar } from '@/components/common/FVEAvatar';
 import { useTheme } from '@/contexts/ThemeContext';
 import { typography } from '@/constants/typography';
 import { formatCurrency } from '@/utils/format';
@@ -23,34 +24,6 @@ interface PaymentItemProps {
   onAvatarPress?: (payment: Payment) => void;
 }
 
-function MemberAvatar({ name, avatarUrl }: { name: string; avatarUrl?: string | null }) {
-  const { colors, isDark } = useTheme();
-  const initial = name.trim().charAt(0).toUpperCase();
-
-  if (avatarUrl) {
-    return (
-      <Image
-        source={{ uri: avatarUrl }}
-        style={[styles.avatarImage, { borderColor: colors.goldBorder }]}
-        resizeMode="cover"
-      />
-    );
-  }
-
-  return (
-    <View
-      style={[
-        styles.avatarFallback,
-        {
-          backgroundColor: isDark ? 'rgba(239, 161, 0, 0.14)' : colors.goldMuted,
-          borderColor: colors.goldBorder,
-        },
-      ]}
-    >
-      <Text style={[styles.avatarInitial, { color: colors.gold }]}>{initial}</Text>
-    </View>
-  );
-}
 
 export function PaymentItem({
   payment,
@@ -101,21 +74,13 @@ export function PaymentItem({
         <View style={styles.contentRow}>
           {/* Avatar on left - Independent Touchable */}
           <View style={styles.avatarContainer}>
-            <TouchableOpacity
-              activeOpacity={0.75}
-              onPress={() => {
-                if (onAvatarPress) {
-                  haptics.light();
-                  onAvatarPress(payment);
-                }
-              }}
-              disabled={!onAvatarPress}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityRole="button"
+            <FVEAvatar
+              url={avatarUrl}
+              name={memberName}
+              size={40}
+              onPress={onAvatarPress ? () => onAvatarPress(payment) : undefined}
               accessibilityLabel={`View profile photo of ${memberName}`}
-            >
-              <MemberAvatar name={memberName} avatarUrl={avatarUrl} />
-            </TouchableOpacity>
+            />
           </View>
 
           {/* Info Block - Middle Pressable for Navigation */}

@@ -21,8 +21,10 @@ import {
   Users,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
+import { FVEAvatar } from '@/components/common';
 import { PaymentFormModal } from '@/components/features/PaymentFormModal';
 import { WhatsAppQueueModal, ExpiringQueueItem } from '@/components/features/WhatsAppQueueModal';
+import { ProfilePhotoModal } from '@/components/features/ProfilePhotoModal';
 import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { supabase } from '@/api/supabase';
@@ -68,6 +70,11 @@ export function RenewalBatchScreen() {
   const [showWhatsAppQueueModal, setShowWhatsAppQueueModal] = useState(false);
   const [whatsAppQueue, setWhatsAppQueue] = useState<ExpiringQueueItem[]>([]);
   const [preselectedMemberId, setPreselectedMemberId] = useState<string | undefined>(undefined);
+  const [previewMember, setPreviewMember] = useState<{
+    profile_photo?: string | null;
+    full_name: string;
+    member_id?: string | null;
+  } | null>(null);
 
   const { isSent, markSent, clearAll: clearRenewalSentRecords, version: renewalMapVersion } = useRenewalMessagingStatus();
   const [renewalBatchSize, setRenewalBatchSize] = useState<RenewalBatchSize>(30);
@@ -407,11 +414,21 @@ export function RenewalBatchScreen() {
 
               return (
                 <View key={item.id} style={styles.memberRow}>
-                  <View style={styles.avatarPill}>
-                    <Text style={styles.avatarInitial}>
-                      {memberName.charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
+                  <FVEAvatar
+                    url={member?.profile_photo}
+                    name={memberName}
+                    size={38}
+                    onPress={() => {
+                      if (member) {
+                        setPreviewMember({
+                          profile_photo: member.profile_photo,
+                          full_name: memberName,
+                          member_id: member.member_id,
+                        });
+                      }
+                    }}
+                    accessibilityLabel={`View full profile photo of ${memberName}`}
+                  />
 
                   <View style={styles.memberInfo}>
                     <View style={styles.memberNameRow}>
@@ -505,6 +522,15 @@ export function RenewalBatchScreen() {
             handleNotifyBatch();
           }, 200);
         }}
+      />
+
+      {/* Full-Size Profile Photo Modal */}
+      <ProfilePhotoModal
+        visible={Boolean(previewMember)}
+        onClose={() => setPreviewMember(null)}
+        photoUrl={previewMember?.profile_photo}
+        memberName={previewMember?.full_name || 'Member'}
+        memberId={previewMember?.member_id}
       />
     </View>
   );

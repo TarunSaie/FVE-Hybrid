@@ -39,6 +39,7 @@ import {
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEInput } from '@/components/common/FVEInput';
 import { FVEModal } from '@/components/common/FVEModal';
+import { FVEAvatar } from '@/components/common/FVEAvatar';
 import { AttendanceItem } from '@/components/features/AttendanceItem';
 import { FVEEmptyState } from '@/components/common/FVEEmptyState';
 import { FVELogoLoader } from '@/components/common/FVELogoLoader';
@@ -957,28 +958,19 @@ export function AttendanceScreen() {
                 return (
                   <View style={styles.monitorCard}>
                     <View style={styles.monitorCardTop}>
-                      <TouchableOpacity
-                        activeOpacity={0.75}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      <FVEAvatar
+                        url={item.profile_photo}
+                        name={item.full_name}
+                        size={42}
                         onPress={() => {
-                          haptics.light();
                           setPreviewPhotoMember({
                             profile_photo: item.profile_photo,
                             full_name: item.full_name,
                             member_id: item.member_id,
                           });
                         }}
-                        accessibilityRole="button"
                         accessibilityLabel={`View profile photo of ${item.full_name}`}
-                      >
-                        {item.profile_photo ? (
-                          <Image source={{ uri: item.profile_photo }} style={styles.monitorAvatar} />
-                        ) : (
-                          <View style={styles.monitorAvatarFallback}>
-                            <Text style={styles.monitorAvatarText}>{initial}</Text>
-                          </View>
-                        )}
-                      </TouchableOpacity>
+                      />
 
                       <TouchableOpacity
                         activeOpacity={0.8}
@@ -1463,6 +1455,15 @@ export function AttendanceScreen() {
           </TouchableOpacity>
         </View>
       </FVEModal>
+
+      {/* Full-Size Profile Photo Modal */}
+      <ProfilePhotoModal
+        visible={Boolean(previewPhotoMember)}
+        onClose={() => setPreviewPhotoMember(null)}
+        photoUrl={previewPhotoMember?.profile_photo}
+        memberName={previewPhotoMember?.full_name || 'Member'}
+        memberId={previewPhotoMember?.member_id}
+      />
     </View>
   );
 }

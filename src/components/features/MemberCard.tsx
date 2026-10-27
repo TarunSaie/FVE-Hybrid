@@ -12,6 +12,7 @@ import {
 import { ChevronRight, Phone, Calendar, MessageCircle, MoreVertical } from 'lucide-react-native';
 import { MemberWithMembership } from '@/types';
 import { FVEBadge } from '@/components/common/FVEBadge';
+import { FVEAvatar } from '@/components/common/FVEAvatar';
 import { useTheme } from '@/contexts/ThemeContext';
 import { typography } from '@/constants/typography';
 import { formatDate, getLocalDateStr } from '@/utils/date';
@@ -101,31 +102,15 @@ export function MemberCard({
         {/* Tier 1: Avatar (standalone touchable) + Pressable Body (details & chevron) */}
         <View style={styles.cardHeader}>
           {/* Avatar on left - Independent Touchable */}
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => onAvatarPress && onAvatarPress(member)}
-            disabled={!onAvatarPress}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            accessibilityRole="button"
-            accessibilityLabel={`View full profile photo of ${memberName}`}
-            style={styles.avatarContainer}
-          >
-            {member.profile_photo ? (
-              <Image source={{ uri: member.profile_photo }} style={[styles.avatar, { borderColor: colors.goldBorder }]} />
-            ) : (
-              <View
-                style={[
-                  styles.avatarFallback,
-                  {
-                    backgroundColor: isDark ? '#181C24' : '#EDF2F7',
-                    borderColor: colors.goldBorder,
-                  },
-                ]}
-              >
-                <Text style={[styles.fallbackText, { color: colors.gold }]}>{initial}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
+          <View style={styles.avatarContainer}>
+            <FVEAvatar
+              url={member.profile_photo}
+              name={memberName}
+              size={48}
+              onPress={onAvatarPress ? () => onAvatarPress(member) : undefined}
+              accessibilityLabel={`View full profile photo of ${memberName}`}
+            />
+          </View>
 
           {/* Info Block & Chevron - Sibling Pressable for Card Navigation */}
           <Pressable

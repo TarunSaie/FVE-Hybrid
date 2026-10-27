@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
 import { View, Text, StyleSheet, Image, Pressable, Animated, TouchableOpacity } from 'react-native';
 import { Clock, QrCode, UserCheck } from 'lucide-react-native';
+import { FVEAvatar } from '@/components/common/FVEAvatar';
 import { Attendance } from '@/types';
 import { useTheme } from '@/contexts/ThemeContext';
 import { typography } from '@/constants/typography';
@@ -52,30 +53,13 @@ export function AttendanceItem({ item, onPress, onAvatarPress }: AttendanceItemP
           },
         ]}
       >
-        <TouchableOpacity
-          activeOpacity={0.75}
-          onPress={(e) => handleAvatarPress(e)}
-          disabled={!onAvatarPress}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          accessibilityRole="button"
+        <FVEAvatar
+          url={photo}
+          name={memberName}
+          size={42}
+          onPress={onAvatarPress ? () => onAvatarPress(item) : undefined}
           accessibilityLabel={`View profile photo of ${memberName}`}
-        >
-          {photo ? (
-            <Image source={{ uri: photo }} style={[styles.avatar, { borderColor: colors.goldBorder }]} />
-          ) : (
-            <View
-              style={[
-                styles.fallbackAvatar,
-                {
-                  backgroundColor: isDark ? '#181C24' : '#EDF2F7',
-                  borderColor: colors.goldBorder,
-                },
-              ]}
-            >
-              <Text style={[styles.fallbackText, { color: colors.gold }]}>{initial}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
+        />
 
         <Pressable
           onPress={handlePress}

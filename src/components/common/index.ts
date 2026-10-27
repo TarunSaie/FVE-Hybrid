@@ -29,3 +29,5 @@ export { FVEMonthPickerModal } from './FVEMonthPickerModal';
 export { M3Switch } from './M3Switch';
 export { FVEKeyboardAwareContainer } from './FVEKeyboardAwareContainer';
 export { ErrorBoundary } from './ErrorBoundary';
+export { FVEAvatar } from './FVEAvatar';
+export type { FVEAvatarProps } from './FVEAvatar';
