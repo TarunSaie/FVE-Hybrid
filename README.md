@@ -9,6 +9,10 @@
 
 **FitVerse Elite Mobile** is the native companion application for the FitVerse Elite SaaS gym management ecosystem. Designed with a luxury dark-gold aesthetic, strict native mobile standards, fluid gestures, and instant real-time Supabase integration, it provides gym owners, administrators, and staff with full operational control on both iOS and Android.
 
+📖 **Documentation Links**:
+- [Strategic Guide: How This App Helps Gym Owners](HOW_IT_HELPS_GYM_OWNERS.md)
+- [Technical Blueprint & Implementation: prompt.md](prompt.md)
+
 ---
 
 ## ⚡ Core Features
