@@ -8,10 +8,11 @@ import { Payment, PersonalTraining } from '@/types';
 import { formatCurrency, openWhatsAppLink } from '@/utils/format';
 import { sharePdfToMemberWhatsApp } from '@/utils/whatsAppPdfShare';
 import { formatDate, calculateMembershipDurationDays } from '@/utils/date';
-import { APP_NAME, TAGLINE, CHIRVEX_WEBSITE } from '@/constants/branding';
+import { APP_NAME, TAGLINE, CHIRVEX_WEBSITE, APP_URL } from '@/constants/branding';
 import { GYM_LOGO_BASE64 } from '@/constants/logoBase64';
 
 export interface ReceiptData {
+  paymentId?: string | null;
   receiptNumber: string;
   memberName: string;
   memberId?: string | null;
@@ -97,6 +98,7 @@ export function buildReceiptDataFromPayment(
   const remainingPT = usageStats?.remainingPTSessions ?? (totalSessions != null ? Math.max(0, totalSessions - actualPTCompleted) : null);
 
   return {
+    paymentId: payment.id || null,
     receiptNumber: receiptNo,
     memberName,
     memberId,
@@ -134,6 +136,38 @@ export async function getCachedReceiptBrand(): Promise<{
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Receipt Storage Mode:
+ * - 'on_demand': Receipts are generated dynamically when viewed, downloaded, or shared natively.
+ *                No PDF is uploaded to Supabase Storage (saves 100% cloud storage).
+ * - 'store':     Receipts are uploaded to Supabase Storage at deterministic path receipts/{payment_id}.pdf
+ *                with upsert=true (retries overwrite, never creating duplicate files).
+ */
+export type ReceiptStorageMode = 'on_demand' | 'store';
+const RECEIPT_STORAGE_MODE_KEY = '@fve_receipt_storage_mode';
+let cachedReceiptStorageMode: ReceiptStorageMode = 'on_demand';
+
+export async function getReceiptStorageMode(): Promise<ReceiptStorageMode> {
+  try {
+    const saved = await AsyncStorage.getItem(RECEIPT_STORAGE_MODE_KEY);
+    if (saved === 'store' || saved === 'on_demand') {
+      cachedReceiptStorageMode = saved;
+    }
+  } catch {
+    // Return in-memory fallback
+  }
+  return cachedReceiptStorageMode;
+}
+
+export async function setReceiptStorageMode(mode: ReceiptStorageMode): Promise<void> {
+  cachedReceiptStorageMode = mode;
+  try {
+    await AsyncStorage.setItem(RECEIPT_STORAGE_MODE_KEY, mode);
+  } catch {
+    // Ignore storage errors
   }
 }
 
@@ -583,10 +617,7 @@ export async function generateReceiptPdf(receiptData: ReceiptData): Promise<stri
   const brand = await getCachedReceiptBrand();
   const html = generateReceiptHtml(receiptData, brand);
 
-  const { uri: tempUri, base64 } = await Print.printToFileAsync({
-    html,
-    base64: true,
-  });
+  const { uri: tempUri } = await Print.printToFileAsync({ html });
 
   const safeReceiptNo = (receiptData.receiptNumber || 'Receipt').replace(/[^a-zA-Z0-9_-]/g, '_');
   const targetDir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
@@ -602,17 +633,8 @@ export async function generateReceiptPdf(receiptData: ReceiptData): Promise<stri
       await FileSystem.copyAsync({ from: tempUri, to: targetUri });
       shareUri = targetUri;
     } catch (copyErr) {
-      console.warn('[receiptPdf] copyAsync failed, trying base64 write fallback:', copyErr);
-      if (base64) {
-        try {
-          await FileSystem.writeAsStringAsync(targetUri, base64, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          shareUri = targetUri;
-        } catch (writeErr) {
-          console.error('[receiptPdf] base64 write fallback failed:', writeErr);
-        }
-      }
+      console.warn('[receiptPdf] copyAsync failed, using tempUri:', copyErr);
+      shareUri = tempUri;
     }
   }
 
@@ -679,8 +701,9 @@ export async function printPdfReceipt(receiptData: ReceiptData): Promise<void> {
 }
 
 /**
- * Generates and uploads the receipt PDF to Supabase Storage, returning a public URL.
- * Automatically falls back between 'receipts' and 'member-images' storage buckets.
+ * Generates and uploads the receipt PDF to Supabase Storage with a DETERMINISTIC PATH:
+ * `receipts/{payment_id}.pdf` using `upsert: true`.
+ * Retries overwrite the existing file, never creating duplicate files or consuming extra storage.
  */
 export async function uploadReceiptPdf(receiptData: ReceiptData): Promise<string | null> {
   try {
@@ -689,31 +712,42 @@ export async function uploadReceiptPdf(receiptData: ReceiptData): Promise<string
     const { uri } = await Print.printToFileAsync({ html });
 
     const safeReceiptNo = (receiptData.receiptNumber || 'Receipt').replace(/[^a-zA-Z0-9_-]/g, '_');
-    const fileName = `FVE_Receipt_${safeReceiptNo}_${Date.now()}.pdf`;
+    const paymentKey = receiptData.paymentId || safeReceiptNo;
+    const deterministicPath = `receipts/${paymentKey}.pdf`;
 
     const response = await fetch(uri);
     const blob = await response.blob();
 
-    // 1. Try uploading to 'receipts' bucket
-    let bucket = 'receipts';
-    const uploadRes = await supabase.storage
-      .from(bucket)
-      .upload(fileName, blob, { contentType: 'application/pdf', upsert: true });
+    // PDF size guard: skip cloud upload if the generated PDF exceeds 2 MB
+    const MAX_PDF_BYTES = 2 * 1024 * 1024;
+    if (blob.size > MAX_PDF_BYTES) {
+      console.warn(
+        `[uploadReceiptPdf] PDF too large (${(blob.size / 1024 / 1024).toFixed(2)} MB), skipping cloud upload.`
+      );
+      return null;
+    }
 
-    // 2. If 'receipts' bucket is missing or errors, fallback to 'member-images'
+    // 1. Try uploading to 'receipts' bucket with upsert
+    let bucket = 'receipts';
+    let uploadPath = `${paymentKey}.pdf`;
+    let uploadRes = await supabase.storage
+      .from(bucket)
+      .upload(uploadPath, blob, { contentType: 'application/pdf', upsert: true });
+
+    // 2. If 'receipts' bucket is missing or errors, fallback to 'member-images' bucket at receipts/{payment_id}.pdf
     if (uploadRes.error) {
       bucket = 'member-images';
-      const fallbackPath = `receipts/${fileName}`;
+      uploadPath = deterministicPath;
       const fallbackRes = await supabase.storage
         .from(bucket)
-        .upload(fallbackPath, blob, { contentType: 'application/pdf', upsert: true });
+        .upload(uploadPath, blob, { contentType: 'application/pdf', upsert: true });
 
       if (!fallbackRes.error) {
-        const { data: pubData } = supabase.storage.from(bucket).getPublicUrl(fallbackPath);
+        const { data: pubData } = supabase.storage.from(bucket).getPublicUrl(uploadPath);
         return pubData?.publicUrl || null;
       }
     } else {
-      const { data: pubData } = supabase.storage.from(bucket).getPublicUrl(fileName);
+      const { data: pubData } = supabase.storage.from(bucket).getPublicUrl(uploadPath);
       return pubData?.publicUrl || null;
     }
 
@@ -725,7 +759,8 @@ export async function uploadReceiptPdf(receiptData: ReceiptData): Promise<string
 }
 
 /**
- * Builds the official WhatsApp text receipt message, including optional cloud PDF invoice link.
+ * Builds the official WhatsApp text receipt message, including optional cloud PDF invoice link
+ * or on-demand receipt viewer link.
  */
 export function buildWhatsAppReceiptMessage(receiptData: ReceiptData, pdfUrl?: string | null): string {
   const isPT = receiptData.isPersonalTraining;
@@ -750,7 +785,9 @@ export function buildWhatsAppReceiptMessage(receiptData: ReceiptData, pdfUrl?: s
   }
 
   const pdfLine = pdfUrl
-    ? `\n📄 *Official PDF Invoice:*\n${pdfUrl}\n`
+    ? (pdfUrl.includes('/receipt/') && !pdfUrl.endsWith('.pdf')
+        ? `\n📄 *Official Receipt (View & Download PDF):*\n${pdfUrl}\n`
+        : `\n📄 *Official PDF Invoice:*\n${pdfUrl}\n`)
     : '';
 
   return (
@@ -769,35 +806,46 @@ export function buildWhatsAppReceiptMessage(receiptData: ReceiptData, pdfUrl?: s
 }
 
 /**
- * Direct 1-tap WhatsApp sharing to the member's registered mobile number:
- * 1. Uploads branded PDF to Supabase Storage to obtain public URL.
- * 2. Pre-fills official receipt message with the PDF link.
- * 3. Copies message to clipboard as backup.
- * 4. Opens WhatsApp directly in chat with member's number via wa.me.
+ * Direct 1-tap WhatsApp sharing to the member's registered mobile number.
+ * Supports:
+ * - 'on_demand' mode (default): No PDF is uploaded to Supabase Storage; generates on demand.
+ * - 'store' mode (or options.forceUpload): Uploads PDF to deterministic path receipts/{payment_id}.pdf with upsert.
  */
 export async function directShareReceiptToWhatsApp(
   receiptData: ReceiptData,
-  phoneOverride?: string | null
+  phoneOverride?: string | null,
+  options?: { forceUpload?: boolean }
 ): Promise<{ success: boolean; hasPhone: boolean; pdfUrl: string | null }> {
   const targetPhone = phoneOverride || receiptData.memberMobile;
   if (!targetPhone) {
     return { success: false, hasPhone: false, pdfUrl: null };
   }
 
-  // 1. Upload PDF to cloud storage to get link
-  const pdfUrl = await uploadReceiptPdf(receiptData);
+  const mode = await getReceiptStorageMode();
+  let pdfUrl: string | null = null;
 
-  // 2. Build full formatted message
+  if (mode === 'store' || options?.forceUpload) {
+    // 1. Upload PDF to cloud storage with deterministic path & upsert
+    pdfUrl = await uploadReceiptPdf(receiptData);
+  } else {
+    // 2. On-demand mode: do not store PDF in cloud storage.
+    // If web application URL is configured, link to live on-demand receipt generator
+    if (receiptData.paymentId && APP_URL) {
+      pdfUrl = `${APP_URL.replace(/\/$/, '')}/receipt/${receiptData.paymentId}`;
+    }
+  }
+
+  // 3. Build formatted message
   const msg = buildWhatsAppReceiptMessage(receiptData, pdfUrl);
 
-  // 3. Copy to clipboard
+  // 4. Copy to clipboard
   try {
     await Clipboard.setStringAsync(msg);
   } catch {
     // Ignore clipboard error
   }
 
-  // 4. Open WhatsApp directly into the chat with the member's number
+  // 5. Open WhatsApp directly into the chat with the member's number
   await openWhatsAppLink(targetPhone, msg);
 
   return { success: true, hasPhone: true, pdfUrl };

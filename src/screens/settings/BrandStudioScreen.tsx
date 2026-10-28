@@ -68,6 +68,7 @@ import {
 import { typography } from '@/constants/typography';
 import { ThemeColors } from '@/constants/colors';
 import { haptics } from '@/utils/haptics';
+import { validateMobileImage, compressMobileImage } from '@/utils/imageUpload';
 
 const MIGRATION_SQL = `-- FitVerse Elite Gym Branding Setup
 CREATE TABLE IF NOT EXISTS public.gym_branding (
@@ -253,56 +254,65 @@ EXPO_PUBLIC_SUPABASE_KEY=${key}
         mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.8,
-        base64: true,
+        quality: 1, // pick full quality; compression happens below
+        base64: false,
       });
 
-      if (result.canceled || !result.assets || result.assets.length === 0) {
+      if (result.canceled || !result.assets || result.assets.length === 0) return;
+
+      const asset = result.assets[0];
+
+      // Validate type and raw size before any upload
+      const validationError = validateMobileImage(asset.mimeType ?? undefined, asset.fileSize ?? undefined);
+      if (validationError) {
+        dialog.alert('Invalid File', validationError);
         return;
       }
 
       setUploadingLogo(true);
       haptics.light();
 
-      const asset = result.assets[0];
       let finalUrl = '';
 
-      // Upload to Supabase Storage 'brand-assets' if available
-      if (asset.base64) {
-        try {
-          const fileName = `logo-${Date.now()}.png`;
-          const base64Data = asset.base64;
-          const byteCharacters = atob(base64Data);
-          const byteNumbers = new Array(byteCharacters.length);
-          for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-          }
-          const byteArray = new Uint8Array(byteNumbers);
+      try {
+        // Compress to 1600px WebP and compute SHA-256 for dedup
+        const { uri: compressedUri, mimeType, extension } = await compressMobileImage(asset.uri);
+        const response = await fetch(compressedUri);
+        const blob = await response.blob();
 
+        // Compute hash for duplicate detection
+        const buffer = await blob.arrayBuffer();
+        const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+        const hash = Array.from(new Uint8Array(hashBuffer))
+          .map((b) => b.toString(16).padStart(2, '0'))
+          .join('');
+        const hashName = `logo-${hash}.${extension}`;
+
+        // Dedup: reuse if same file already exists
+        const { data: existing } = await supabase.storage.from('brand-assets').list('', { search: hashName });
+        if (existing && existing.length > 0) {
+          const { data: { publicUrl } } = supabase.storage.from('brand-assets').getPublicUrl(hashName);
+          finalUrl = publicUrl;
+        } else {
           const { data, error } = await supabase.storage
             .from('brand-assets')
-            .upload(fileName, byteArray, {
-              contentType: 'image/png',
-              upsert: true,
-            });
-
+            .upload(hashName, blob, { contentType: mimeType, upsert: true, cacheControl: '3600' });
           if (!error && data?.path) {
-            const { data: publicUrlData } = supabase.storage
-              .from('brand-assets')
-              .getPublicUrl(data.path);
-            if (publicUrlData?.publicUrl) {
-              finalUrl = publicUrlData.publicUrl;
-            }
+            const { data: { publicUrl } } = supabase.storage.from('brand-assets').getPublicUrl(data.path);
+            finalUrl = publicUrl;
           }
-        } catch {
-          // Fallback to data URI
         }
-      }
 
-      // Fallback to inlined data URI if storage upload wasn't possible
-      if (!finalUrl && asset.base64) {
-        finalUrl = `data:image/png;base64,${asset.base64}`;
-      } else if (!finalUrl && asset.uri) {
+        // Orphan cleanup: delete old logo when replacing
+        const oldUrl = draft.logo_url;
+        if (oldUrl && oldUrl !== finalUrl && oldUrl.includes('brand-assets')) {
+          try {
+            const oldPath = new URL(oldUrl).pathname.split('/brand-assets/')[1];
+            if (oldPath) await supabase.storage.from('brand-assets').remove([oldPath]);
+          } catch { /* Non-fatal */ }
+        }
+      } catch {
+        // Fallback to local URI if storage upload fails
         finalUrl = asset.uri;
       }
 

@@ -206,6 +206,16 @@ export async function revertOrDeletePayment(
     throw new Error(`Failed to delete payment transaction: ${deleteErr.message}`);
   }
 
+  // 4b. Storage cleanup: remove the stored receipt PDF if present
+  try {
+    await Promise.all([
+      supabase.storage.from('member-images').remove([`receipts/${paymentId}.pdf`]),
+      supabase.storage.from('receipts').remove([`${paymentId}.pdf`, `receipts/${paymentId}.pdf`]),
+    ]);
+  } catch (storageErr) {
+    console.warn('[revertOrDeletePayment] Non-critical receipt storage cleanup error:', storageErr);
+  }
+
   // 5. Create an administrative audit notification
   try {
     const detailMsg = planReverted

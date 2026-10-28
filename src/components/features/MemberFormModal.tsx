@@ -36,6 +36,7 @@ import { sounds } from '@/utils/sounds';
 import { checkAndNotifyBirthdays } from '@/hooks/useBirthdayAlerts';
 import { useQueryClient } from '@tanstack/react-query';
 import { UPIPaymentQRCard } from '@/components/features/UPIPaymentQRCard';
+import { uploadMemberPhoto, validateMobileImage } from '@/utils/imageUpload';
 
 interface MemberFormModalProps {
   visible: boolean;
@@ -147,32 +148,27 @@ export function MemberFormModal({
 
   const selectedPlan = plans.find(p => p.id === selectedPlanId);
 
-  // Upload image to Supabase Storage
-  const uploadImageToSupabase = async (uri: string) => {
+  // Upload image to Supabase Storage with validation, compression, and dedup
+  const uploadImageToSupabase = async (uri: string, mimeType?: string, fileSize?: number) => {
+    // Validate MIME type and raw size before any network work
+    const validationError = validateMobileImage(mimeType, fileSize);
+    if (validationError) {
+      Alert.alert('Invalid File', validationError);
+      haptics.warning();
+      return;
+    }
+
     setUploading(true);
     try {
-      const fileExt = uri.split('.').pop()?.toLowerCase() || 'jpg';
-      const fileName = `members/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-
-      const response = await fetch(uri);
-      const blob = await response.blob();
-
-      const { error } = await supabase.storage
-        .from('member-images')
-        .upload(fileName, blob, { contentType: `image/${fileExt}` });
-
-      if (error) {
-        // Fallback: keep local image URI so the user still has their photo
-        setProfilePhoto(uri);
-        haptics.warning();
-      } else {
-        const { data } = supabase.storage.from('member-images').getPublicUrl(fileName);
-        setProfilePhoto(data.publicUrl);
-        haptics.success();
-      }
-    } catch {
-      // Fallback
+      // Compress to 1600px WebP, dedup by SHA-256, delete old photo on replace
+      const result = await uploadMemberPhoto(uri, profilePhoto || null);
+      setProfilePhoto(result.publicUrl);
+      haptics.success();
+    } catch (err: unknown) {
+      // Fallback: keep local image URI so the user still has their photo
       setProfilePhoto(uri);
+      haptics.warning();
+      console.warn('[uploadImageToSupabase]', err);
     } finally {
       setUploading(false);
     }
@@ -194,11 +190,12 @@ export function MemberFormModal({
       const result = await ImagePicker.launchCameraAsync({
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.6,
+        quality: 1, // upload full quality; compression happens in uploadMemberPhoto
       });
 
       if (!result.canceled && result.assets[0]?.uri) {
-        await uploadImageToSupabase(result.assets[0].uri);
+        const asset = result.assets[0];
+        await uploadImageToSupabase(asset.uri, asset.mimeType ?? undefined, asset.fileSize ?? undefined);
       }
     } catch (err: unknown) {
       Alert.alert('Error', (err as Error).message || 'Failed to open camera');
@@ -213,11 +210,12 @@ export function MemberFormModal({
         mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.6,
+        quality: 1, // upload full quality; compression happens in uploadMemberPhoto
       });
 
       if (!result.canceled && result.assets[0]?.uri) {
-        await uploadImageToSupabase(result.assets[0].uri);
+        const asset = result.assets[0];
+        await uploadImageToSupabase(asset.uri, asset.mimeType ?? undefined, asset.fileSize ?? undefined);
       }
     } catch (err: unknown) {
       Alert.alert('Error', (err as Error).message || 'Failed to select image from gallery');
