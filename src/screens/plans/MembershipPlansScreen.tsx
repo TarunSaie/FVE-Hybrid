@@ -204,6 +204,43 @@ export function MembershipPlansScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
+              // Check if any memberships reference this plan before attempting delete
+              const { count, error: checkError } = await supabase
+                .from('memberships')
+                .select('id', { count: 'exact', head: true })
+                .eq('plan_id', plan.id);
+
+              if (checkError) throw checkError;
+
+              if (count && count > 0) {
+                // Plan has linked memberships — offer to deactivate instead
+                Alert.alert(
+                  'Cannot Delete Plan',
+                  `"${plan.name}" has ${count} membership${count === 1 ? '' : 's'} linked to it and cannot be deleted.\n\nWould you like to deactivate it instead? Deactivated plans are hidden from new enrollments but existing member memberships are unaffected.`,
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Deactivate',
+                      style: 'destructive',
+                      onPress: async () => {
+                        try {
+                          const { error: deactivateError } = await supabase
+                            .from('membership_plans')
+                            .update({ active: false })
+                            .eq('id', plan.id);
+                          if (deactivateError) throw deactivateError;
+                          onRefresh();
+                        } catch (err: unknown) {
+                          Alert.alert('Error', (err as Error).message || 'Failed to deactivate plan');
+                        }
+                      },
+                    },
+                  ]
+                );
+                return;
+              }
+
+              // No linked memberships — safe to hard-delete
               const { error } = await supabase
                 .from('membership_plans')
                 .delete()

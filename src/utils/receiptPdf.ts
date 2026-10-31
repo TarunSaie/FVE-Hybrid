@@ -141,20 +141,23 @@ export async function getCachedReceiptBrand(): Promise<{
 
 /**
  * Receipt Storage Mode:
- * - 'on_demand': Receipts are generated dynamically when viewed, downloaded, or shared natively.
- *                No PDF is uploaded to Supabase Storage (saves 100% cloud storage).
  * - 'store':     Receipts are uploaded to Supabase Storage at deterministic path receipts/{payment_id}.pdf
  *                with upsert=true (retries overwrite, never creating duplicate files).
+ *                A direct public PDF download link is included in the WhatsApp message.
+ * - 'on_demand': Receipts are generated dynamically when viewed, downloaded, or shared natively.
+ *                No PDF is uploaded to Supabase Storage. Falls back to web app receipt URL if APP_URL is set.
  */
 export type ReceiptStorageMode = 'on_demand' | 'store';
 const RECEIPT_STORAGE_MODE_KEY = '@fve_receipt_storage_mode';
-let cachedReceiptStorageMode: ReceiptStorageMode = 'on_demand';
+let cachedReceiptStorageMode: ReceiptStorageMode = 'store';
 
 export async function getReceiptStorageMode(): Promise<ReceiptStorageMode> {
   try {
     const saved = await AsyncStorage.getItem(RECEIPT_STORAGE_MODE_KEY);
-    if (saved === 'store' || saved === 'on_demand') {
-      cachedReceiptStorageMode = saved;
+    // Only honour an explicitly saved 'store' override.
+    // Never let a stale 'on_demand' value revert the default.
+    if (saved === 'store') {
+      cachedReceiptStorageMode = 'store';
     }
   } catch {
     // Return in-memory fallback
