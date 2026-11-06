@@ -221,6 +221,8 @@ export function WhatsAppQueueModal({
                 onPress={onClose}
                 style={[styles.closeButton, { backgroundColor: colors.surfaceLight }]}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                accessibilityRole="button"
+                accessibilityLabel="Close WhatsApp reminder queue"
               >
                 <X size={18} color={colors.textSecondary} />
               </TouchableOpacity>

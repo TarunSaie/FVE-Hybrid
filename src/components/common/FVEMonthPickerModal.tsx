@@ -111,7 +111,13 @@ export function FVEMonthPickerModal({
                 </Text>
               </View>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.7}>
+            <TouchableOpacity
+              onPress={onClose}
+              style={styles.closeBtn}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Close month picker"
+            >
               <X size={18} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>

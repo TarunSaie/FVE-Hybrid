@@ -12,7 +12,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, CreditCard, Filter, X, QrCode, Ticket, CheckCircle2, Clock, XCircle, Share2, Trash2, FileText } from 'lucide-react-native';
+import { Plus, Search, CreditCard, Filter, X, QrCode, Ticket, CheckCircle2, Clock, XCircle, Share2, Trash2, FileText, Eye, EyeOff } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEInput } from '@/components/common/FVEInput';
@@ -49,6 +49,7 @@ export function PaymentsScreen() {
 
   const [activeTab, setActiveTab] = useState<'memberships' | 'daily_passes'>('memberships');
   const [includeDailyPasses, setIncludeDailyPasses] = useState(false);
+  const [showRevenue, setShowRevenue] = useState(true);
 
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -246,7 +247,7 @@ export function PaymentsScreen() {
     haptics.warning();
     const isUpgrade = p.notes?.includes('Plan Upgrade:');
     const memberName = p.members?.full_name || 'Member';
-    const amountStr = formatCurrency(p.amount);
+    const amountStr = showRevenue ? formatCurrency(p.amount) : 'the selected amount';
     const receiptNo = p.receipt_number || 'N/A';
 
     const confirmMsg = isUpgrade
@@ -310,7 +311,7 @@ export function PaymentsScreen() {
 
           <View style={styles.dpAmountWrap}>
             <Text style={styles.dpAmountText}>
-              {formatCurrency(Number(item.amount || 0))}
+              {showRevenue ? formatCurrency(Number(item.amount || 0)) : '••••••'}
             </Text>
             <View
               style={[
@@ -388,9 +389,26 @@ export function PaymentsScreen() {
                   : 'DAILY PASS REVENUE'}
             </Text>
             <Text numberOfLines={1} adjustsFontSizeToFit style={styles.summaryValue}>
-              {formatCurrency(displayTotalRevenue)}
+              {showRevenue ? formatCurrency(displayTotalRevenue) : '••••••'}
             </Text>
           </View>
+          <TouchableOpacity
+            onPress={() => {
+              haptics.selection();
+              setShowRevenue((visible) => !visible);
+            }}
+            style={styles.revenueVisibilityButton}
+            activeOpacity={0.75}
+            accessibilityRole="button"
+            accessibilityLabel={showRevenue ? 'Hide revenue amounts' : 'Show revenue amounts'}
+            accessibilityHint="Toggles revenue visibility on this screen"
+          >
+            {showRevenue ? (
+              <Eye size={19} color={colors.gold} />
+            ) : (
+              <EyeOff size={19} color={colors.textMuted} />
+            )}
+          </TouchableOpacity>
         </View>
 
         {/* Daily Pass Combine M3 Switch (Only shown on Membership tab) */}
@@ -406,7 +424,9 @@ export function PaymentsScreen() {
                 </Text>
                 <Text style={styles.m3ToggleSubtitle}>
                   {includeDailyPasses
-                    ? `Includes +${formatCurrency(dailyPassRevenue)} from day pass receipts`
+                    ? showRevenue
+                      ? `Includes +${formatCurrency(dailyPassRevenue)} from day pass receipts`
+                      : 'Includes daily pass receipts'
                     : 'Toggle to merge daily pass sales into total'}
                 </Text>
               </View>
@@ -514,6 +534,7 @@ export function PaymentsScreen() {
           renderItem={({ item }) => (
             <PaymentItem
               payment={item}
+              showAmount={showRevenue}
               onPress={() => navigation.navigate('PaymentReceipt', { payment: item })}
               onMenuPress={(p) => setActionMenuPayment(p)}
               onAvatarPress={(p) => {
@@ -659,7 +680,7 @@ export function PaymentsScreen() {
         title={actionMenuPayment ? `Receipt #${actionMenuPayment.receipt_number || 'N/A'}` : 'Receipt Options'}
         subtitle={
           actionMenuPayment
-            ? `${actionMenuPayment.members?.full_name || 'Member'} · ${formatCurrency(actionMenuPayment.amount)}`
+            ? `${actionMenuPayment.members?.full_name || 'Member'} · ${showRevenue ? formatCurrency(actionMenuPayment.amount) : 'Amount hidden'}`
             : undefined
         }
       >
@@ -806,6 +827,16 @@ const getPaymentsStyles = (colors: ThemeColors, isDark: boolean) =>
       fontFamily: typography.fonts.rajdhani,
       fontWeight: '800',
       marginTop: 2,
+    },
+    revenueVisibilityButton: {
+      width: 38,
+      height: 38,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 161, 0, 0.3)' : 'rgba(217, 130, 0, 0.3)',
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.1)' : 'rgba(217, 130, 0, 0.1)',
     },
     recordCountBox: {
       backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : 'rgba(217, 130, 0, 0.12)',

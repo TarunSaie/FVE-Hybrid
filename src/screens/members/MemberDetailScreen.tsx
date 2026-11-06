@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -81,6 +81,7 @@ import { supabase } from '@/api/supabase';
 import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { formatDate, calculateAge, getLocalDateStr, formatTime } from '@/utils/date';
+import { resolveMemberPhotoUrl } from '@/utils/imageUpload';
 import {
   formatCurrency,
   openWhatsAppLink,
@@ -154,6 +155,12 @@ export function MemberDetailScreen() {
     },
     initialData: initialMember as Member | undefined,
   });
+
+  const memberPhotoUrl = resolveMemberPhotoUrl(member?.profile_photo);
+
+  useEffect(() => {
+    setAvatarLoadError(false);
+  }, [memberPhotoUrl]);
 
   // Fetch Member Memberships
   const { data: memberships } = useQuery({
@@ -754,7 +761,7 @@ export function MemberDetailScreen() {
         {/* Profile Card */}
         <View style={styles.profileCard}>
           <View style={styles.profileTopRow}>
-            {member?.profile_photo && !avatarLoadError ? (
+            {memberPhotoUrl && !avatarLoadError ? (
               <TouchableOpacity
                 activeOpacity={0.85}
                 onPress={() => {
@@ -763,10 +770,10 @@ export function MemberDetailScreen() {
                 }}
                 style={styles.avatarTouchable}
                 accessibilityRole="button"
-                accessibilityLabel={`View full profile photo of ${member.full_name}`}
+                accessibilityLabel={`View full profile photo of ${member?.full_name || 'member'}`}
               >
                 <Image
-                  source={{ uri: member.profile_photo }}
+                  source={{ uri: memberPhotoUrl }}
                   style={styles.avatar}
                   onError={() => setAvatarLoadError(true)}
                 />
@@ -776,19 +783,19 @@ export function MemberDetailScreen() {
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
-                activeOpacity={member?.profile_photo ? 0.85 : 1}
+                activeOpacity={memberPhotoUrl ? 0.85 : 1}
                 onPress={() => {
-                  if (member?.profile_photo) {
+                  if (memberPhotoUrl) {
                     haptics.light();
                     setShowPhotoModal(true);
                   }
                 }}
                 style={styles.fallbackAvatar}
-                accessibilityRole={member?.profile_photo ? 'button' : undefined}
-                accessibilityLabel={member?.profile_photo ? `View profile photo of ${member.full_name}` : undefined}
+                accessibilityRole={memberPhotoUrl ? 'button' : undefined}
+                accessibilityLabel={memberPhotoUrl ? `View profile photo of ${member?.full_name || 'member'}` : undefined}
               >
                 <Text style={styles.fallbackText}>{initial}</Text>
-                {member?.profile_photo ? (
+                {memberPhotoUrl ? (
                   <View style={styles.avatarZoomBadge}>
                     <ZoomIn size={11} color="#050505" strokeWidth={2.5} />
                   </View>
@@ -1998,13 +2005,17 @@ export function MemberDetailScreen() {
       )}
 
       {/* Full-Size Profile Photo Modal */}
-      {showPhotoModal && member?.profile_photo && (
+      {showPhotoModal && memberPhotoUrl && (
         <ProfilePhotoModal
           visible={showPhotoModal}
           onClose={() => setShowPhotoModal(false)}
-          photoUrl={member.profile_photo}
-          memberName={member.full_name || 'Member'}
-          memberId={member.member_id}
+          photoUrl={memberPhotoUrl}
+          memberName={member?.full_name || 'Member'}
+          memberId={member?.member_id}
+          onRequestPhotoUpdate={() => {
+            setShowPhotoModal(false);
+            setShowEditModal(true);
+          }}
         />
       )}
     </View>

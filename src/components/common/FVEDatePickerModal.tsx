@@ -182,7 +182,13 @@ export function FVEDatePickerModal({
                 <Text style={styles.sheetTitle}>{title}</Text>
                 <Text style={styles.previewDateText}>{formattedSelectedPreview}</Text>
               </View>
-              <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.7}>
+              <TouchableOpacity
+                onPress={onClose}
+                style={styles.closeBtn}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Close date picker"
+              >
                 <X size={18} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>

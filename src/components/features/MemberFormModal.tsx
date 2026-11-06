@@ -36,7 +36,7 @@ import { sounds } from '@/utils/sounds';
 import { checkAndNotifyBirthdays } from '@/hooks/useBirthdayAlerts';
 import { useQueryClient } from '@tanstack/react-query';
 import { UPIPaymentQRCard } from '@/components/features/UPIPaymentQRCard';
-import { uploadMemberPhoto, validateMobileImage } from '@/utils/imageUpload';
+import { removeMemberPhoto, uploadMemberPhoto, validateMobileImage } from '@/utils/imageUpload';
 
 interface MemberFormModalProps {
   visible: boolean;
@@ -148,7 +148,7 @@ export function MemberFormModal({
 
   const selectedPlan = plans.find(p => p.id === selectedPlanId);
 
-  // Upload image to Supabase Storage with validation, compression, and dedup
+  // Upload image to Supabase Storage with validation and compression.
   const uploadImageToSupabase = async (uri: string, mimeType?: string, fileSize?: number) => {
     // Validate MIME type and raw size before any network work
     const validationError = validateMobileImage(mimeType, fileSize);
@@ -160,8 +160,9 @@ export function MemberFormModal({
 
     setUploading(true);
     try {
-      // Compress to 1600px WebP, dedup by SHA-256, delete old photo on replace
-      const result = await uploadMemberPhoto(uri, profilePhoto || null);
+      // The previous image is removed only after the member update succeeds,
+      // so a failed form save never leaves the profile pointing to a missing photo.
+      const result = await uploadMemberPhoto(uri);
       setProfilePhoto(result.publicUrl);
       haptics.success();
     } catch (err: unknown) {
@@ -223,6 +224,44 @@ export function MemberFormModal({
     } catch (err: unknown) {
       Alert.alert('Error', (err as Error).message || 'Failed to select image from gallery');
     }
+  };
+
+  const handleRemovePhoto = () => {
+    if (!profilePhoto || uploading) return;
+
+    Alert.alert(
+      'Remove Profile Photo?',
+      member
+        ? 'The photo will be removed when you save this member record.'
+        : 'This uploaded photo will be removed from storage.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove Photo',
+          style: 'destructive',
+          onPress: async () => {
+            const photoToRemove = profilePhoto;
+
+            // A new member, or a newly selected replacement on an existing
+            // member, has no database reference yet and can be cleaned up now.
+            const isUnsavedPhoto = !member || photoToRemove !== (member.profile_photo || '');
+            if (isUnsavedPhoto) {
+              setUploading(true);
+              try {
+                await removeMemberPhoto(photoToRemove);
+              } catch (err) {
+                console.warn('[MemberFormModal] Unable to clean up unsaved photo:', err);
+              } finally {
+                setUploading(false);
+              }
+            }
+
+            setProfilePhoto('');
+            haptics.success();
+          },
+        },
+      ]
+    );
   };
 
   const handleDobSelect = (dateStr: string) => {
@@ -337,6 +376,19 @@ export function MemberFormModal({
           .eq('id', member.id);
 
         if (error) throw error;
+
+        // Clear the database reference first, then clean up the old object.
+        // This ordering keeps the previous photo viewable if a database update
+        // is rejected and prevents a successful update from retaining an orphan.
+        const previousPhoto = member.profile_photo?.trim();
+        if (previousPhoto && previousPhoto !== trimmedPhoto) {
+          try {
+            await removeMemberPhoto(previousPhoto);
+          } catch (cleanupError) {
+            console.warn('[MemberFormModal] Previous photo cleanup failed:', cleanupError);
+          }
+        }
+
         haptics.success();
         Alert.alert('Success', `${fullNameRef.current} updated successfully!`);
       } else {
@@ -514,9 +566,12 @@ export function MemberFormModal({
 
                 {profilePhoto ? (
                   <TouchableOpacity
-                    onPress={() => setProfilePhoto('')}
+                    onPress={handleRemovePhoto}
+                    disabled={uploading}
                     style={styles.removePhotoBtn}
                     activeOpacity={0.8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Remove profile photo"
                   >
                     <Trash2 size={15} color={colors.error} />
                   </TouchableOpacity>

@@ -4,15 +4,18 @@
  * Responsibilities:
  *  - validateMobileImage()   – checks MIME type and raw file size.
  *  - compressMobileImage()   – resize to 1600px + WebP/JPEG via expo-image-manipulator.
- *  - computeMobileFileHash() – SHA-256 fingerprint for duplicate detection.
- *  - uploadMemberPhoto()     – full pipeline: validate → compress → dedup → upload.
+ *  - uploadMemberPhoto()     – full pipeline: validate → compress → upload.
+ *  - removeMemberPhoto()     – removes a previously uploaded member image.
  */
 
 import * as ImageManipulator from 'expo-image-manipulator';
+import { File } from 'expo-file-system';
 import { supabase } from '@/api/supabase';
 
 /** Max raw image upload size: 10 MB */
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MEMBER_IMAGES_BUCKET = 'member-images';
+const MEMBER_PHOTO_PATH_PREFIX = 'members/';
 
 /** Accepted MIME types for member photos */
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -21,6 +24,30 @@ export interface MobileUploadResult {
   publicUrl: string;
   /** true if an existing copy was reused instead of re-uploading */
   reused: boolean;
+}
+
+/**
+ * Normalises legacy database values that contain only a Storage object path.
+ * New uploads always persist a public URL, but older member records may contain
+ * `members/<file>` or `member-images/members/<file>` instead. Keeping this
+ * conversion in one place lets every avatar and viewer load either format.
+ */
+export function resolveMemberPhotoUrl(photoUrl?: string | null): string | null {
+  const value = photoUrl?.trim();
+  if (!value) return null;
+
+  // Do not rewrite complete remote or device URLs. A client-configured Supabase
+  // origin is valid, and local URIs are useful while a form is still open.
+  if (/^(https?:|file:|content:|ph:|blob:)/i.test(value)) return value;
+
+  const bucketMarker = `${MEMBER_IMAGES_BUCKET}/`;
+  const markerIndex = value.indexOf(bucketMarker);
+  const storagePath = (markerIndex >= 0 ? value.slice(markerIndex + bucketMarker.length) : value)
+    .replace(/^\/+/, '');
+
+  if (!storagePath.startsWith(MEMBER_PHOTO_PATH_PREFIX)) return value;
+
+  return supabase.storage.from(MEMBER_IMAGES_BUCKET).getPublicUrl(storagePath).data.publicUrl;
 }
 
 /**
@@ -61,39 +88,15 @@ export async function compressMobileImage(uri: string): Promise<{
 }
 
 /**
- * Computes a hex SHA-256 hash from a Blob with robust fallback if crypto.subtle is unavailable.
- * Used to detect duplicate files before uploading.
- */
-async function computeHash(blob: Blob): Promise<string> {
-  try {
-    if (typeof crypto !== 'undefined' && crypto?.subtle?.digest) {
-      const buffer = await blob.arrayBuffer();
-      const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-      return Array.from(new Uint8Array(hashBuffer))
-        .map((b) => b.toString(16).padStart(2, '0'))
-        .join('');
-    }
-  } catch (err) {
-    console.warn('[computeHash] WebCrypto subtle digest unavailable, using fallback:', err);
-  }
-  return `${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 10)}_${blob.size}`;
-}
-
-/**
  * Full pipeline for uploading a member profile photo to the `member-images` bucket:
  *  1. Compress / resize to 1600px WebP.
  *  2. Generate unique filename.
- *  3. Stream upload using React Native FormData to Supabase Storage.
- *  4. Optionally delete the old photo if it's being replaced.
+ *  3. Upload an ArrayBuffer to Supabase Storage.
  *
  * @param localUri    – local file URI from expo-image-picker / expo-camera
- * @param oldPhotoUrl – current public URL of the member's photo (for orphan cleanup)
  * @returns public URL of the uploaded image
  */
-export async function uploadMemberPhoto(
-  localUri: string,
-  oldPhotoUrl?: string | null
-): Promise<MobileUploadResult> {
+export async function uploadMemberPhoto(localUri: string): Promise<MobileUploadResult> {
   // Step 1 – compress
   const { uri: compressedUri, mimeType, extension } = await compressMobileImage(localUri);
 
@@ -101,19 +104,22 @@ export async function uploadMemberPhoto(
   const timestamp = Date.now();
   const randomSuffix = Math.random().toString(36).substring(2, 9);
   const fileName = `${timestamp}_${randomSuffix}.${extension}`;
-  const storagePath = `members/${fileName}`;
+  const storagePath = `${MEMBER_PHOTO_PATH_PREFIX}${fileName}`;
 
-  // Step 3 – upload via native FormData streaming (100% reliable on React Native)
-  const formData = new FormData();
-  formData.append('', {
-    uri: compressedUri,
-    name: fileName,
-    type: mimeType,
-  } as unknown as Blob);
+  // React Native's FormData/Blob implementation is incompatible with
+  // @supabase/storage-js. Its own React Native guidance requires an ArrayBuffer.
+  // Expo File reads the manipulated local URI natively without a web-style upload
+  // wrapper, avoiding StorageUnknownError: Unsupported FormDataPart implementation.
+  const imageFile = new File(compressedUri);
+  const imageBytes = await imageFile.arrayBuffer();
+  if (imageBytes.byteLength === 0) {
+    throw new Error('The processed image is empty. Please choose a different photo.');
+  }
 
-  const { error } = await supabase.storage.from('member-images').upload(storagePath, formData, {
+  const { error } = await supabase.storage.from(MEMBER_IMAGES_BUCKET).upload(storagePath, imageBytes, {
     contentType: mimeType,
-    upsert: true,
+    cacheControl: '3600',
+    upsert: false,
   });
 
   if (error) {
@@ -121,17 +127,38 @@ export async function uploadMemberPhoto(
     throw new Error(`Upload failed: ${error.message}`);
   }
 
-  const { data: { publicUrl } } = supabase.storage.from('member-images').getPublicUrl(storagePath);
-
-  // Step 4 – orphan cleanup: delete the previous photo if it's being replaced
-  if (oldPhotoUrl && oldPhotoUrl !== publicUrl && oldPhotoUrl.includes('member-images')) {
-    try {
-      const oldPath = new URL(oldPhotoUrl).pathname.split('/member-images/')[1];
-      if (oldPath) await supabase.storage.from('member-images').remove([oldPath]);
-    } catch {
-      // Non-fatal: continue even if old file deletion fails
-    }
-  }
+  const { data: { publicUrl } } = supabase.storage.from(MEMBER_IMAGES_BUCKET).getPublicUrl(storagePath);
 
   return { publicUrl, reused: false };
+}
+
+/**
+ * Extracts an owned member-photo path from a Supabase public or signed URL.
+ * Only objects under `members/` can be removed through this helper.
+ */
+function getMemberPhotoPath(photoUrl: string): string | null {
+  try {
+    const pathname = new URL(photoUrl).pathname;
+    const marker = `/${MEMBER_IMAGES_BUCKET}/`;
+    const bucketIndex = pathname.indexOf(marker);
+    if (bucketIndex < 0) return null;
+
+    const path = decodeURIComponent(pathname.slice(bucketIndex + marker.length));
+    return path.startsWith(MEMBER_PHOTO_PATH_PREFIX) ? path : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Removes a member image from storage after its database reference is cleared. */
+export async function removeMemberPhoto(photoUrl?: string | null): Promise<void> {
+  if (!photoUrl) return;
+
+  const storagePath = getMemberPhotoPath(photoUrl);
+  if (!storagePath) return;
+
+  const { error } = await supabase.storage.from(MEMBER_IMAGES_BUCKET).remove([storagePath]);
+  if (error) {
+    throw new Error(`Photo cleanup failed: ${error.message}`);
+  }
 }

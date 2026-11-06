@@ -22,6 +22,7 @@ interface PaymentItemProps {
   onPress: () => void;
   onMenuPress?: (payment: Payment) => void;
   onAvatarPress?: (payment: Payment) => void;
+  showAmount?: boolean;
 }
 
 
@@ -30,6 +31,7 @@ export function PaymentItem({
   onPress,
   onMenuPress,
   onAvatarPress,
+  showAmount = true,
 }: PaymentItemProps) {
   const { colors, isDark } = useTheme();
   const memberName = payment.members?.full_name || 'Member';
@@ -98,7 +100,7 @@ export function PaymentItem({
                 {memberName}
               </Text>
               <Text style={[styles.amount, { color: colors.gold }]}>
-                {formatCurrency(payment.amount)}
+                {showAmount ? formatCurrency(payment.amount) : '••••••'}
               </Text>
             </View>
 

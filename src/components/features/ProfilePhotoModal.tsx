@@ -6,20 +6,21 @@ import {
   Modal,
   TouchableOpacity,
   Image,
-  Dimensions,
   SafeAreaView,
   ActivityIndicator,
   ScrollView,
   Platform,
+  useWindowDimensions,
   ViewStyle,
   TextStyle,
   ImageStyle,
 } from 'react-native';
-import { X, User, ZoomIn, RefreshCw } from 'lucide-react-native';
+import { X, User, ZoomIn, RefreshCw, Upload } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { haptics } from '@/utils/haptics';
+import { resolveMemberPhotoUrl } from '@/utils/imageUpload';
 
 interface ProfilePhotoModalProps {
   visible: boolean;
@@ -27,9 +28,8 @@ interface ProfilePhotoModalProps {
   photoUrl?: string | null;
   memberName: string;
   memberId?: string | null;
+  onRequestPhotoUpdate?: () => void;
 }
-
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export function ProfilePhotoModal({
   visible,
@@ -37,11 +37,16 @@ export function ProfilePhotoModal({
   photoUrl,
   memberName,
   memberId,
+  onRequestPhotoUpdate,
 }: ProfilePhotoModalProps) {
   const { colors, isDark } = useTheme();
-  const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const styles = useMemo(
+    () => getStyles(colors, isDark, screenWidth, screenHeight),
+    [colors, isDark, screenWidth, screenHeight]
+  );
 
-  const cleanUrl = photoUrl && typeof photoUrl === 'string' ? photoUrl.trim() : null;
+  const cleanUrl = resolveMemberPhotoUrl(photoUrl);
   const isLocalUri = Boolean(
     cleanUrl && (
       cleanUrl.startsWith('file:') ||
@@ -165,23 +170,44 @@ export function ProfilePhotoModal({
                   <Text style={styles.errorSubtext}>
                     {isLocalUri
                       ? 'This photo was stored as a local device file and is not accessible on cloud storage. Please edit this member and re-upload their photo.'
-                      : 'The image is either unavailable or could not be retrieved. Please check your network connection.'}
+                      : onRequestPhotoUpdate
+                        ? 'The original image is unavailable. You can retry or upload a replacement photo for this member.'
+                        : 'The image is either unavailable or could not be retrieved. Please check your network connection.'}
                   </Text>
-                  {!isLocalUri && (
-                    <TouchableOpacity
-                      onPress={() => {
-                        haptics.light();
-                        setHasError(false);
-                        setLoading(true);
-                        setReloadKey((k) => k + 1);
-                      }}
-                      style={styles.retryBtn}
-                      activeOpacity={0.8}
-                    >
-                      <RefreshCw size={14} color={colors.gold} />
-                      <Text style={styles.retryBtnText}>Retry Loading</Text>
-                    </TouchableOpacity>
-                  )}
+                  <View style={styles.errorActions}>
+                    {!isLocalUri && (
+                      <TouchableOpacity
+                        onPress={() => {
+                          haptics.light();
+                          setHasError(false);
+                          setLoading(true);
+                          setReloadKey((k) => k + 1);
+                        }}
+                        style={styles.retryBtn}
+                        activeOpacity={0.8}
+                        accessibilityRole="button"
+                        accessibilityLabel="Retry loading profile photo"
+                      >
+                        <RefreshCw size={14} color={colors.gold} />
+                        <Text style={styles.retryBtnText}>Retry Loading</Text>
+                      </TouchableOpacity>
+                    )}
+                    {onRequestPhotoUpdate && (
+                      <TouchableOpacity
+                        onPress={() => {
+                          haptics.light();
+                          onRequestPhotoUpdate();
+                        }}
+                        style={styles.retryBtn}
+                        activeOpacity={0.8}
+                        accessibilityRole="button"
+                        accessibilityLabel="Upload a replacement profile photo"
+                      >
+                        <Upload size={14} color={colors.gold} />
+                        <Text style={styles.retryBtnText}>Upload New Photo</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
               ) : (
                 <ScrollView
@@ -225,6 +251,8 @@ export function ProfilePhotoModal({
                 onPress={handleClose}
                 style={styles.doneBtn}
                 activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="Close photo viewer"
               >
                 <Text style={styles.doneBtnText}>Close</Text>
               </TouchableOpacity>
@@ -259,6 +287,7 @@ interface Styles {
   errorIconCircle: ViewStyle;
   errorText: TextStyle;
   errorSubtext: TextStyle;
+  errorActions: ViewStyle;
   retryBtn: ViewStyle;
   retryBtnText: TextStyle;
   scrollView: ViewStyle;
@@ -271,7 +300,12 @@ interface Styles {
   doneBtnText: TextStyle;
 }
 
-function getStyles(colors: ThemeColors, isDark: boolean): Styles {
+function getStyles(
+  colors: ThemeColors,
+  isDark: boolean,
+  screenWidth: number,
+  screenHeight: number
+): Styles {
   return StyleSheet.create({
     backdrop: {
       flex: 1,
@@ -289,7 +323,7 @@ function getStyles(colors: ThemeColors, isDark: boolean): Styles {
     },
     card: {
       width: '100%',
-      maxHeight: SCREEN_HEIGHT * 0.88,
+      maxHeight: screenHeight * 0.88,
       backgroundColor: isDark ? '#0C0E12' : colors.cardBackground,
       borderRadius: 20,
       borderWidth: 1,
@@ -387,7 +421,7 @@ function getStyles(colors: ThemeColors, isDark: boolean): Styles {
     },
     imageContainer: {
       width: '100%',
-      height: SCREEN_HEIGHT * 0.58,
+      height: Math.min(screenHeight * 0.58, 560),
       backgroundColor: '#040507',
       alignItems: 'center',
       justifyContent: 'center',
@@ -436,6 +470,13 @@ function getStyles(colors: ThemeColors, isDark: boolean): Styles {
       maxWidth: 240,
       marginTop: 4,
     },
+    errorActions: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'center',
+      gap: 8,
+      marginTop: 12,
+    },
     retryBtn: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -447,7 +488,6 @@ function getStyles(colors: ThemeColors, isDark: boolean): Styles {
       paddingVertical: 7,
       paddingHorizontal: 16,
       borderRadius: 10,
-      marginTop: 12,
     },
     retryBtnText: {
       color: colors.gold,
@@ -465,8 +505,8 @@ function getStyles(colors: ThemeColors, isDark: boolean): Styles {
       justifyContent: 'center',
     },
     fullImage: {
-      width: SCREEN_WIDTH - 40,
-      height: SCREEN_HEIGHT * 0.55,
+      width: Math.max(0, screenWidth - 40),
+      height: Math.min(screenHeight * 0.55, 520),
     },
     footer: {
       flexDirection: 'row',

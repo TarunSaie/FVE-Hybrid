@@ -21,6 +21,7 @@ export interface FVEInputProps extends TextInputProps {
   leftIcon?: React.ReactNode;
   rightIcon?: React.ReactNode;
   onRightIconPress?: () => void;
+  rightIconAccessibilityLabel?: string;
   containerStyle?: StyleProp<ViewStyle>;
   isFocused?: boolean;
 }
@@ -50,10 +51,13 @@ export const FVEInput = forwardRef<TextInput, FVEInputProps>(function FVEInput(
     leftIcon,
     rightIcon,
     onRightIconPress,
+    rightIconAccessibilityLabel,
     containerStyle,
     style,
     onFocus,
     onBlur,
+    accessibilityLabel,
+    accessibilityHint,
     editable = true,
     isFocused: controlledFocused,
     ...rest
@@ -150,7 +154,8 @@ export const FVEInput = forwardRef<TextInput, FVEInputProps>(function FVEInput(
         <TextInput
           ref={setCombinedRef}
           editable={editable}
-          accessibilityLabel={rest.accessibilityLabel || label || rest.placeholder}
+          accessibilityLabel={accessibilityLabel || label || rest.placeholder}
+          accessibilityHint={error || accessibilityHint}
           placeholderTextColor={colors.textSubtle}
           selectionColor={colors.gold}
           cursorColor={colors.gold}
@@ -187,13 +192,22 @@ export const FVEInput = forwardRef<TextInput, FVEInputProps>(function FVEInput(
             disabled={!onRightIconPress}
             style={styles.rightIconContainer}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel={rightIconAccessibilityLabel || `${label || rest.placeholder || 'Input'} action`}
           >
             {rightIcon}
           </TouchableOpacity>
         )}
       </Pressable>
 
-      {!!error && <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>}
+      {!!error && (
+        <Text
+          style={[styles.errorText, { color: colors.error }]}
+          accessibilityLiveRegion="polite"
+        >
+          {error}
+        </Text>
+      )}
     </View>
   );
 });
@@ -248,4 +262,3 @@ const styles = StyleSheet.create({
 });
 
 export const Input = FVEInput;
-

@@ -13,6 +13,7 @@ import {
 import { useTheme } from '@/contexts/ThemeContext';
 import { typography } from '@/constants/typography';
 import { haptics } from '@/utils/haptics';
+import { resolveMemberPhotoUrl } from '@/utils/imageUpload';
 
 export interface FVEAvatarProps {
   url?: string | null;
@@ -42,7 +43,7 @@ export function FVEAvatar({
   const { colors, isDark } = useTheme();
   const [imageError, setImageError] = useState(false);
 
-  const cleanUrl = url && typeof url === 'string' ? url.trim() : null;
+  const cleanUrl = resolveMemberPhotoUrl(url);
 
   // Reset error when URL changes
   useEffect(() => {
