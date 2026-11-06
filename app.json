@@ -73,7 +73,8 @@
         }
       ],
       "expo-sharing",
-      "expo-audio"
+      "expo-audio",
+      "expo-status-bar"
     ]
   }
 }

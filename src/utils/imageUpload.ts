@@ -6,10 +6,18 @@
  *  - compressMobileImage()   – resize to 1600px + WebP/JPEG via expo-image-manipulator.
  *  - uploadMemberPhoto()     – full pipeline: validate → compress → upload.
  *  - removeMemberPhoto()     – removes a previously uploaded member image.
+ *
+ * Upload strategy:
+ *  React Native's Blob/FormData implementations are incompatible with
+ *  @supabase/storage-js. The workaround is to read the compressed file as a
+ *  base64 string via expo-file-system and decode it into an ArrayBuffer via
+ *  base64-arraybuffer before handing it to supabase.storage.upload().
+ *  This avoids "StorageUnknownError: Unsupported FormDataPart implementation".
  */
 
 import * as ImageManipulator from 'expo-image-manipulator';
-import { File } from 'expo-file-system';
+import * as FileSystem from 'expo-file-system';
+import { decode } from 'base64-arraybuffer';
 import { supabase } from '@/api/supabase';
 
 /** Max raw image upload size: 10 MB */
@@ -106,15 +114,16 @@ export async function uploadMemberPhoto(localUri: string): Promise<MobileUploadR
   const fileName = `${timestamp}_${randomSuffix}.${extension}`;
   const storagePath = `${MEMBER_PHOTO_PATH_PREFIX}${fileName}`;
 
-  // React Native's FormData/Blob implementation is incompatible with
-  // @supabase/storage-js. Its own React Native guidance requires an ArrayBuffer.
-  // Expo File reads the manipulated local URI natively without a web-style upload
-  // wrapper, avoiding StorageUnknownError: Unsupported FormDataPart implementation.
-  const imageFile = new File(compressedUri);
-  const imageBytes = await imageFile.arrayBuffer();
-  if (imageBytes.byteLength === 0) {
+  // React Native's Blob/FormData implementations are incompatible with
+  // @supabase/storage-js. Reading as base64 via expo-file-system and decoding
+  // with base64-arraybuffer is the proven workaround for Android and iOS.
+  const base64 = await FileSystem.readAsStringAsync(compressedUri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  if (!base64 || base64.length === 0) {
     throw new Error('The processed image is empty. Please choose a different photo.');
   }
+  const imageBytes = decode(base64);
 
   const { error } = await supabase.storage.from(MEMBER_IMAGES_BUCKET).upload(storagePath, imageBytes, {
     contentType: mimeType,
