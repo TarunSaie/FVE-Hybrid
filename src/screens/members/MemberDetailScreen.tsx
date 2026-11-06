@@ -133,6 +133,7 @@ export function MemberDetailScreen() {
   const [ptSessionModalMode, setPtSessionModalMode] = useState<'schedule' | 'complete'>('schedule');
   const [activePTSession, setActivePTSession] = useState<PTSession | null>(null);
   const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [avatarLoadError, setAvatarLoadError] = useState(false);
   const [selectedAttendanceForWorkout, setSelectedAttendanceForWorkout] = useState<{
     date: string;
     record: Attendance | null;
@@ -753,7 +754,7 @@ export function MemberDetailScreen() {
         {/* Profile Card */}
         <View style={styles.profileCard}>
           <View style={styles.profileTopRow}>
-            {member?.profile_photo ? (
+            {member?.profile_photo && !avatarLoadError ? (
               <TouchableOpacity
                 activeOpacity={0.85}
                 onPress={() => {
@@ -767,15 +768,32 @@ export function MemberDetailScreen() {
                 <Image
                   source={{ uri: member.profile_photo }}
                   style={styles.avatar}
+                  onError={() => setAvatarLoadError(true)}
                 />
                 <View style={styles.avatarZoomBadge}>
                   <ZoomIn size={11} color="#050505" strokeWidth={2.5} />
                 </View>
               </TouchableOpacity>
             ) : (
-              <View style={styles.fallbackAvatar}>
+              <TouchableOpacity
+                activeOpacity={member?.profile_photo ? 0.85 : 1}
+                onPress={() => {
+                  if (member?.profile_photo) {
+                    haptics.light();
+                    setShowPhotoModal(true);
+                  }
+                }}
+                style={styles.fallbackAvatar}
+                accessibilityRole={member?.profile_photo ? 'button' : undefined}
+                accessibilityLabel={member?.profile_photo ? `View profile photo of ${member.full_name}` : undefined}
+              >
                 <Text style={styles.fallbackText}>{initial}</Text>
-              </View>
+                {member?.profile_photo ? (
+                  <View style={styles.avatarZoomBadge}>
+                    <ZoomIn size={11} color="#050505" strokeWidth={2.5} />
+                  </View>
+                ) : null}
+              </TouchableOpacity>
             )}
 
             <View style={styles.profileInfo}>

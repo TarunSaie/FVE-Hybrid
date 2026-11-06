@@ -406,7 +406,7 @@ export function PaymentsScreen() {
                 </Text>
                 <Text style={styles.m3ToggleSubtitle}>
                   {includeDailyPasses
-                    ? `Includes +₹${formatCurrency(dailyPassRevenue)} from day pass receipts`
+                    ? `Includes +${formatCurrency(dailyPassRevenue)} from day pass receipts`
                     : 'Toggle to merge daily pass sales into total'}
                 </Text>
               </View>

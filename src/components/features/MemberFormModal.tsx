@@ -165,10 +165,13 @@ export function MemberFormModal({
       setProfilePhoto(result.publicUrl);
       haptics.success();
     } catch (err: unknown) {
-      // Fallback: keep local image URI so the user still has their photo
-      setProfilePhoto(uri);
-      haptics.warning();
-      console.warn('[uploadImageToSupabase]', err);
+      haptics.error();
+      const msg = (err as Error)?.message || 'Failed to upload photo';
+      console.warn('[uploadImageToSupabase]', msg);
+      Alert.alert(
+        'Photo Upload Failed',
+        'Could not upload the photo to cloud storage. Please check your internet connection and try again.'
+      );
     } finally {
       setUploading(false);
     }
@@ -271,6 +274,33 @@ export function MemberFormModal({
         ? calculateAge(dateOfBirth.trim())
         : (ageRef.current ? parseInt(ageRef.current, 10) : null);
 
+      // Guard: Never save local device file URIs (file://, content://, etc.) to the cloud database
+      const trimmedPhoto = profilePhoto.trim();
+      const isLocalPath =
+        trimmedPhoto.startsWith('file:') ||
+        trimmedPhoto.startsWith('content:') ||
+        trimmedPhoto.startsWith('ph:') ||
+        trimmedPhoto.startsWith('blob:');
+
+      if (isLocalPath) {
+        setLoading(false);
+        Alert.alert(
+          'Photo Not Uploaded',
+          'The selected photo has not been uploaded to the cloud yet. Please re-upload the photo or remove it before saving.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Clear Photo & Save',
+              style: 'destructive',
+              onPress: () => {
+                setProfilePhoto('');
+              },
+            },
+          ]
+        );
+        return;
+      }
+
       // Base payload — member_id excluded from INSERTs so the DB trigger
       // auto-assigns the next FVE-XX value. For UPDATEs we include it so
       // admins can manually correct an ID if needed.
@@ -290,7 +320,7 @@ export function MemberFormModal({
         address: addressRef.current.trim() || '',
         emergency_contact: emergencyContactRef.current.trim() || '',
         notes: notesRef.current.trim() || '',
-        profile_photo: profilePhoto.trim() || '',
+        profile_photo: trimmedPhoto,
         updated_at: new Date().toISOString(),
       };
 

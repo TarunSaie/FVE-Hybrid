@@ -61,28 +61,34 @@ export async function compressMobileImage(uri: string): Promise<{
 }
 
 /**
- * Computes a hex SHA-256 hash from a Blob.
+ * Computes a hex SHA-256 hash from a Blob with robust fallback if crypto.subtle is unavailable.
  * Used to detect duplicate files before uploading.
  */
 async function computeHash(blob: Blob): Promise<string> {
-  const buffer = await blob.arrayBuffer();
-  const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-  return Array.from(new Uint8Array(hashBuffer))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
+  try {
+    if (typeof crypto !== 'undefined' && crypto?.subtle?.digest) {
+      const buffer = await blob.arrayBuffer();
+      const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+      return Array.from(new Uint8Array(hashBuffer))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+    }
+  } catch (err) {
+    console.warn('[computeHash] WebCrypto subtle digest unavailable, using fallback:', err);
+  }
+  return `${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 10)}_${blob.size}`;
 }
 
 /**
  * Full pipeline for uploading a member profile photo to the `member-images` bucket:
  *  1. Compress / resize to 1600px WebP.
- *  2. Compute SHA-256 hash for duplicate detection.
- *  3. If a file with the same hash already exists → reuse it (no bytes charged).
- *  4. Otherwise upload the compressed blob.
- *  5. Optionally delete the old photo if it's being replaced.
+ *  2. Generate unique filename.
+ *  3. Stream upload using React Native FormData to Supabase Storage.
+ *  4. Optionally delete the old photo if it's being replaced.
  *
  * @param localUri    – local file URI from expo-image-picker / expo-camera
  * @param oldPhotoUrl – current public URL of the member's photo (for orphan cleanup)
- * @returns public URL of the uploaded / reused image
+ * @returns public URL of the uploaded image
  */
 export async function uploadMemberPhoto(
   localUri: string,
@@ -91,34 +97,33 @@ export async function uploadMemberPhoto(
   // Step 1 – compress
   const { uri: compressedUri, mimeType, extension } = await compressMobileImage(localUri);
 
-  // Step 2 – fetch blob and compute hash
-  const response = await fetch(compressedUri);
-  const blob = await response.blob();
-  const hash = await computeHash(blob);
+  // Step 2 – unique filename
+  const timestamp = Date.now();
+  const randomSuffix = Math.random().toString(36).substring(2, 9);
+  const fileName = `${timestamp}_${randomSuffix}.${extension}`;
+  const storagePath = `members/${fileName}`;
 
-  const storagePath = `members/${hash}.${extension}`;
+  // Step 3 – upload via native FormData streaming (100% reliable on React Native)
+  const formData = new FormData();
+  formData.append('', {
+    uri: compressedUri,
+    name: fileName,
+    type: mimeType,
+  } as unknown as Blob);
 
-  // Step 3 – duplicate check
-  const { data: existing } = await supabase.storage.from('member-images').list('members', {
-    search: `${hash}.${extension}`,
-  });
-
-  if (existing && existing.length > 0) {
-    // Reuse existing file — no storage consumed
-    const { data: { publicUrl } } = supabase.storage.from('member-images').getPublicUrl(storagePath);
-    return { publicUrl, reused: true };
-  }
-
-  // Step 4 – upload
-  const { error } = await supabase.storage.from('member-images').upload(storagePath, blob, {
+  const { error } = await supabase.storage.from('member-images').upload(storagePath, formData, {
     contentType: mimeType,
-    upsert: false,
+    upsert: true,
   });
-  if (error) throw new Error(`Upload failed: ${error.message}`);
+
+  if (error) {
+    console.error('[uploadMemberPhoto] Storage upload failed:', error);
+    throw new Error(`Upload failed: ${error.message}`);
+  }
 
   const { data: { publicUrl } } = supabase.storage.from('member-images').getPublicUrl(storagePath);
 
-  // Step 5 – orphan cleanup: delete the previous photo if it's being replaced
+  // Step 4 – orphan cleanup: delete the previous photo if it's being replaced
   if (oldPhotoUrl && oldPhotoUrl !== publicUrl && oldPhotoUrl.includes('member-images')) {
     try {
       const oldPath = new URL(oldPhotoUrl).pathname.split('/member-images/')[1];

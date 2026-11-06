@@ -15,7 +15,7 @@ import {
   TextStyle,
   ImageStyle,
 } from 'react-native';
-import { X, User, ZoomIn } from 'lucide-react-native';
+import { X, User, ZoomIn, RefreshCw } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
@@ -42,15 +42,25 @@ export function ProfilePhotoModal({
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
   const cleanUrl = photoUrl && typeof photoUrl === 'string' ? photoUrl.trim() : null;
+  const isLocalUri = Boolean(
+    cleanUrl && (
+      cleanUrl.startsWith('file:') ||
+      cleanUrl.startsWith('content:') ||
+      cleanUrl.startsWith('ph:') ||
+      cleanUrl.startsWith('blob:')
+    )
+  );
 
   const [loading, setLoading] = useState(Boolean(cleanUrl));
   const [hasError, setHasError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   // Reset loading and error states whenever modal opens or photoUrl changes
   useEffect(() => {
     if (visible) {
       setLoading(Boolean(cleanUrl));
       setHasError(false);
+      setReloadKey(0);
     }
   }, [visible, cleanUrl]);
 
@@ -149,13 +159,33 @@ export function ProfilePhotoModal({
                   <View style={styles.errorIconCircle}>
                     <User size={32} color={colors.error || '#EF4444'} />
                   </View>
-                  <Text style={styles.errorText}>Unable to load photo</Text>
-                  <Text style={styles.errorSubtext}>
-                    The image is either unavailable or could not be retrieved. Please check your network connection.
+                  <Text style={styles.errorText}>
+                    {isLocalUri ? 'Local Photo Unsynced' : 'Unable to load photo'}
                   </Text>
+                  <Text style={styles.errorSubtext}>
+                    {isLocalUri
+                      ? 'This photo was stored as a local device file and is not accessible on cloud storage. Please edit this member and re-upload their photo.'
+                      : 'The image is either unavailable or could not be retrieved. Please check your network connection.'}
+                  </Text>
+                  {!isLocalUri && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        haptics.light();
+                        setHasError(false);
+                        setLoading(true);
+                        setReloadKey((k) => k + 1);
+                      }}
+                      style={styles.retryBtn}
+                      activeOpacity={0.8}
+                    >
+                      <RefreshCw size={14} color={colors.gold} />
+                      <Text style={styles.retryBtnText}>Retry Loading</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               ) : (
                 <ScrollView
+                  key={`scroll-${reloadKey}`}
                   style={styles.scrollView}
                   contentContainerStyle={styles.scrollContent}
                   maximumZoomScale={3}
@@ -166,11 +196,13 @@ export function ProfilePhotoModal({
                   bounces={false}
                 >
                   <Image
+                    key={`img-${reloadKey}-${cleanUrl}`}
                     source={{ uri: cleanUrl }}
                     style={styles.fullImage}
                     resizeMode="contain"
                     onLoad={() => setLoading(false)}
-                    onError={() => {
+                    onError={(e) => {
+                      console.warn('[ProfilePhotoModal] Photo load failed:', cleanUrl, e.nativeEvent?.error);
                       setLoading(false);
                       setHasError(true);
                     }}
@@ -227,6 +259,8 @@ interface Styles {
   errorIconCircle: ViewStyle;
   errorText: TextStyle;
   errorSubtext: TextStyle;
+  retryBtn: ViewStyle;
+  retryBtnText: TextStyle;
   scrollView: ViewStyle;
   scrollContent: ViewStyle;
   fullImage: ImageStyle;
@@ -401,6 +435,25 @@ function getStyles(colors: ThemeColors, isDark: boolean): Styles {
       textAlign: 'center',
       maxWidth: 240,
       marginTop: 4,
+    },
+    retryBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      backgroundColor: isDark ? 'rgba(239, 161, 0, 0.12)' : colors.goldMuted,
+      borderWidth: 1,
+      borderColor: colors.goldBorder,
+      paddingVertical: 7,
+      paddingHorizontal: 16,
+      borderRadius: 10,
+      marginTop: 12,
+    },
+    retryBtnText: {
+      color: colors.gold,
+      fontSize: 12,
+      fontWeight: '600',
+      fontFamily: typography.fonts.interMedium,
     },
     scrollView: {
       flex: 1,

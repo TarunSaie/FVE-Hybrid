@@ -280,12 +280,19 @@ EXPO_PUBLIC_SUPABASE_KEY=${key}
         const response = await fetch(compressedUri);
         const blob = await response.blob();
 
-        // Compute hash for duplicate detection
-        const buffer = await blob.arrayBuffer();
-        const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-        const hash = Array.from(new Uint8Array(hashBuffer))
-          .map((b) => b.toString(16).padStart(2, '0'))
-          .join('');
+        // Compute hash for duplicate detection with safe fallback
+        let hash = `${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 10)}`;
+        try {
+          if (typeof crypto !== 'undefined' && crypto?.subtle?.digest) {
+            const buffer = await blob.arrayBuffer();
+            const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+            hash = Array.from(new Uint8Array(hashBuffer))
+              .map((b) => b.toString(16).padStart(2, '0'))
+              .join('');
+          }
+        } catch (hashErr) {
+          console.warn('[BrandStudioScreen] crypto.subtle unavailable, using fallback hash:', hashErr);
+        }
         const hashName = `logo-${hash}.${extension}`;
 
         // Dedup: reuse if same file already exists
