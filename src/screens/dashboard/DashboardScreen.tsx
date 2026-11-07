@@ -10,7 +10,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -33,6 +33,7 @@ import {
   ChevronRight,
   Share2,
   MessageCircle,
+  Ticket,
 } from 'lucide-react-native';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEAvatar } from '@/components/common/FVEAvatar';
@@ -48,8 +49,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useBranding } from '@/contexts/BrandingContext';
 import { formatCurrency, openWhatsAppLink } from '@/utils/format';
-import { getLocalDateStr, getLocalMonthStr, formatDate } from '@/utils/date';
+import { formatDate } from '@/utils/date';
 import { useRenewalAlerts } from '@/hooks/useRenewalAlerts';
+import { addDaysToDateStr, formatISTDateLabel, getISTDateStr, getISTMonthStr, getMonthDateRange, getRevenueBreakdownForDateRange } from '@/utils/revenue';
 import { useMembershipSync } from '@/hooks/useMembershipSync';
 import { useBirthdayAlerts } from '@/hooks/useBirthdayAlerts';
 import { useRenewalMessagingStatus } from '@/utils/renewalMessaging';
@@ -118,8 +120,8 @@ export function DashboardScreen() {
 
   const { isSent, markSent } = useRenewalMessagingStatus();
 
-  const todayStr = getLocalDateStr();
-  const currentMonthStr = getLocalMonthStr();
+  const todayStr = getISTDateStr();
+  const currentMonthStr = getISTMonthStr();
 
   // Confidential Data Visibility Toggle (Hidden by default for privacy)
   const [showConfidentialData, setShowConfidentialData] = useState(false);
@@ -136,15 +138,13 @@ export function DashboardScreen() {
   const { data: stats, isLoading, refetch } = useQuery({
     queryKey: ['mobile-dashboard-stats-v3', todayStr, currentMonthStr],
     queryFn: async () => {
-      const [year, month] = currentMonthStr.split('-');
-      const lastDayOfMonth = new Date(parseInt(year, 10), parseInt(month, 10), 0).getDate();
-      const monthStart = `${currentMonthStr}-01`;
-      const monthEnd = `${currentMonthStr}-${String(lastDayOfMonth).padStart(2, '0')}`;
+      const { startDate: monthStart, endDate: monthEnd } = getMonthDateRange(currentMonthStr);
       const [
         membersWithMembershipsRes,
         todayAttRes,
-        monthRevenueRes,
+        monthRevenue,
         newMembersRes,
+        dailyPassesRes,
       ] = await Promise.all([
         supabase
           .from('members')
@@ -155,17 +155,20 @@ export function DashboardScreen() {
           .select('*', { count: 'exact', head: true })
           .eq('date', todayStr),
 
-        supabase
-          .from('payments')
-          .select('amount')
-          .gte('payment_date', monthStart)
-          .lte('payment_date', monthEnd),
+        getRevenueBreakdownForDateRange(monthStart, monthEnd),
 
         supabase
           .from('members')
           .select('*', { count: 'exact', head: true })
           .gte('joining_date', monthStart)
           .lte('joining_date', monthEnd),
+
+        supabase
+          .from('daily_passes')
+          .select('*', { count: 'exact', head: true })
+          .eq('payment_status', 'PAID')
+          .gte('pass_date', monthStart)
+          .lte('pass_date', monthEnd),
       ]);
 
       const rawMembers = (membersWithMembershipsRes.data || []) as unknown as {
@@ -224,11 +227,6 @@ export function DashboardScreen() {
         }
       }
 
-      const totalRevenue = (monthRevenueRes.data || []).reduce(
-        (sum, p) => sum + Number(p.amount),
-        0
-      );
-
       console.log('[Dashboard] Synchronized stats with MembersScreen:', {
         activeCount,
         totalMembersCount,
@@ -240,21 +238,30 @@ export function DashboardScreen() {
         activeMembers: activeCount,
         totalMembers: totalMembersCount,
         todayAttendance: todayAttRes.count || 0,
-        monthRevenue: totalRevenue,
+        monthRevenue: monthRevenue.totalRevenue,
+        membershipRevenue: monthRevenue.membershipRevenue,
+        dailyPassRevenue: monthRevenue.dailyPassRevenue,
+        dailyPassesSoldThisMonth: dailyPassesRes.count || 0,
         expiringCount: expiringCount,
         newMembersThisMonth: newMembersRes.count || 0,
       };
     },
   });
 
+  const hasFocusedDashboardOnce = React.useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (hasFocusedDashboardOnce.current) void refetch();
+      hasFocusedDashboardOnce.current = true;
+    }, [refetch])
+  );
+
   // Fetch expiring memberships (Top 3 for preview)
   const { data: expiringList = [], isLoading: isExpiringLoading } = useQuery({
     queryKey: ['mobile-memberships', 'expiring-preview', todayStr],
     queryFn: async () => {
       try {
-        const futureDate = new Date();
-        futureDate.setDate(futureDate.getDate() + 7);
-        const futureStr = getLocalDateStr(futureDate);
+        const futureStr = addDaysToDateStr(todayStr, 7);
 
         const { data, error } = await supabase
           .from('memberships')
@@ -390,7 +397,7 @@ export function DashboardScreen() {
 
   const onRefresh = useCallback(() => {
     haptics.light();
-    qc.invalidateQueries({ queryKey: ['mobile-dashboard-stats-v2'] });
+    qc.invalidateQueries({ queryKey: ['mobile-dashboard-stats-v3'] });
     qc.invalidateQueries({ queryKey: ['mobile-memberships'] });
     qc.invalidateQueries({ queryKey: ['mobile-payments'] });
     qc.invalidateQueries({ queryKey: ['unread-notifications'] });
@@ -692,7 +699,7 @@ export function DashboardScreen() {
                   <TrendingUp size={16} color={colors.gold} />
                 </View>
                 <Text style={styles.metricCardTag}>
-                  {new Date().toLocaleString('en-US', { month: 'short' }).toUpperCase()}
+                  {formatISTDateLabel(`${currentMonthStr}-01`, { month: 'short' }).toUpperCase()}
                 </Text>
               </View>
               <Text numberOfLines={1} style={[styles.metricValue, { color: colors.gold, fontSize: 18 }]}>
@@ -700,11 +707,21 @@ export function DashboardScreen() {
                   ? formatCurrency(stats?.monthRevenue || 0)
                   : '••••••'}
               </Text>
+              <Text numberOfLines={1} style={{ color: colors.textMuted, fontSize: 9, marginTop: 2 }}>
+                {showConfidentialData
+                  ? `Membership ${formatCurrency(stats?.membershipRevenue || 0)}`
+                  : 'Membership revenue hidden'}
+              </Text>
+              <Text numberOfLines={1} style={{ color: colors.textMuted, fontSize: 9 }}>
+                {showConfidentialData
+                  ? `Daily Pass ${formatCurrency(stats?.dailyPassRevenue || 0)}`
+                  : 'Daily pass revenue hidden'}
+              </Text>
               <Text style={styles.metricLabel}>This Month</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Row 3: New Members Joined This Month */}
+          {/* Row 3: New Members and Daily Passes This Month */}
           <View style={styles.metricsRow}>
             <TouchableOpacity
               onPress={() =>
@@ -727,6 +744,27 @@ export function DashboardScreen() {
                 {stats?.newMembersThisMonth || 0}
               </Text>
               <Text style={styles.metricLabel}>New Members Joined This Month</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => navigation.navigate('DailyPass')}
+              style={styles.metricCard}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel={`Daily Passes sold this month: ${stats?.dailyPassesSoldThisMonth || 0}`}
+            >
+              <View style={styles.metricCardHeader}>
+                <View style={[styles.metricIconWrap, { backgroundColor: 'rgba(0, 102, 255, 0.15)' }]}>
+                  <Ticket size={16} color={colors.blueLight} />
+                </View>
+                <Text style={[styles.metricCardTag, { color: colors.blueLight }]}>
+                  {formatISTDateLabel(`${currentMonthStr}-01`, { month: 'short' }).toUpperCase()}
+                </Text>
+              </View>
+              <Text style={[styles.metricValue, { color: colors.blueLight }]}>
+                {stats?.dailyPassesSoldThisMonth || 0}
+              </Text>
+              <Text style={styles.metricLabel}>Daily Passes Sold</Text>
             </TouchableOpacity>
           </View>
         </View>

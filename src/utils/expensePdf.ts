@@ -11,6 +11,8 @@ export interface MonthlyExpenseExportData {
   monthStr: string; // "YYYY-MM"
   monthLabel: string; // e.g. "September 2026"
   revenue: number;
+  membershipRevenue?: number;
+  dailyPassRevenue?: number;
   totalExpenses: number;
   profit: number;
   expenses: Expense[];
@@ -23,6 +25,8 @@ export interface MonthlyExpenseExportData {
 export function generateMonthlyExpenseHtml(data: MonthlyExpenseExportData): string {
   const isProfit = data.profit >= 0;
   const profitMargin = data.revenue > 0 ? ((data.profit / data.revenue) * 100).toFixed(1) : '0.0';
+  const membershipRevenue = data.membershipRevenue ?? data.revenue;
+  const dailyPassRevenue = data.dailyPassRevenue ?? 0;
 
   // Group by category
   const categoryTotals: Record<string, number> = {};
@@ -197,6 +201,12 @@ export function generateMonthlyExpenseHtml(data: MonthlyExpenseExportData): stri
       text-transform: uppercase;
       margin: 0;
     }
+    .revenue-split {
+      margin-top: 6px;
+      color: #9CA3AF;
+      font-size: 9px;
+      line-height: 1.5;
+    }
     .content-section {
       padding: 18px 24px;
     }
@@ -260,6 +270,7 @@ export function generateMonthlyExpenseHtml(data: MonthlyExpenseExportData): stri
       <div class="summary-card revenue">
         <div class="summary-num green">${formatCurrency(data.revenue)}</div>
         <div class="summary-label">Total Revenue</div>
+        <div class="revenue-split">Membership ${formatCurrency(membershipRevenue)}<br>Daily Pass ${formatCurrency(dailyPassRevenue)}</div>
       </div>
       <div class="summary-card expenses">
         <div class="summary-num red">${formatCurrency(data.totalExpenses)}</div>
@@ -343,6 +354,8 @@ export async function shareMonthlyExpensePdf(data: MonthlyExpenseExportData): Pr
 export async function shareMonthlyExpenseSheet(data: MonthlyExpenseExportData): Promise<void> {
   const isProfit = data.profit >= 0;
   const profitMargin = data.revenue > 0 ? ((data.profit / data.revenue) * 100).toFixed(1) : '0.0';
+  const membershipRevenue = data.membershipRevenue ?? data.revenue;
+  const dailyPassRevenue = data.dailyPassRevenue ?? 0;
 
   // Group by category
   const categoryTotals: Record<string, number> = {};
@@ -361,7 +374,9 @@ export async function shareMonthlyExpenseSheet(data: MonthlyExpenseExportData): 
 
   // Financial KPI Summary
   csv += `"FINANCIAL PERFORMANCE SUMMARY","AMOUNT (INR)","MARGIN / NOTE"\n`;
-  csv += `"Gross Revenue (Inflow)",${data.revenue},"Total Membership Inflow"\n`;
+  csv += `"Membership Revenue",${membershipRevenue},"Membership payments"\n`;
+  csv += `"Daily Pass Revenue",${dailyPassRevenue},"Paid daily passes"\n`;
+  csv += `"Gross Revenue (Inflow)",${data.revenue},"Membership + daily pass revenue"\n`;
   csv += `"Total Operating Expenses",${data.totalExpenses},"Total Gym Expenditures"\n`;
   csv += `"${isProfit ? 'Net Profit' : 'Net Loss'}",${data.profit},"${profitMargin}% Margin"\n\n`;
 

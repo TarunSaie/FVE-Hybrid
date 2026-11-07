@@ -20,7 +20,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { haptics } from '@/utils/haptics';
-import { resolveMemberPhotoUrl } from '@/utils/imageUpload';
+import { createMemberPhotoSignedUrl, resolveMemberPhotoUrl } from '@/utils/imageUpload';
 
 interface ProfilePhotoModalProps {
   visible: boolean;
@@ -59,6 +59,8 @@ export function ProfilePhotoModal({
   const [loading, setLoading] = useState(Boolean(cleanUrl));
   const [hasError, setHasError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [imageUrl, setImageUrl] = useState(cleanUrl);
+  const [triedSignedUrl, setTriedSignedUrl] = useState(false);
 
   // Reset loading and error states whenever modal opens or photoUrl changes
   useEffect(() => {
@@ -66,8 +68,34 @@ export function ProfilePhotoModal({
       setLoading(Boolean(cleanUrl));
       setHasError(false);
       setReloadKey(0);
+      setImageUrl(cleanUrl);
+      setTriedSignedUrl(false);
     }
   }, [visible, cleanUrl]);
+
+  const handlePhotoLoadError = async (message?: string) => {
+    // Saved public URLs are durable, but deployments may still have an older
+    // private bucket configuration. Ask Storage for a fresh short-lived URL
+    // once before reporting a permanent image failure.
+    if (!isLocalUri && !triedSignedUrl && photoUrl) {
+      setTriedSignedUrl(true);
+      try {
+        const signedUrl = await createMemberPhotoSignedUrl(photoUrl);
+        if (signedUrl && signedUrl !== imageUrl) {
+          setImageUrl(signedUrl);
+          setLoading(true);
+          setHasError(false);
+          setReloadKey((key) => key + 1);
+          return;
+        }
+      } catch (error) {
+        console.warn('[ProfilePhotoModal] Signed photo fallback failed:', (error as Error)?.message || message);
+      }
+    }
+
+    setLoading(false);
+    setHasError(true);
+  };
 
   const handleClose = () => {
     haptics.light();
@@ -95,7 +123,7 @@ export function ProfilePhotoModal({
                 <View style={styles.avatarThumbnail}>
                   {cleanUrl && !hasError ? (
                     <Image
-                      source={{ uri: cleanUrl }}
+                      source={{ uri: imageUrl || cleanUrl || '' }}
                       style={styles.thumbnailImg}
                       resizeMode="cover"
                     />
@@ -181,6 +209,8 @@ export function ProfilePhotoModal({
                           haptics.light();
                           setHasError(false);
                           setLoading(true);
+                          setImageUrl(cleanUrl);
+                          setTriedSignedUrl(false);
                           setReloadKey((k) => k + 1);
                         }}
                         style={styles.retryBtn}
@@ -222,15 +252,17 @@ export function ProfilePhotoModal({
                   bounces={false}
                 >
                   <Image
-                    key={`img-${reloadKey}-${cleanUrl}`}
-                    source={{ uri: cleanUrl }}
+                    key={`img-${reloadKey}-${imageUrl}`}
+                    source={{
+                      uri: imageUrl || cleanUrl || '',
+                      cache: reloadKey > 0 ? 'reload' : 'default',
+                    }}
                     style={styles.fullImage}
                     resizeMode="contain"
                     onLoad={() => setLoading(false)}
                     onError={(e) => {
-                      console.warn('[ProfilePhotoModal] Photo load failed:', cleanUrl, e.nativeEvent?.error);
-                      setLoading(false);
-                      setHasError(true);
+                      console.warn('[ProfilePhotoModal] Photo load failed:', e.nativeEvent?.error);
+                      void handlePhotoLoadError(e.nativeEvent?.error);
                     }}
                   />
                 </ScrollView>

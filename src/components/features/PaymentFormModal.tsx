@@ -7,7 +7,6 @@ import { FVEButton } from '@/components/common/FVEButton';
 import { Member, MembershipPlan, PAYMENT_METHODS } from '@/types';
 import { supabase } from '@/api/supabase';
 import {
-  getLocalDateStr,
   calculateExpiryDate,
   formatDate,
   getNextDayStr,
@@ -15,6 +14,7 @@ import {
   findLatestUnexpiredMembershipExpiry,
   normalizeMembershipStatus,
 } from '@/utils/date';
+import { getISTDateStr } from '@/utils/revenue';
 import { formatCurrency, generateReceiptNumber, getFriendlyErrorMessage } from '@/utils/format';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQueryClient } from '@tanstack/react-query';
@@ -79,7 +79,7 @@ export function PaymentFormModal({
       .in('status', ['ACTIVE', 'EXPIRING_SOON', 'UPCOMING'])
       .order('expiry_date', { ascending: false })
       .then(({ data }) => {
-        const todayStr = getLocalDateStr();
+        const todayStr = getISTDateStr();
         const unexpired = (data || []).filter(d => !!d.expiry_date && d.expiry_date >= todayStr);
         if (unexpired.length > 0) {
           const latestExpiry = unexpired[0].expiry_date;
@@ -150,7 +150,7 @@ export function PaymentFormModal({
 
   const renewalInfo = useMemo(() => {
     if (!selectedPlan) return null;
-    const today = getLocalDateStr();
+    const today = getISTDateStr();
     const hasUnexpiredPlan = !!(
       activePlanInfo?.isActive &&
       activePlanInfo.expiryDate &&
@@ -181,7 +181,7 @@ export function PaymentFormModal({
   };
 
   // Derive effective dates — manual overrides take precedence over auto-computed
-  const effectiveStartDate = manualStartDate ?? renewalInfo?.startDate ?? getLocalDateStr();
+  const effectiveStartDate = manualStartDate ?? renewalInfo?.startDate ?? getISTDateStr();
   const effectiveExpiryDate = manualExpiryDate ?? renewalInfo?.expiryDate ?? '';
 
   // Handle start date selection from Date Picker
@@ -240,7 +240,7 @@ export function PaymentFormModal({
   const processPaymentSubmission = async () => {
     setLoading(true);
     try {
-      const today = getLocalDateStr();
+      const today = getISTDateStr();
       const receiptNumber = generateReceiptNumber();
 
       let membershipId: string | null = null;
@@ -322,11 +322,13 @@ export function PaymentFormModal({
 
       // Invalidate queries across screens
       qc.invalidateQueries({ queryKey: ['mobile-payments'] });
+      qc.invalidateQueries({ queryKey: ['mobile-revenue-report'] });
+      qc.invalidateQueries({ queryKey: ['mobile-expenses-revenue'] });
       qc.invalidateQueries({ queryKey: ['mobile-members'] });
       qc.invalidateQueries({ queryKey: ['member-detail', selectedMemberId] });
       qc.invalidateQueries({ queryKey: ['member-memberships', selectedMemberId] });
       qc.invalidateQueries({ queryKey: ['member-payments', selectedMemberId] });
-      qc.invalidateQueries({ queryKey: ['mobile-dashboard-stats'] });
+      qc.invalidateQueries({ queryKey: ['mobile-dashboard-stats-v3'] });
       qc.invalidateQueries({ queryKey: ['expiring-memberships'] });
       qc.invalidateQueries({ queryKey: ['monitoring-attendance-members'] });
       qc.invalidateQueries({ queryKey: ['manual-checkin-members'] });

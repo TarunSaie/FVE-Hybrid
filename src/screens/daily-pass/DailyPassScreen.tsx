@@ -44,11 +44,15 @@ import { typography } from '@/constants/typography';
 import { formatCurrency } from '@/utils/format';
 import {
   formatDate,
-  getLocalDateStr,
-  getLocalMonthStr,
-  getPrevDayStr,
-  getNextDayStr,
 } from '@/utils/date';
+import {
+  addDaysToDateStr,
+  addMonthsToMonthStr,
+  formatISTDateLabel,
+  getISTDateStr,
+  getISTMonthStr,
+  getMonthDateRange,
+} from '@/utils/revenue';
 import { haptics } from '@/utils/haptics';
 
 export function DailyPassScreen() {
@@ -58,8 +62,8 @@ export function DailyPassScreen() {
   const { user } = useAuth();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
-  const today = useMemo(() => getLocalDateStr(), []);
-  const currentMonth = useMemo(() => getLocalMonthStr(), []);
+  const today = useMemo(() => getISTDateStr(), []);
+  const currentMonth = useMemo(() => getISTMonthStr(), []);
 
   const [filterMode, setFilterMode] = useState<'day' | 'month'>('day');
   const [dateFilter, setDateFilter] = useState(today);
@@ -98,11 +102,10 @@ export function DailyPassScreen() {
       if (filterMode === 'day') {
         q = q.eq('pass_date', dateFilter);
       } else {
-        const [year, month] = monthFilter.split('-');
-        const lastDay = new Date(parseInt(year, 10), parseInt(month, 10), 0).getDate();
+        const { startDate, endDate } = getMonthDateRange(monthFilter);
         q = q
-          .gte('pass_date', `${monthFilter}-01`)
-          .lte('pass_date', `${monthFilter}-${String(lastDay).padStart(2, '0')}`);
+          .gte('pass_date', startDate)
+          .lte('pass_date', endDate);
       }
 
       const { data, error } = await q;
@@ -140,12 +143,12 @@ export function DailyPassScreen() {
   // Date Navigation handlers
   const handlePrevDay = () => {
     haptics.light();
-    setDateFilter((prev) => getPrevDayStr(prev));
+    setDateFilter((prev) => addDaysToDateStr(prev, -1));
   };
 
   const handleNextDay = () => {
     haptics.light();
-    setDateFilter((prev) => getNextDayStr(prev));
+    setDateFilter((prev) => addDaysToDateStr(prev, 1));
   };
 
   const handleToday = () => {
@@ -156,16 +159,12 @@ export function DailyPassScreen() {
   // Month Navigation handlers
   const handlePrevMonth = () => {
     haptics.light();
-    const [y, m] = monthFilter.split('-').map(Number);
-    const d = new Date(y, m - 2, 1);
-    setMonthFilter(getLocalMonthStr(d));
+    setMonthFilter(addMonthsToMonthStr(monthFilter, -1));
   };
 
   const handleNextMonth = () => {
     haptics.light();
-    const [y, m] = monthFilter.split('-').map(Number);
-    const d = new Date(y, m, 1);
-    setMonthFilter(getLocalMonthStr(d));
+    setMonthFilter(addMonthsToMonthStr(monthFilter, 1));
   };
 
   const handleThisMonth = () => {
@@ -175,9 +174,7 @@ export function DailyPassScreen() {
 
   const formattedMonthLabel = useMemo(() => {
     if (!monthFilter) return '';
-    const [y, m] = monthFilter.split('-');
-    const d = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
-    return d.toLocaleString('en-IN', { month: 'short', year: 'numeric' });
+    return formatISTDateLabel(`${monthFilter}-01`, { month: 'short', year: 'numeric' });
   }, [monthFilter]);
 
   const isToday = dateFilter === today;
@@ -208,6 +205,10 @@ export function DailyPassScreen() {
               if (error) throw error;
               haptics.success();
               qc.invalidateQueries({ queryKey: ['mobile-daily-passes'] });
+              qc.invalidateQueries({ queryKey: ['mobile-dashboard-stats-v3'] });
+              qc.invalidateQueries({ queryKey: ['mobile-revenue-report'] });
+              qc.invalidateQueries({ queryKey: ['mobile-expenses-revenue'] });
+              qc.invalidateQueries({ queryKey: ['mobile-payments-daily-passes'] });
             } catch (err: unknown) {
               haptics.error();
               Alert.alert('Error', (err as Error).message || 'Failed to delete pass');

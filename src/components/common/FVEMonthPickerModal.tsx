@@ -12,6 +12,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { haptics } from '@/utils/haptics';
+import { getISTMonthStr } from '@/utils/revenue';
 
 interface FVEMonthPickerModalProps {
   visible: boolean;
@@ -41,9 +42,9 @@ export function FVEMonthPickerModal({
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth(); // 0-11
+  const currentMonthStr = getISTMonthStr();
+  const [currentYear, currentMonthNumber] = currentMonthStr.split('-').map(Number);
+  const currentMonth = currentMonthNumber - 1; // 0-11
 
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);

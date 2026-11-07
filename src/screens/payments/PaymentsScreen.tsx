@@ -6,17 +6,16 @@ import {
   FlatList,
   RefreshControl,
   TouchableOpacity,
-  ScrollView,
   Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, CreditCard, Filter, X, QrCode, Ticket, CheckCircle2, Clock, XCircle, Share2, Trash2, FileText, Eye, EyeOff } from 'lucide-react-native';
+import { Plus, Search, CreditCard, Filter, X, QrCode, Ticket, CheckCircle2, Clock, XCircle, Share2, Trash2, FileText, Eye, EyeOff, CalendarDays, ChevronDown, MoreVertical } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import { FVEHeader } from '@/components/common/FVEHeader';
 import { FVEInput } from '@/components/common/FVEInput';
-import { PaymentItem } from '@/components/features/PaymentItem';
+import { FVEAvatar } from '@/components/common/FVEAvatar';
 import { PaymentFormModal } from '@/components/features/PaymentFormModal';
 import { DailyPassFormModal } from '@/components/features/DailyPassFormModal';
 import { UPIQRCodeModal } from '@/components/features/UPIQRCodeModal';
@@ -25,6 +24,7 @@ import { FVEModal } from '@/components/common/FVEModal';
 import { FVEEmptyState } from '@/components/common/FVEEmptyState';
 import { FVELogoLoader } from '@/components/common/FVELogoLoader';
 import { M3Switch } from '@/components/common/M3Switch';
+import { FVEMonthPickerModal } from '@/components/common/FVEMonthPickerModal';
 import { Payment, DailyPass, PAYMENT_METHODS } from '@/types';
 import { supabase } from '@/api/supabase';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -32,6 +32,7 @@ import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { formatCurrency } from '@/utils/format';
 import { formatDate } from '@/utils/date';
+import { formatISTDateLabel, getISTMonthStr, getMonthDateRange } from '@/utils/revenue';
 import { RootStackParamList } from '@/navigation/types';
 import { buildReceiptDataFromPayment, sharePdfReceipt, directShareReceiptToWhatsApp, shareReceiptPdfToWhatsApp } from '@/utils/receiptPdf';
 
@@ -40,6 +41,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { revertOrDeletePayment } from '@/utils/paymentOperations';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+type PaymentsTab = 'memberships' | 'daily_passes' | 'combined';
+type CombinedPaymentRow =
+  | { type: 'membership'; id: string; createdAt: string; payment: Payment }
+  | { type: 'daily_pass'; id: string; createdAt: string; pass: DailyPass };
 
 export function PaymentsScreen() {
   const navigation = useNavigation<NavigationProp>();
@@ -47,13 +52,25 @@ export function PaymentsScreen() {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getPaymentsStyles(colors, isDark), [colors, isDark]);
 
-  const [activeTab, setActiveTab] = useState<'memberships' | 'daily_passes'>('memberships');
+  const [activeTab, setActiveTab] = useState<PaymentsTab>('memberships');
   const [includeDailyPasses, setIncludeDailyPasses] = useState(false);
   const [showRevenue, setShowRevenue] = useState(true);
+  const [selectedMonth, setSelectedMonth] = useState(() => getISTMonthStr());
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
+  const [showMethodPicker, setShowMethodPicker] = useState(false);
+  const [expandedTransactionId, setExpandedTransactionId] = useState<string | null>(null);
 
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [methodFilter, setMethodFilter] = useState('');
+  const monthLabel = useMemo(
+    () => formatISTDateLabel(`${selectedMonth}-01`, { month: 'long', year: 'numeric' }),
+    [selectedMonth]
+  );
+  const { startDate: monthStartDate, endDate: monthEndDate } = useMemo(
+    () => getMonthDateRange(selectedMonth),
+    [selectedMonth]
+  );
 
   // Debounce search 400ms
   useEffect(() => {
@@ -73,7 +90,7 @@ export function PaymentsScreen() {
 
   // 1. Query Membership Payments with Joined Members
   const { data: payments = [], isLoading: isPaymentsLoading } = useQuery({
-    queryKey: ['mobile-payments', debouncedSearch, methodFilter],
+    queryKey: ['mobile-payments', debouncedSearch, methodFilter, selectedMonth],
     queryFn: async () => {
       const term = debouncedSearch.trim();
       let memberIds: string[] = [];
@@ -92,6 +109,8 @@ export function PaymentsScreen() {
       let q = supabase
         .from('payments')
         .select('*, members(full_name, mobile, member_id, profile_photo), memberships(id, start_date, expiry_date, status, visit_day_limit, visit_days_used, membership_plans(name, duration_days))')
+        .gte('payment_date', monthStartDate)
+        .lte('payment_date', monthEndDate)
         .order('created_at', { ascending: false });
 
       if (methodFilter) {
@@ -118,12 +137,14 @@ export function PaymentsScreen() {
 
   // 2. Query Daily Pass Transactions
   const { data: dailyPasses = [], isLoading: isDailyPassesLoading } = useQuery({
-    queryKey: ['mobile-payments-daily-passes', debouncedSearch, methodFilter],
+    queryKey: ['mobile-payments-daily-passes', debouncedSearch, methodFilter, selectedMonth],
     queryFn: async () => {
       const term = debouncedSearch.trim();
       let q = supabase
         .from('daily_passes')
         .select('*')
+        .gte('pass_date', monthStartDate)
+        .lte('pass_date', monthEndDate)
         .order('created_at', { ascending: false });
 
       if (methodFilter) {
@@ -155,22 +176,40 @@ export function PaymentsScreen() {
   const membershipCount = payments.length;
   const dailyPassCount = dailyPasses.length;
 
-  // Compute displayed summary totals based on toggle and active tab:
-  // When toggle is ON: Combined (Memberships + Daily Passes)
-  // When toggle is OFF: Individual data for whichever tab is active
+  // OFF is membership-only. ON includes paid daily passes and shows a combined list by default.
   const displayTotalRevenue = includeDailyPasses
     ? membershipRevenue + dailyPassRevenue
-    : activeTab === 'memberships'
-      ? membershipRevenue
-      : dailyPassRevenue;
+    : membershipRevenue;
 
   const displayTotalRecords = includeDailyPasses
     ? membershipCount + dailyPassCount
-    : activeTab === 'memberships'
-      ? membershipCount
-      : dailyPassCount;
+    : membershipCount;
 
-  const isLoading = activeTab === 'memberships' ? isPaymentsLoading : isDailyPassesLoading;
+  const isLoading = activeTab === 'combined'
+    ? isPaymentsLoading || isDailyPassesLoading
+    : activeTab === 'memberships'
+      ? isPaymentsLoading
+      : isDailyPassesLoading;
+
+  const combinedTransactions = useMemo<CombinedPaymentRow[]>(() => [
+    ...payments.map(payment => ({
+      type: 'membership' as const,
+      id: `membership-${payment.id}`,
+      createdAt: payment.created_at || '',
+      payment,
+    })),
+    ...dailyPasses.map(pass => ({
+      type: 'daily_pass' as const,
+      id: `daily-pass-${pass.id}`,
+      createdAt: pass.created_at || '',
+      pass,
+    })),
+  ].sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [payments, dailyPasses]);
+
+  const handleDailyPassToggle = (value: boolean) => {
+    setIncludeDailyPasses(value);
+    setActiveTab(value ? 'combined' : 'memberships');
+  };
 
   const onRefresh = useCallback(() => {
     haptics.light();
@@ -181,6 +220,7 @@ export function PaymentsScreen() {
   const handleMethodSelect = (method: string) => {
     haptics.selection();
     setMethodFilter(method);
+    setShowMethodPicker(false);
   };
 
   const handleShareWhatsApp = async (p: Payment) => {
@@ -285,67 +325,140 @@ export function PaymentsScreen() {
     );
   };
 
-  // Render Daily Pass transaction card
-  const renderDailyPassItem = ({ item }: { item: DailyPass }) => {
-    const isPaid = item.payment_status === 'PAID';
-    const isPending = item.payment_status === 'PENDING';
+  const toggleExpandedTransaction = (id: string) => {
+    haptics.light();
+    setExpandedTransactionId(current => current === id ? null : id);
+  };
+
+  const renderDetailLine = (label: string, value: string) => (
+    <View key={label} style={styles.detailRow}>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <Text selectable style={styles.detailValue}>{value}</Text>
+    </View>
+  );
+
+  const renderMembershipItem = (payment: Payment) => {
+    const rowId = `membership-${payment.id}`;
+    const isExpanded = expandedTransactionId === rowId;
+    const memberName = payment.members?.full_name || 'Member';
 
     return (
-      <View style={styles.dpCard}>
-        <View style={styles.dpTopRow}>
-          <View style={styles.dpVisitorWrap}>
-            <View style={styles.dpAvatar}>
-              <Text style={styles.dpAvatarText}>
-                {item.visitor_name.charAt(0).toUpperCase()}
-              </Text>
+      <View style={styles.transactionCard}>
+        <View style={styles.transactionRow}>
+          <FVEAvatar
+            url={payment.members?.profile_photo}
+            name={memberName}
+            size={38}
+            onPress={() => {
+              if (payment.members) {
+                setPreviewMember({
+                  profile_photo: payment.members.profile_photo,
+                  full_name: payment.members.full_name,
+                  member_id: payment.members.member_id,
+                });
+              }
+            }}
+            accessibilityLabel={`View profile photo of ${memberName}`}
+          />
+          <TouchableOpacity
+            onPress={() => toggleExpandedTransaction(rowId)}
+            style={styles.transactionMain}
+            activeOpacity={0.75}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: isExpanded }}
+            accessibilityLabel={`${memberName}, ${formatDate(payment.payment_date || payment.created_at)}, paid`}
+          >
+            <View style={styles.transactionMainText}>
+              <Text numberOfLines={1} style={styles.transactionName}>{memberName}</Text>
+              <Text style={styles.transactionDate}>{formatDate(payment.payment_date || payment.created_at)}</Text>
             </View>
-            <View style={{ flex: 1, marginLeft: 10 }}>
-              <Text numberOfLines={1} style={styles.dpVisitorName}>
-                {item.visitor_name}
-              </Text>
-              <Text style={styles.dpMetaText}>
-                {item.mobile || 'No Mobile'} {item.purpose ? `• ${item.purpose}` : ''}
-              </Text>
+            <ChevronDown size={16} color={colors.textMuted} style={isExpanded ? styles.expandIconOpen : undefined} />
+          </TouchableOpacity>
+          <View style={styles.transactionRight}>
+            <Text style={styles.transactionAmount}>
+              {showRevenue ? formatCurrency(payment.amount) : '••••••'}
+            </Text>
+            <View style={[styles.transactionStatus, styles.dpStatusPaid]}>
+              <CheckCircle2 size={10} color={colors.success} />
+              <Text style={[styles.transactionStatusText, styles.dpStatusTextPaid]}>PAID</Text>
             </View>
           </View>
+          <TouchableOpacity
+            onPress={() => {
+              haptics.selection();
+              setActionMenuPayment(payment);
+            }}
+            style={styles.rowMenuButton}
+            accessibilityRole="button"
+            accessibilityLabel={`More actions for ${memberName}`}
+          >
+            <MoreVertical size={18} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+        {isExpanded && (
+          <View style={styles.transactionDetails}>
+            {renderDetailLine('RECEIPT', payment.receipt_number || '—')}
+            {renderDetailLine('PLAN', payment.memberships?.membership_plans?.name || 'Gym dues')}
+            {renderDetailLine('METHOD', payment.payment_method || '—')}
+            {payment.transaction_reference ? renderDetailLine('REFERENCE', payment.transaction_reference) : null}
+            {payment.notes ? renderDetailLine('NOTES', payment.notes) : null}
+          </View>
+        )}
+      </View>
+    );
+  };
 
-          <View style={styles.dpAmountWrap}>
-            <Text style={styles.dpAmountText}>
+  const renderDailyPassItem = (item: DailyPass) => {
+    const rowId = `daily-pass-${item.id}`;
+    const isExpanded = expandedTransactionId === rowId;
+    const isPaid = item.payment_status === 'PAID';
+    const isPending = item.payment_status === 'PENDING';
+    const visitorName = item.visitor_name || 'Daily pass visitor';
+
+    return (
+      <View style={styles.transactionCard}>
+        <View style={styles.transactionRow}>
+          <View style={styles.dailyPassAvatar}>
+            <Ticket size={17} color={colors.gold} />
+          </View>
+          <TouchableOpacity
+            onPress={() => toggleExpandedTransaction(rowId)}
+            style={styles.transactionMain}
+            activeOpacity={0.75}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: isExpanded }}
+            accessibilityLabel={`${visitorName}, ${formatDate(item.pass_date)}, ${item.payment_status.toLowerCase()}`}
+          >
+            <View style={styles.transactionMainText}>
+              <Text numberOfLines={1} style={styles.transactionName}>{visitorName}</Text>
+              <Text style={styles.transactionDate}>{formatDate(item.pass_date)}</Text>
+            </View>
+            <ChevronDown size={16} color={colors.textMuted} style={isExpanded ? styles.expandIconOpen : undefined} />
+          </TouchableOpacity>
+          <View style={styles.transactionRight}>
+            <Text style={styles.transactionAmount}>
               {showRevenue ? formatCurrency(Number(item.amount || 0)) : '••••••'}
             </Text>
-            <View
-              style={[
-                styles.dpStatusBadge,
-                isPaid ? styles.dpStatusPaid : isPending ? styles.dpStatusPending : styles.dpStatusWaived,
-              ]}
-            >
-              {isPaid && <CheckCircle2 size={11} color={colors.success} style={{ marginRight: 3 }} />}
-              {isPending && <Clock size={11} color="#F59E0B" style={{ marginRight: 3 }} />}
-              {item.payment_status === 'WAIVED' && <XCircle size={11} color={colors.textMuted} style={{ marginRight: 3 }} />}
-              <Text
-                style={[
-                  styles.dpStatusText,
-                  isPaid ? styles.dpStatusTextPaid : isPending ? styles.dpStatusTextPending : styles.dpStatusTextWaived,
-                ]}
-              >
-                {item.payment_status}
-              </Text>
+            <View style={[
+              styles.transactionStatus,
+              isPaid ? styles.dpStatusPaid : isPending ? styles.dpStatusPending : styles.dpStatusWaived,
+            ]}>
+              {isPaid ? <CheckCircle2 size={10} color={colors.success} /> : isPending ? <Clock size={10} color="#F59E0B" /> : <XCircle size={10} color={colors.textMuted} />}
+              <Text style={[
+                styles.transactionStatusText,
+                isPaid ? styles.dpStatusTextPaid : isPending ? styles.dpStatusTextPending : styles.dpStatusTextWaived,
+              ]}>{item.payment_status}</Text>
             </View>
           </View>
         </View>
-
-        <View style={styles.dpBottomRow}>
-          <Text style={styles.dpDateText}>Pass Date: {formatDate(item.pass_date)}</Text>
-          <View style={styles.dpMethodPill}>
-            <Text style={styles.dpMethodText}>{item.payment_method}</Text>
+        {isExpanded && (
+          <View style={styles.transactionDetails}>
+            {renderDetailLine('MOBILE', item.mobile || '—')}
+            {renderDetailLine('PURPOSE', item.purpose || '—')}
+            {renderDetailLine('METHOD', item.payment_method || '—')}
+            {item.notes ? renderDetailLine('NOTES', item.notes) : null}
           </View>
-        </View>
-
-        {item.notes ? (
-          <Text numberOfLines={1} style={styles.dpNotesText}>
-            Note: {item.notes}
-          </Text>
-        ) : null}
+        )}
       </View>
     );
   };
@@ -357,9 +470,7 @@ export function PaymentsScreen() {
         subtitle={
           includeDailyPasses
             ? `${membershipCount + dailyPassCount} combined transactions`
-            : activeTab === 'memberships'
-              ? `${membershipCount} membership transactions`
-              : `${dailyPassCount} daily pass transactions`
+            : `${membershipCount} membership transactions`
         }
         showLogo={false}
         rightAction={
@@ -380,27 +491,31 @@ export function PaymentsScreen() {
       {/* Revenue Header Summary Card */}
       <View style={styles.summaryCard}>
         <View style={styles.summaryTopRow}>
-          <View style={styles.summaryLeft}>
-            <Text style={styles.summaryLabel}>
-              {includeDailyPasses && activeTab === 'memberships'
-                ? 'TOTAL COMBINED REVENUE'
-                : activeTab === 'memberships'
-                  ? 'MEMBERSHIP REVENUE'
-                  : 'DAILY PASS REVENUE'}
-            </Text>
-            <Text numberOfLines={1} adjustsFontSizeToFit style={styles.summaryValue}>
-              {showRevenue ? formatCurrency(displayTotalRevenue) : '••••••'}
-            </Text>
-          </View>
+          <TouchableOpacity
+            onPress={() => {
+              haptics.light();
+              setShowMonthPicker(true);
+            }}
+            style={styles.monthPickerButton}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={`Select payment month, currently ${monthLabel}`}
+          >
+            <CalendarDays size={15} color={colors.gold} />
+            <Text style={styles.monthPickerText}>{monthLabel}</Text>
+            <ChevronDown size={14} color={colors.textMuted} />
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={() => {
               haptics.selection();
-              setShowRevenue((visible) => !visible);
+              setShowRevenue(prev => !prev);
             }}
             style={styles.revenueVisibilityButton}
             activeOpacity={0.75}
             accessibilityRole="button"
-            accessibilityLabel={showRevenue ? 'Hide revenue amounts' : 'Show revenue amounts'}
+            accessibilityLabel={
+              showRevenue ? 'Hide revenue amounts' : 'Show revenue amounts'
+            }
             accessibilityHint="Toggles revenue visibility on this screen"
           >
             {showRevenue ? (
@@ -411,33 +526,26 @@ export function PaymentsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Daily Pass Combine M3 Switch (Only shown on Membership tab) */}
-        {activeTab === 'memberships' && (
-          <View style={styles.m3ToggleCard}>
-            <View style={styles.m3ToggleLeft}>
-              <View style={[styles.m3ToggleIconBox, includeDailyPasses && styles.m3ToggleIconBoxActive]}>
-                <Ticket size={16} color={includeDailyPasses ? colors.gold : colors.textMuted} />
-              </View>
-              <View style={styles.m3ToggleTextBox}>
-                <Text style={[styles.m3ToggleTitle, includeDailyPasses && styles.m3ToggleTitleActive]}>
-                  Combine Daily Pass Revenue
-                </Text>
-                <Text style={styles.m3ToggleSubtitle}>
-                  {includeDailyPasses
-                    ? showRevenue
-                      ? `Includes +${formatCurrency(dailyPassRevenue)} from day pass receipts`
-                      : 'Includes daily pass receipts'
-                    : 'Toggle to merge daily pass sales into total'}
-                </Text>
-              </View>
-            </View>
-            <M3Switch
-              value={includeDailyPasses}
-              onValueChange={setIncludeDailyPasses}
-              accessibilityLabel="Combine Daily Pass Revenue"
-            />
-          </View>
+        <Text style={styles.summaryLabel}>
+          {includeDailyPasses ? 'TOTAL COMBINED REVENUE' : 'MEMBERSHIP REVENUE'}
+        </Text>
+        <Text numberOfLines={1} adjustsFontSizeToFit style={styles.summaryValue}>
+          {showRevenue ? formatCurrency(displayTotalRevenue) : '••••••'}
+        </Text>
+        {includeDailyPasses && showRevenue && (
+          <Text numberOfLines={1} style={styles.summaryBreakdown}>
+            {formatCurrency(membershipRevenue)} Membership + {formatCurrency(dailyPassRevenue)} Daily Pass
+          </Text>
         )}
+
+        <View style={styles.summaryToggleRow}>
+          <Text style={styles.summaryToggleLabel}>Include Daily Passes</Text>
+          <M3Switch
+            value={includeDailyPasses}
+            onValueChange={handleDailyPassToggle}
+            accessibilityLabel="Include daily pass revenue and transactions"
+          />
+        </View>
       </View>
 
       {/* Segmented Tab Switcher */}
@@ -446,6 +554,7 @@ export function PaymentsScreen() {
           onPress={() => {
             haptics.light();
             setActiveTab('memberships');
+            setIncludeDailyPasses(false);
           }}
           style={[styles.tabButton, activeTab === 'memberships' && styles.tabButtonActive]}
           activeOpacity={0.8}
@@ -465,6 +574,7 @@ export function PaymentsScreen() {
           onPress={() => {
             haptics.light();
             setActiveTab('daily_passes');
+            setIncludeDailyPasses(true);
           }}
           style={[styles.tabButton, activeTab === 'daily_passes' && styles.tabButtonActive]}
           activeOpacity={0.8}
@@ -479,75 +589,105 @@ export function PaymentsScreen() {
             </Text>
           </View>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => {
+            haptics.light();
+            setActiveTab('combined');
+            setIncludeDailyPasses(true);
+          }}
+          style={[styles.tabButton, activeTab === 'combined' && styles.tabButtonActive]}
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.tabText, activeTab === 'combined' && styles.tabTextActive]}>Combined</Text>
+          <View style={[styles.tabBadge, activeTab === 'combined' && styles.tabBadgeActive]}>
+            <Text style={[styles.tabBadgeText, activeTab === 'combined' && styles.tabBadgeTextActive]}>
+              {membershipCount + dailyPassCount}
+            </Text>
+          </View>
+        </TouchableOpacity>
       </View>
 
       {/* Search and Filters Section */}
       <View style={styles.filterSection}>
-        <FVEInput
-          value={search}
-          onChangeText={setSearch}
-          placeholder={
-            activeTab === 'memberships'
-              ? 'Search member, ID, receipt no...'
-              : 'Search visitor name, mobile, purpose...'
-          }
-          leftIcon={<Search size={16} color={colors.gold} />}
-          rightIcon={search ? <X size={16} color={colors.textSecondary} /> : undefined}
-          onRightIconPress={() => setSearch('')}
-          containerStyle={{ marginBottom: 10 }}
-        />
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        <View style={styles.searchFilterRow}>
+          <FVEInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder={
+              activeTab === 'memberships'
+                ? 'Search member, ID, receipt no...'
+                : activeTab === 'daily_passes'
+                  ? 'Search visitor name, mobile, purpose...'
+                  : 'Search members and daily passes...'
+            }
+            leftIcon={<Search size={16} color={colors.gold} />}
+            rightIcon={search ? <X size={16} color={colors.textSecondary} /> : undefined}
+            onRightIconPress={() => setSearch('')}
+            containerStyle={styles.searchInput}
+          />
           <TouchableOpacity
-            onPress={() => handleMethodSelect('')}
-            style={[styles.filterChip, !methodFilter && styles.selectedFilterChip]}
+            onPress={() => {
+              haptics.light();
+              setShowMethodPicker(true);
+            }}
+            style={[styles.methodPickerButton, !!methodFilter && styles.selectedFilterChip]}
+            activeOpacity={0.75}
+            accessibilityRole="button"
+            accessibilityLabel={`Filter by payment method, currently ${methodFilter || 'All Methods'}`}
           >
-            <Text style={[styles.filterChipText, !methodFilter && styles.selectedFilterChipText]}>
-              All Methods
+            <Filter size={14} color={methodFilter ? colors.gold : colors.textSecondary} />
+            <Text numberOfLines={1} style={[styles.filterChipText, !!methodFilter && styles.selectedFilterChipText]}>
+              {methodFilter || 'All Methods'}
             </Text>
+            <ChevronDown size={14} color={methodFilter ? colors.gold : colors.textMuted} />
           </TouchableOpacity>
-
-          {PAYMENT_METHODS.map((m) => {
-            const isSelected = methodFilter === m;
-            return (
-              <TouchableOpacity
-                key={m}
-                onPress={() => handleMethodSelect(m)}
-                style={[styles.filterChip, isSelected && styles.selectedFilterChip]}
-              >
-                <Text style={[styles.filterChipText, isSelected && styles.selectedFilterChipText]}>
-                  {m}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+        </View>
       </View>
 
       {/* Payments or Daily Pass List */}
       {isLoading ? (
-        <FVELogoLoader message={activeTab === 'memberships' ? 'Syncing Payments...' : 'Syncing Daily Passes...'} fullScreen />
+        <FVELogoLoader
+          message={activeTab === 'memberships' ? 'Syncing Payments...' : activeTab === 'daily_passes' ? 'Syncing Daily Passes...' : 'Syncing Combined Transactions...'}
+          fullScreen
+        />
+      ) : activeTab === 'combined' ? (
+        <FlatList
+          data={combinedTransactions}
+          keyExtractor={item => item.id}
+          renderItem={({ item }) => item.type === 'daily_pass'
+            ? renderDailyPassItem(item.pass)
+            : renderMembershipItem(item.payment)}
+          contentContainerStyle={styles.listContent}
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
+          initialNumToRender={12}
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          removeClippedSubviews={true}
+          refreshControl={
+            <RefreshControl
+              refreshing={isLoading}
+              onRefresh={onRefresh}
+              tintColor={colors.gold}
+              colors={[colors.gold]}
+            />
+          }
+          ListEmptyComponent={
+            <FVEEmptyState
+              icon={<CreditCard size={40} color={colors.gold} />}
+              title="No Transactions Found"
+              description="Membership payments and daily passes will appear here."
+              actionTitle="+ Record Payment"
+              onAction={() => setShowPayModal(true)}
+            />
+          }
+        />
       ) : activeTab === 'memberships' ? (
         <FlatList
           data={payments}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <PaymentItem
-              payment={item}
-              showAmount={showRevenue}
-              onPress={() => navigation.navigate('PaymentReceipt', { payment: item })}
-              onMenuPress={(p) => setActionMenuPayment(p)}
-              onAvatarPress={(p) => {
-                if (p.members) {
-                  setPreviewMember({
-                    profile_photo: p.members.profile_photo,
-                    full_name: p.members.full_name,
-                    member_id: p.members.member_id,
-                  });
-                }
-              }}
-            />
-          )}
+          renderItem={({ item }) => renderMembershipItem(item)}
           contentContainerStyle={styles.listContent}
           keyboardDismissMode="on-drag"
           keyboardShouldPersistTaps="handled"
@@ -572,14 +712,14 @@ export function PaymentsScreen() {
                 actionTitle="+ Record Payment"
                 onAction={() => setShowPayModal(true)}
               />
-            ) : null
+            ) : undefined
           }
         />
       ) : (
         <FlatList
           data={dailyPasses}
           keyExtractor={(item) => item.id}
-          renderItem={renderDailyPassItem}
+          renderItem={({ item }) => renderDailyPassItem(item)}
           contentContainerStyle={styles.listContent}
           keyboardDismissMode="on-drag"
           keyboardShouldPersistTaps="handled"
@@ -604,7 +744,7 @@ export function PaymentsScreen() {
                 actionTitle="+ Issue Daily Pass"
                 onAction={() => setShowDailyPassModal(true)}
               />
-            ) : null
+            ) : undefined
           }
         />
       )}
@@ -762,6 +902,45 @@ export function PaymentsScreen() {
           </View>
         )}
       </FVEModal>
+
+      <FVEModal
+        visible={showMethodPicker}
+        onClose={() => setShowMethodPicker(false)}
+        title="PAYMENT METHOD"
+        subtitle="Filter transactions by payment method"
+        maxHeight={440}
+      >
+        <View style={styles.methodOptions}>
+          {['All', ...PAYMENT_METHODS].map((method) => {
+            const value = method === 'All' ? '' : method;
+            const isSelected = methodFilter === value;
+
+            return (
+              <TouchableOpacity
+                key={method}
+                onPress={() => handleMethodSelect(value)}
+                style={[styles.methodOption, isSelected && styles.methodOptionSelected]}
+                activeOpacity={0.75}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isSelected }}
+              >
+                <Text style={[styles.methodOptionText, isSelected && styles.selectedFilterChipText]}>
+                  {method}
+                </Text>
+                {isSelected && <CheckCircle2 size={18} color={colors.gold} />}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </FVEModal>
+
+      <FVEMonthPickerModal
+        visible={showMonthPicker}
+        onClose={() => setShowMonthPicker(false)}
+        initialMonth={selectedMonth}
+        onSelectMonth={setSelectedMonth}
+        title="PAYMENTS MONTH"
+      />
     </View>
   );
 }
@@ -805,14 +984,49 @@ const getPaymentsStyles = (colors: ThemeColors, isDark: boolean) =>
       shadowRadius: 8,
       elevation: 4,
     },
+    monthPickerButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 9,
+      paddingVertical: 6,
+      backgroundColor: colors.surface,
+      borderColor: colors.borderDark,
+      borderWidth: 1,
+      borderRadius: 9,
+    },
+    monthPickerText: {
+      color: colors.textPrimary,
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 12,
+      fontWeight: '700',
+    },
     summaryTopRow: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
+      marginBottom: 8,
     },
-    summaryLeft: {
-      flex: 1,
-      marginRight: 12,
+    summaryToggleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      borderTopWidth: 1,
+      borderTopColor: colors.borderDark,
+      marginTop: 10,
+      paddingTop: 8,
+    },
+    summaryToggleLabel: {
+      color: colors.textSecondary,
+      fontFamily: typography.fonts.inter,
+      fontSize: 11,
+      fontWeight: '600',
+    },
+    summaryBreakdown: {
+      color: colors.textMuted,
+      fontFamily: typography.fonts.inter,
+      fontSize: 9,
+      marginTop: 1,
     },
     summaryLabel: {
       color: colors.textMuted,
@@ -820,6 +1034,7 @@ const getPaymentsStyles = (colors: ThemeColors, isDark: boolean) =>
       fontFamily: typography.fonts.rajdhani,
       fontWeight: '700',
       letterSpacing: 0.8,
+      marginTop: 2,
     },
     summaryValue: {
       color: colors.gold,
@@ -961,6 +1176,53 @@ const getPaymentsStyles = (colors: ThemeColors, isDark: boolean) =>
       paddingHorizontal: 16,
       paddingBottom: 10,
     },
+    searchFilterRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    searchInput: {
+      flex: 1,
+      minWidth: 0,
+      marginBottom: 0,
+    },
+    methodPickerButton: {
+      height: 50,
+      minWidth: 112,
+      maxWidth: 142,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      paddingHorizontal: 9,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.borderDark,
+      borderRadius: 14,
+    },
+    methodOptions: {
+      paddingVertical: 4,
+    },
+    methodOption: {
+      minHeight: 50,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 14,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: 'transparent',
+    },
+    methodOptionSelected: {
+      backgroundColor: colors.goldMuted,
+      borderColor: colors.goldBorder,
+    },
+    methodOptionText: {
+      color: colors.textPrimary,
+      fontSize: 14,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
     filterChip: {
       backgroundColor: colors.surface,
       borderWidth: 1,
@@ -986,6 +1248,123 @@ const getPaymentsStyles = (colors: ThemeColors, isDark: boolean) =>
     listContent: {
       padding: 16,
       paddingBottom: 160,
+    },
+
+    transactionCard: {
+      backgroundColor: colors.cardBackground,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.borderDark,
+      marginBottom: 8,
+      overflow: 'hidden',
+    },
+    transactionRow: {
+      minHeight: 66,
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 10,
+      paddingLeft: 12,
+      paddingRight: 6,
+    },
+    transactionMain: {
+      flex: 1,
+      minWidth: 0,
+      marginLeft: 10,
+      paddingVertical: 3,
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    transactionMainText: {
+      flex: 1,
+      minWidth: 0,
+    },
+    transactionName: {
+      color: colors.textPrimary,
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 14,
+      fontWeight: '700',
+    },
+    transactionDate: {
+      color: colors.textMuted,
+      fontFamily: typography.fonts.inter,
+      fontSize: 10,
+      marginTop: 3,
+    },
+    transactionRight: {
+      alignItems: 'flex-end',
+      justifyContent: 'center',
+      marginLeft: 8,
+      gap: 4,
+    },
+    transactionAmount: {
+      color: colors.gold,
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 14,
+      fontWeight: '800',
+    },
+    transactionStatus: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 6,
+    },
+    transactionStatusText: {
+      fontSize: 9,
+      fontFamily: typography.fonts.rajdhani,
+      fontWeight: '700',
+    },
+    rowMenuButton: {
+      width: 32,
+      height: 38,
+      marginLeft: 3,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 8,
+    },
+    dailyPassAvatar: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.goldMuted,
+      borderWidth: 1,
+      borderColor: colors.goldBorder,
+    },
+    expandIconOpen: {
+      transform: [{ rotate: '180deg' }],
+    },
+    transactionDetails: {
+      paddingHorizontal: 14,
+      paddingTop: 9,
+      paddingBottom: 11,
+      borderTopWidth: 1,
+      borderTopColor: colors.borderDark,
+      backgroundColor: colors.surface,
+    },
+    detailRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      gap: 12,
+      paddingVertical: 4,
+    },
+    detailLabel: {
+      flexShrink: 0,
+      color: colors.textMuted,
+      fontFamily: typography.fonts.rajdhani,
+      fontSize: 9,
+      fontWeight: '700',
+      letterSpacing: 0.5,
+    },
+    detailValue: {
+      flex: 1,
+      color: colors.textSecondary,
+      fontFamily: typography.fonts.inter,
+      fontSize: 10,
+      textAlign: 'right',
     },
 
     // Daily Pass Card Styles

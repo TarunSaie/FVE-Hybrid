@@ -10,7 +10,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Plus,
@@ -37,9 +37,18 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { formatCurrency } from '@/utils/format';
-import { formatDate, getLocalDateStr, getLocalMonthStr } from '@/utils/date';
+import { formatDate } from '@/utils/date';
 import { haptics } from '@/utils/haptics';
 import { shareMonthlyExpensePdf, shareMonthlyExpenseSheet } from '@/utils/expensePdf';
+import {
+  addDaysToDateStr,
+  addMonthsToMonthStr,
+  formatISTDateLabel,
+  getISTDateStr,
+  getISTMonthStr,
+  getMonthDateRange,
+  getRevenueBreakdownForDateRange,
+} from '@/utils/revenue';
 
 export function ExpensesScreen() {
   const navigation = useNavigation();
@@ -50,7 +59,7 @@ export function ExpensesScreen() {
   const { user } = useAuth();
   const isOwnerOrAdmin = ['OWNER', 'ADMIN'].includes(user?.role || '');
 
-  const currentMonthStr = getLocalMonthStr();
+  const currentMonthStr = getISTMonthStr();
   const [selectedMonth, setSelectedMonth] = useState(currentMonthStr);
   const [categoryFilter, setCategoryFilter] = useState('');
   const [search, setSearch] = useState('');
@@ -69,24 +78,18 @@ export function ExpensesScreen() {
   // Month navigation
   const formattedMonthLabel = useMemo(() => {
     if (!selectedMonth) return '';
-    const [y, m] = selectedMonth.split('-');
-    const d = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
-    return d.toLocaleString('en-IN', { month: 'short', year: 'numeric' });
+    return formatISTDateLabel(`${selectedMonth}-01`, { month: 'short', year: 'numeric' });
   }, [selectedMonth]);
 
   const handlePrevMonth = () => {
     haptics.light();
-    const [y, m] = selectedMonth.split('-').map(Number);
-    const d = new Date(y, m - 2, 1);
-    setSelectedMonth(getLocalMonthStr(d));
+    setSelectedMonth(addMonthsToMonthStr(selectedMonth, -1));
   };
 
   const handleNextMonth = () => {
     if (selectedMonth >= currentMonthStr) return;
     haptics.light();
-    const [y, m] = selectedMonth.split('-').map(Number);
-    const d = new Date(y, m, 1);
-    setSelectedMonth(getLocalMonthStr(d));
+    setSelectedMonth(addMonthsToMonthStr(selectedMonth, 1));
   };
 
   const handleCurrentMonth = () => {
@@ -98,14 +101,13 @@ export function ExpensesScreen() {
   const { data: expenses, isLoading, refetch } = useQuery({
     queryKey: ['mobile-expenses', categoryFilter, selectedMonth],
     queryFn: async () => {
-      const [year, month] = selectedMonth.split('-');
-      const lastDay = new Date(parseInt(year, 10), parseInt(month, 10), 0).getDate();
+      const { startDate, endDate } = getMonthDateRange(selectedMonth);
 
       let q = supabase
         .from('expenses')
         .select('*')
-        .gte('expense_date', `${selectedMonth}-01`)
-        .lte('expense_date', `${selectedMonth}-${String(lastDay).padStart(2, '0')}`)
+        .gte('expense_date', startDate)
+        .lte('expense_date', endDate)
         .order('expense_date', { ascending: false });
 
       if (categoryFilter) {
@@ -118,33 +120,39 @@ export function ExpensesScreen() {
     },
   });
 
-  // 2. Query Revenue for selected month (from payments table)
-  const { data: monthRevenue = 0 } = useQuery({
+  // 2. Query collected membership and daily-pass revenue for selected month
+  const { data: monthRevenueBreakdown = {
+    membershipRevenue: 0,
+    dailyPassRevenue: 0,
+    totalRevenue: 0,
+    membershipTransactions: 0,
+    dailyPassTransactions: 0,
+  }, refetch: refetchRevenue } = useQuery({
     queryKey: ['mobile-expenses-revenue', selectedMonth],
     queryFn: async () => {
-      const [year, month] = selectedMonth.split('-');
-      const lastDay = new Date(parseInt(year, 10), parseInt(month, 10), 0).getDate();
-      const { data, error } = await supabase
-        .from('payments')
-        .select('amount')
-        .gte('payment_date', `${selectedMonth}-01`)
-        .lte('payment_date', `${selectedMonth}-${String(lastDay).padStart(2, '0')}`);
-      if (error) throw error;
-      return (data || []).reduce((s, p) => s + Number(p.amount || 0), 0);
+      const { startDate, endDate } = getMonthDateRange(selectedMonth);
+      return getRevenueBreakdownForDateRange(startDate, endDate);
     },
   });
+
+  const hasFocusedRevenueOnce = React.useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (hasFocusedRevenueOnce.current) void refetchRevenue();
+      hasFocusedRevenueOnce.current = true;
+    }, [refetchRevenue])
+  );
 
   // 3. Query Total Expenses for selected month (unfiltered by category for accurate P&L)
   const { data: monthTotalExpenses = 0 } = useQuery({
     queryKey: ['mobile-expenses-total-pnl', selectedMonth],
     queryFn: async () => {
-      const [year, month] = selectedMonth.split('-');
-      const lastDay = new Date(parseInt(year, 10), parseInt(month, 10), 0).getDate();
+      const { startDate, endDate } = getMonthDateRange(selectedMonth);
       const { data, error } = await supabase
         .from('expenses')
         .select('amount')
-        .gte('expense_date', `${selectedMonth}-01`)
-        .lte('expense_date', `${selectedMonth}-${String(lastDay).padStart(2, '0')}`);
+        .gte('expense_date', startDate)
+        .lte('expense_date', endDate);
       if (error) throw error;
       return (data || []).reduce((s, e) => s + Number(e.amount || 0), 0);
     },
@@ -154,19 +162,19 @@ export function ExpensesScreen() {
   const { data: allMonthExpenses } = useQuery({
     queryKey: ['mobile-all-month-expenses', selectedMonth],
     queryFn: async () => {
-      const [year, month] = selectedMonth.split('-');
-      const lastDay = new Date(parseInt(year, 10), parseInt(month, 10), 0).getDate();
+      const { startDate, endDate } = getMonthDateRange(selectedMonth);
       const { data, error } = await supabase
         .from('expenses')
         .select('*')
-        .gte('expense_date', `${selectedMonth}-01`)
-        .lte('expense_date', `${selectedMonth}-${String(lastDay).padStart(2, '0')}`)
+        .gte('expense_date', startDate)
+        .lte('expense_date', endDate)
         .order('expense_date', { ascending: true });
       if (error) throw error;
       return (data || []) as Expense[];
     },
   });
 
+  const monthRevenue = monthRevenueBreakdown.totalRevenue;
   const netProfit = monthRevenue - monthTotalExpenses;
 
   const filteredExpenses = useMemo(() => {
@@ -182,7 +190,7 @@ export function ExpensesScreen() {
   const expenseSections = useMemo(() => {
     const map = new Map<string, { date: string; dayTotal: number; data: Expense[] }>();
     for (const exp of filteredExpenses) {
-      const dateKey = exp.expense_date || getLocalDateStr();
+      const dateKey = exp.expense_date || getISTDateStr();
       if (!map.has(dateKey)) {
         map.set(dateKey, { date: dateKey, dayTotal: 0, data: [] });
       }
@@ -192,12 +200,8 @@ export function ExpensesScreen() {
     }
 
     const sortedDates = Array.from(map.keys()).sort((a, b) => b.localeCompare(a));
-    const today = getLocalDateStr();
-    const yesterday = (() => {
-      const d = new Date();
-      d.setDate(d.getDate() - 1);
-      return getLocalDateStr(d);
-    })();
+    const today = getISTDateStr();
+    const yesterday = addDaysToDateStr(today, -1);
 
     return sortedDates.map(dateKey => {
       const group = map.get(dateKey)!;
@@ -231,10 +235,12 @@ export function ExpensesScreen() {
         monthStr: selectedMonth,
         monthLabel: formattedMonthLabel,
         revenue: monthRevenue,
+        membershipRevenue: monthRevenueBreakdown.membershipRevenue,
+        dailyPassRevenue: monthRevenueBreakdown.dailyPassRevenue,
         totalExpenses: monthTotalExpenses,
         profit: netProfit,
         expenses: dataToExport,
-        generatedDate: formatDate(getLocalDateStr()),
+        generatedDate: formatDate(getISTDateStr()),
       });
       haptics.success();
     } catch (err: unknown) {
@@ -254,10 +260,12 @@ export function ExpensesScreen() {
         monthStr: selectedMonth,
         monthLabel: formattedMonthLabel,
         revenue: monthRevenue,
+        membershipRevenue: monthRevenueBreakdown.membershipRevenue,
+        dailyPassRevenue: monthRevenueBreakdown.dailyPassRevenue,
         totalExpenses: monthTotalExpenses,
         profit: netProfit,
         expenses: dataToExport,
-        generatedDate: formatDate(getLocalDateStr()),
+        generatedDate: formatDate(getISTDateStr()),
       });
       haptics.success();
     } catch (err: unknown) {
@@ -414,6 +422,12 @@ export function ExpensesScreen() {
           </View>
           <Text numberOfLines={1} style={styles.pnlValSuccess}>
             {formatCurrency(monthRevenue)}
+          </Text>
+          <Text numberOfLines={1} style={{ color: colors.textMuted, fontSize: 9, marginTop: 2 }}>
+            Membership {formatCurrency(monthRevenueBreakdown.membershipRevenue)}
+          </Text>
+          <Text numberOfLines={1} style={{ color: colors.textMuted, fontSize: 9 }}>
+            Daily Pass {formatCurrency(monthRevenueBreakdown.dailyPassRevenue)}
           </Text>
         </View>
 
@@ -580,7 +594,7 @@ export function ExpensesScreen() {
                   setShowModal(true);
                 }}
               />
-            ) : null
+            ) : undefined
           }
         />
       )}

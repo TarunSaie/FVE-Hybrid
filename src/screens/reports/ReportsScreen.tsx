@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import {
   BarChart3,
@@ -33,9 +33,17 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { formatCurrency } from '@/utils/format';
-import { getLocalDateStr, getLocalMonthStr, formatDate, normalizeMembershipStatus } from '@/utils/date';
+import { formatDate, normalizeMembershipStatus } from '@/utils/date';
 import { haptics } from '@/utils/haptics';
 import { shareReportPdf } from '@/utils/reportPdf';
+import {
+  addDaysToDateStr,
+  addMonthsToMonthStr,
+  formatISTDateLabel,
+  getISTDateStr,
+  getMonthDateRange,
+  getRevenueBreakdownForDateRange,
+} from '@/utils/revenue';
 
 type Period = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
@@ -49,8 +57,10 @@ export function ReportsScreen() {
   const { data: reportData, isLoading, refetch } = useQuery({
     queryKey: ['mobile-revenue-report', period],
     queryFn: async () => {
-      const results: { label: string; revenue: number; newMembers: number }[] = [];
-      const now = new Date();
+      const results: { label: string; revenue: number; membershipRevenue: number; dailyPassRevenue: number; newMembers: number }[] = [];
+      const today = getISTDateStr();
+      const currentMonth = today.slice(0, 7);
+      const currentYear = Number(today.slice(0, 4));
       const count =
         period === 'daily'
           ? 7
@@ -66,41 +76,28 @@ export function ReportsScreen() {
         let endDate = '';
 
         if (period === 'daily') {
-          const d = new Date(now);
-          d.setDate(d.getDate() - i);
-          startDate = endDate = getLocalDateStr(d);
-          label = d.toLocaleDateString('en-IN', { weekday: 'short' });
+          startDate = endDate = addDaysToDateStr(today, -i);
+          label = formatISTDateLabel(startDate, { weekday: 'short' });
         } else if (period === 'weekly') {
-          const d = new Date(now);
-          d.setDate(d.getDate() - i * 7);
-          const start = new Date(d);
-          start.setDate(d.getDate() - d.getDay());
-          const end = new Date(start);
-          end.setDate(start.getDate() + 6);
-          startDate = getLocalDateStr(start);
-          endDate = getLocalDateStr(end);
+          const dateInWeek = addDaysToDateStr(today, -i * 7);
+          const [year, month, day] = dateInWeek.split('-').map(Number);
+          const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+          startDate = addDaysToDateStr(dateInWeek, -weekday);
+          endDate = addDaysToDateStr(startDate, 6);
           label = `Wk ${count - i}`;
         } else if (period === 'monthly') {
-          const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-          const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-          const monthStr = getLocalMonthStr(d);
-          startDate = `${monthStr}-01`;
-          endDate = `${monthStr}-${lastDay}`;
-          // Standard 3-letter month abbreviation like "Sep", "Oct", "Nov"
-          label = d.toLocaleDateString('en-US', { month: 'short' }).slice(0, 3);
+          const monthStr = addMonthsToMonthStr(currentMonth, -i);
+          ({ startDate, endDate } = getMonthDateRange(monthStr));
+          label = formatISTDateLabel(`${monthStr}-01`, { month: 'short' });
         } else {
-          const year = now.getFullYear() - i;
+          const year = currentYear - i;
           startDate = `${year}-01-01`;
           endDate = `${year}-12-31`;
           label = `${year}`;
         }
 
-        const [paymentsRes, membersRes] = await Promise.all([
-          supabase
-            .from('payments')
-            .select('amount')
-            .gte('payment_date', startDate)
-            .lte('payment_date', endDate),
+        const [revenue, membersRes] = await Promise.all([
+          getRevenueBreakdownForDateRange(startDate, endDate),
           supabase
             .from('members')
             .select('*', { count: 'exact', head: true })
@@ -108,15 +105,19 @@ export function ReportsScreen() {
             .lte('joining_date', endDate),
         ]);
 
-        const total = (paymentsRes.data || []).reduce(
-          (sum, p) => sum + Number(p.amount || 0),
-          0
-        );
         const newMembers = membersRes.count || 0;
-        results.push({ label, revenue: total, newMembers });
+        results.push({
+          label,
+          revenue: revenue.totalRevenue,
+          membershipRevenue: revenue.membershipRevenue,
+          dailyPassRevenue: revenue.dailyPassRevenue,
+          newMembers,
+        });
       }
 
       const totalRevenue = results.reduce((sum, r) => sum + r.revenue, 0);
+      const totalMembershipRevenue = results.reduce((sum, r) => sum + r.membershipRevenue, 0);
+      const totalDailyPassRevenue = results.reduce((sum, r) => sum + r.dailyPassRevenue, 0);
       const maxRevenue = Math.max(...results.map(r => r.revenue), 1);
       const totalNewMembers = results.reduce((sum, r) => sum + r.newMembers, 0);
       const maxNewMembers = Math.max(...results.map(r => r.newMembers), 1);
@@ -124,6 +125,8 @@ export function ReportsScreen() {
       return {
         bars: results,
         totalRevenue,
+        totalMembershipRevenue,
+        totalDailyPassRevenue,
         maxRevenue,
         averageRevenue: Math.round(totalRevenue / count),
         totalNewMembers,
@@ -132,17 +135,25 @@ export function ReportsScreen() {
     },
   });
 
+  const hasFocusedRevenueOnce = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      // The query runs on initial mount; refresh cached totals when this screen
+      // is revisited after payments have been recorded elsewhere.
+      if (hasFocusedRevenueOnce.current) void refetch();
+      hasFocusedRevenueOnce.current = true;
+    }, [refetch])
+  );
+
   // Attendance Trend (Last 7 Days Check-ins)
   const { data: attendanceTrend } = useQuery({
-    queryKey: ['mobile-reports-attendance-trend'],
+    queryKey: ['mobile-reports-attendance-trend', getISTDateStr()],
     queryFn: async () => {
       const results: { label: string; count: number }[] = [];
-      const now = new Date();
+      const today = getISTDateStr();
       for (let i = 6; i >= 0; i--) {
-        const d = new Date(now);
-        d.setDate(d.getDate() - i);
-        const dateStr = getLocalDateStr(d);
-        const label = d.toLocaleDateString('en-IN', { weekday: 'short' });
+        const dateStr = addDaysToDateStr(today, -i);
+        const label = formatISTDateLabel(dateStr, { weekday: 'short' });
         const { count } = await supabase
           .from('attendance')
           .select('*', { count: 'exact', head: true })
@@ -246,8 +257,10 @@ export function ReportsScreen() {
       };
       await shareReportPdf({
         periodLabel: periodMap[period],
-        generatedDate: formatDate(getLocalDateStr()),
+        generatedDate: formatDate(getISTDateStr()),
         totalRevenue: reportData.totalRevenue,
+        totalMembershipRevenue: reportData.totalMembershipRevenue,
+        totalDailyPassRevenue: reportData.totalDailyPassRevenue,
         averageRevenue: reportData.averageRevenue,
         bars: reportData.bars,
         newMembersBars: reportData.bars.map(b => ({ label: b.label, count: b.newMembers })),
@@ -329,7 +342,7 @@ export function ReportsScreen() {
         refreshControl={
           <RefreshControl
             refreshing={isLoading}
-            onRefresh={refetch}
+            onRefresh={() => { void refetch(); }}
             tintColor={colors.gold}
             colors={[colors.gold]}
           />
@@ -366,6 +379,12 @@ export function ReportsScreen() {
             <Text style={styles.kpiValue}>
               {formatCurrency(reportData?.totalRevenue || 0)}
             </Text>
+            <Text numberOfLines={1} style={styles.revenueSplitText}>
+              Membership {formatCurrency(reportData?.totalMembershipRevenue || 0)}
+            </Text>
+            <Text numberOfLines={1} style={styles.revenueSplitText}>
+              Daily Pass {formatCurrency(reportData?.totalDailyPassRevenue || 0)}
+            </Text>
           </View>
 
           <View style={styles.kpiCard}>
@@ -383,30 +402,53 @@ export function ReportsScreen() {
             <Text style={styles.chartTitle}>REVENUE INFLOW TREND</Text>
           </View>
 
+          <View style={styles.revenueLegend}>
+            <View style={styles.revenueLegendItem}>
+              <View style={[styles.revenueLegendDot, { backgroundColor: colors.gold }]} />
+              <Text style={styles.revenueLegendText}>Membership</Text>
+            </View>
+            <View style={styles.revenueLegendItem}>
+              <View style={[styles.revenueLegendDot, { backgroundColor: colors.blueLight }]} />
+              <Text style={styles.revenueLegendText}>Daily Pass</Text>
+            </View>
+          </View>
+
           <View style={styles.chartContainer}>
             {(reportData?.bars || []).map((item, index) => {
               const max = reportData?.maxRevenue || 1;
-              const hasRev = item.revenue > 0;
-              const barHeightPct = hasRev ? Math.max(8, Math.round((item.revenue / max) * 100)) : 0;
+              const membershipHeightPct = item.membershipRevenue > 0
+                ? Math.max(8, Math.round((item.membershipRevenue / max) * 100))
+                : 0;
+              const dailyPassHeightPct = item.dailyPassRevenue > 0
+                ? Math.max(8, Math.round((item.dailyPassRevenue / max) * 100))
+                : 0;
 
               return (
                 <View key={index} style={styles.barColumn}>
                   <Text style={styles.barValueText}>
                     {formatBarValue(item.revenue)}
                   </Text>
-                  <View style={styles.barTrack}>
-                    {hasRev && (
+                  <View style={styles.revenueBars}>
+                    <View style={styles.revenueBarTrack}>
+                      {membershipHeightPct > 0 && (
+                        <View
+                          style={[
+                            styles.revenueBarFill,
+                            { height: `${membershipHeightPct}%`, backgroundColor: colors.gold },
+                          ]}
+                        />
+                      )}
+                    </View>
+                    <View style={styles.revenueBarTrack}>
+                      {dailyPassHeightPct > 0 && (
                       <View
                         style={[
-                          styles.barFill,
-                          {
-                            height: `${barHeightPct}%`,
-                            backgroundColor:
-                              barHeightPct > 60 ? colors.gold : colors.goldDark,
-                          },
+                          styles.revenueBarFill,
+                          { height: `${dailyPassHeightPct}%`, backgroundColor: colors.blueLight },
                         ]}
                       />
-                    )}
+                      )}
+                    </View>
                   </View>
                   <Text style={styles.barLabel}>{item.label}</Text>
                 </View>
@@ -663,8 +705,8 @@ const getReportsStyles = (colors: ThemeColors, isDark: boolean) =>
       paddingHorizontal: 14,
       paddingVertical: 10,
       borderRadius: 14,
-      height: 90,
-      minHeight: 90,
+      height: 108,
+      minHeight: 108,
       justifyContent: 'center',
       elevation: isDark ? 0 : 2,
       shadowColor: '#000',
@@ -685,6 +727,12 @@ const getReportsStyles = (colors: ThemeColors, isDark: boolean) =>
       fontSize: 20,
       fontWeight: '700',
       color: colors.gold,
+    },
+    revenueSplitText: {
+      color: colors.textMuted,
+      fontFamily: typography.fonts.inter,
+      fontSize: 8,
+      marginTop: 1,
     },
     chartCard: {
       backgroundColor: colors.card,
@@ -714,6 +762,27 @@ const getReportsStyles = (colors: ThemeColors, isDark: boolean) =>
       fontWeight: '700',
       color: colors.textPrimary,
       letterSpacing: 0.5,
+    },
+    revenueLegend: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      marginBottom: 3,
+    },
+    revenueLegendItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    revenueLegendDot: {
+      width: 7,
+      height: 7,
+      borderRadius: 4,
+    },
+    revenueLegendText: {
+      color: colors.textMuted,
+      fontFamily: typography.fonts.inter,
+      fontSize: 8,
     },
     chartContainer: {
       flexDirection: 'row',
@@ -746,6 +815,26 @@ const getReportsStyles = (colors: ThemeColors, isDark: boolean) =>
     barFill: {
       width: '100%',
       borderRadius: 5,
+    },
+    revenueBars: {
+      width: 24,
+      height: 75,
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      justifyContent: 'center',
+      gap: 2,
+    },
+    revenueBarTrack: {
+      width: 9,
+      height: '100%',
+      backgroundColor: colors.bgTertiary,
+      borderRadius: 3,
+      justifyContent: 'flex-end',
+      overflow: 'hidden',
+    },
+    revenueBarFill: {
+      width: '100%',
+      borderRadius: 3,
     },
     barLabel: {
       fontFamily: typography.fonts.inter,

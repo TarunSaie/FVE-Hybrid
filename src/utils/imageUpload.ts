@@ -16,7 +16,7 @@
  */
 
 import * as ImageManipulator from 'expo-image-manipulator';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
 import { supabase } from '@/api/supabase';
 
@@ -35,27 +35,78 @@ export interface MobileUploadResult {
 }
 
 /**
- * Normalises legacy database values that contain only a Storage object path.
- * New uploads always persist a public URL, but older member records may contain
- * `members/<file>` or `member-images/members/<file>` instead. Keeping this
- * conversion in one place lets every avatar and viewer load either format.
+ * Extracts a member photo object path from a Supabase URL or a legacy path.
+ * Signed URL tokens are deliberately ignored; they expire and must never be
+ * treated as the durable photo reference.
+ */
+function getMemberPhotoPath(photoUrl?: string | null): string | null {
+  const value = photoUrl?.trim();
+  if (!value) return null;
+
+  let candidate = value;
+  if (/^https?:\/\//i.test(value)) {
+    try {
+      const pathname = new URL(value).pathname;
+      const objectRoute = '/storage/v1/object/';
+      const routeIndex = pathname.indexOf(objectRoute);
+      if (routeIndex < 0) return null;
+
+      const route = pathname.slice(routeIndex + objectRoute.length);
+      const match = route.match(/^(?:public|sign|authenticated)\/member-images\/(.+)$/);
+      if (!match) return null;
+      candidate = match[1];
+    } catch {
+      return null;
+    }
+  } else {
+    const bucketMarker = `${MEMBER_IMAGES_BUCKET}/`;
+    const markerIndex = value.indexOf(bucketMarker);
+    candidate = markerIndex >= 0 ? value.slice(markerIndex + bucketMarker.length) : value;
+  }
+
+  try {
+    candidate = decodeURIComponent(candidate);
+  } catch {
+    // Keep the original path if it contains a literal percent sign.
+  }
+
+  const storagePath = candidate.replace(/^\/+/, '');
+  return storagePath.startsWith(MEMBER_PHOTO_PATH_PREFIX) ? storagePath : null;
+}
+
+/**
+ * Normalises legacy object paths and signed URLs to a durable public URL.
+ * New uploads persist public URLs; older records may contain `members/<file>`,
+ * `member-images/members/<file>`, or an expiring signed URL.
  */
 export function resolveMemberPhotoUrl(photoUrl?: string | null): string | null {
   const value = photoUrl?.trim();
   if (!value) return null;
 
-  // Do not rewrite complete remote or device URLs. A client-configured Supabase
-  // origin is valid, and local URIs are useful while a form is still open.
-  if (/^(https?:|file:|content:|ph:|blob:)/i.test(value)) return value;
+  // Use a durable public URL for known member-images objects. This strips an
+  // expired signed token from legacy database values and gives native image
+  // caches one stable URL. Keep local and unrelated remote URLs untouched.
+  const storagePath = getMemberPhotoPath(value);
+  if (storagePath) {
+    return supabase.storage.from(MEMBER_IMAGES_BUCKET).getPublicUrl(storagePath).data.publicUrl;
+  }
 
-  const bucketMarker = `${MEMBER_IMAGES_BUCKET}/`;
-  const markerIndex = value.indexOf(bucketMarker);
-  const storagePath = (markerIndex >= 0 ? value.slice(markerIndex + bucketMarker.length) : value)
-    .replace(/^\/+/, '');
+  return value;
+}
 
-  if (!storagePath.startsWith(MEMBER_PHOTO_PATH_PREFIX)) return value;
+/** Creates a short-lived read URL for fallback when public image access fails. */
+export async function createMemberPhotoSignedUrl(
+  photoUrl: string,
+  expiresInSeconds = 60 * 60
+): Promise<string | null> {
+  const storagePath = getMemberPhotoPath(photoUrl);
+  if (!storagePath) return null;
 
-  return supabase.storage.from(MEMBER_IMAGES_BUCKET).getPublicUrl(storagePath).data.publicUrl;
+  const { data, error } = await supabase.storage
+    .from(MEMBER_IMAGES_BUCKET)
+    .createSignedUrl(storagePath, expiresInSeconds);
+  if (error) throw error;
+  return data?.signedUrl || null;
 }
 
 /**
@@ -141,24 +192,6 @@ export async function uploadMemberPhoto(localUri: string): Promise<MobileUploadR
   return { publicUrl, reused: false };
 }
 
-/**
- * Extracts an owned member-photo path from a Supabase public or signed URL.
- * Only objects under `members/` can be removed through this helper.
- */
-function getMemberPhotoPath(photoUrl: string): string | null {
-  try {
-    const pathname = new URL(photoUrl).pathname;
-    const marker = `/${MEMBER_IMAGES_BUCKET}/`;
-    const bucketIndex = pathname.indexOf(marker);
-    if (bucketIndex < 0) return null;
-
-    const path = decodeURIComponent(pathname.slice(bucketIndex + marker.length));
-    return path.startsWith(MEMBER_PHOTO_PATH_PREFIX) ? path : null;
-  } catch {
-    return null;
-  }
-}
-
 /** Removes a member image from storage after its database reference is cleared. */
 export async function removeMemberPhoto(photoUrl?: string | null): Promise<void> {
   if (!photoUrl) return;
@@ -167,7 +200,12 @@ export async function removeMemberPhoto(photoUrl?: string | null): Promise<void>
   if (!storagePath) return;
 
   const { error } = await supabase.storage.from(MEMBER_IMAGES_BUCKET).remove([storagePath]);
-  if (error) {
+  if (error && !isMissingStorageObjectError(error)) {
     throw new Error(`Photo cleanup failed: ${error.message}`);
   }
+}
+
+function isMissingStorageObjectError(error: { message?: string; statusCode?: string | number }): boolean {
+  if (String(error.statusCode) === '404') return true;
+  return /(?:object|file)\s+not\s+found|not\s+found\s+(?:object|file)/i.test(error.message || '');
 }

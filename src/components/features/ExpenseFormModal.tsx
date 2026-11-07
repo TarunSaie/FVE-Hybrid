@@ -7,7 +7,8 @@ import { FVEButton } from '@/components/common/FVEButton';
 import { FVEDatePickerModal } from '@/components/common/FVEDatePickerModal';
 import { Expense, EXPENSE_CATEGORIES } from '@/types';
 import { supabase } from '@/api/supabase';
-import { getLocalDateStr, formatDate } from '@/utils/date';
+import { formatDate } from '@/utils/date';
+import { getISTDateStr } from '@/utils/revenue';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ThemeColors } from '@/constants/colors';
@@ -36,7 +37,7 @@ export function ExpenseFormModal({
   const [category, setCategory] = useState<string>('Rent');
   const amountRef = useRef('');
   const descriptionRef = useRef('');
-  const [expenseDate, setExpenseDate] = useState(() => getLocalDateStr());
+  const [expenseDate, setExpenseDate] = useState(() => getISTDateStr());
   const [showDatePicker, setShowDatePicker] = useState(false);
 
   useEffect(() => {
@@ -44,12 +45,12 @@ export function ExpenseFormModal({
       setCategory(expense.category || 'Rent');
       amountRef.current = expense.amount ? String(expense.amount) : '';
       descriptionRef.current = expense.description || '';
-      setExpenseDate(expense.expense_date || getLocalDateStr());
+      setExpenseDate(expense.expense_date || getISTDateStr());
     } else {
       setCategory('Rent');
       amountRef.current = '';
       descriptionRef.current = '';
-      setExpenseDate(getLocalDateStr());
+      setExpenseDate(getISTDateStr());
     }
   }, [expense, visible]);
 

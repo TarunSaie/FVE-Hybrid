@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, Alert, TouchableOpacity, ScrollView } from 'react-native';
+import { useQueryClient } from '@tanstack/react-query';
 import { Calendar } from 'lucide-react-native';
 import { FVEModal } from '@/components/common/FVEModal';
 import { FVEInput } from '@/components/common/FVEInput';
@@ -7,7 +8,8 @@ import { FVEButton } from '@/components/common/FVEButton';
 import { FVEDatePickerModal } from '@/components/common/FVEDatePickerModal';
 import { DailyPass, DailyPassPaymentStatus, PAYMENT_METHODS } from '@/types';
 import { supabase } from '@/api/supabase';
-import { getLocalDateStr, formatDate } from '@/utils/date';
+import { formatDate } from '@/utils/date';
+import { getISTDateStr } from '@/utils/revenue';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ThemeColors } from '@/constants/colors';
@@ -35,12 +37,13 @@ export function DailyPassFormModal({
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
   const { user } = useAuth();
+  const qc = useQueryClient();
 
   const [loading, setLoading] = useState(false);
   const [visitorName, setVisitorName] = useState('');
   const [mobile, setMobile] = useState('');
   const [purpose, setPurpose] = useState<string>('Day Visit');
-  const [passDate, setPassDate] = useState(() => defaultDate || getLocalDateStr());
+  const [passDate, setPassDate] = useState(() => defaultDate || getISTDateStr());
   const [amount, setAmount] = useState('100');
   const [paymentMethod, setPaymentMethod] = useState<string>('Cash');
   const [paymentStatus, setPaymentStatus] = useState<DailyPassPaymentStatus>('PAID');
@@ -52,7 +55,7 @@ export function DailyPassFormModal({
       setVisitorName(pass.visitor_name || '');
       setMobile(pass.mobile || '');
       setPurpose(pass.purpose || 'Day Visit');
-      setPassDate(pass.pass_date || defaultDate || getLocalDateStr());
+      setPassDate(pass.pass_date || defaultDate || getISTDateStr());
       setAmount(pass.amount || '100');
       setPaymentMethod(pass.payment_method || 'Cash');
       setPaymentStatus(pass.payment_status || 'PAID');
@@ -61,7 +64,7 @@ export function DailyPassFormModal({
       setVisitorName('');
       setMobile('');
       setPurpose('Day Visit');
-      setPassDate(defaultDate || getLocalDateStr());
+      setPassDate(defaultDate || getISTDateStr());
       setAmount('100');
       setPaymentMethod('Cash');
       setPaymentStatus('PAID');
@@ -117,6 +120,11 @@ export function DailyPassFormModal({
         if (error) throw error;
       }
 
+      qc.invalidateQueries({ queryKey: ['mobile-daily-passes'] });
+      qc.invalidateQueries({ queryKey: ['mobile-payments-daily-passes'] });
+      qc.invalidateQueries({ queryKey: ['mobile-revenue-report'] });
+      qc.invalidateQueries({ queryKey: ['mobile-expenses-revenue'] });
+      qc.invalidateQueries({ queryKey: ['mobile-dashboard-stats-v3'] });
       haptics.success();
       onSaved();
       onClose();

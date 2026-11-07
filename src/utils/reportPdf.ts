@@ -9,8 +9,10 @@ export interface ReportPdfData {
   periodLabel: string;
   generatedDate: string;
   totalRevenue: number;
+  totalMembershipRevenue?: number;
+  totalDailyPassRevenue?: number;
   averageRevenue: number;
-  bars: { label: string; revenue: number }[];
+  bars: { label: string; revenue: number; membershipRevenue?: number; dailyPassRevenue?: number }[];
   newMembersBars?: { label: string; count: number }[];
   totalNewMembers?: number;
   memberStats?: {
@@ -28,11 +30,15 @@ export interface ReportPdfData {
 }
 
 export function generateReportHtml(data: ReportPdfData): string {
+  const totalMembershipRevenue = data.totalMembershipRevenue ?? data.totalRevenue;
+  const totalDailyPassRevenue = data.totalDailyPassRevenue ?? 0;
   const barsHtml = data.bars
     .map(
       b => `
       <tr>
         <td style="padding: 10px 14px; border-bottom: 1px solid #222; color: #E0E0E0; font-weight: 600;">${b.label}</td>
+        <td style="padding: 10px 14px; border-bottom: 1px solid #222; color: #EFA100; font-weight: 700; text-align: right;">${formatCurrency(b.membershipRevenue ?? b.revenue)}</td>
+        <td style="padding: 10px 14px; border-bottom: 1px solid #222; color: #60A5FA; font-weight: 700; text-align: right;">${formatCurrency(b.dailyPassRevenue ?? 0)}</td>
         <td style="padding: 10px 14px; border-bottom: 1px solid #222; color: #EFA100; font-weight: 700; text-align: right;">${formatCurrency(b.revenue)}</td>
       </tr>
     `
@@ -222,6 +228,7 @@ export function generateReportHtml(data: ReportPdfData): string {
       <div class="summary-card highlight">
         <div class="summary-num gold">${formatCurrency(data.totalRevenue)}</div>
         <div class="summary-label">Total Revenue</div>
+        <div class="summary-label">Membership ${formatCurrency(totalMembershipRevenue)} · Daily Pass ${formatCurrency(totalDailyPassRevenue)}</div>
       </div>
       <div class="summary-card">
         <div class="summary-num">${formatCurrency(data.averageRevenue)}</div>
@@ -244,6 +251,8 @@ export function generateReportHtml(data: ReportPdfData): string {
         <thead>
           <tr>
             <th>Period Interval</th>
+            <th style="text-align: right;">Membership</th>
+            <th style="text-align: right;">Daily Pass</th>
             <th style="text-align: right;">Total Inflow</th>
           </tr>
         </thead>

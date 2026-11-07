@@ -36,7 +36,12 @@ import { sounds } from '@/utils/sounds';
 import { checkAndNotifyBirthdays } from '@/hooks/useBirthdayAlerts';
 import { useQueryClient } from '@tanstack/react-query';
 import { UPIPaymentQRCard } from '@/components/features/UPIPaymentQRCard';
-import { removeMemberPhoto, uploadMemberPhoto, validateMobileImage } from '@/utils/imageUpload';
+import {
+  removeMemberPhoto,
+  resolveMemberPhotoUrl,
+  uploadMemberPhoto,
+  validateMobileImage,
+} from '@/utils/imageUpload';
 
 interface MemberFormModalProps {
   visible: boolean;
@@ -169,10 +174,14 @@ export function MemberFormModal({
       haptics.error();
       const msg = (err as Error)?.message || 'Failed to upload photo';
       console.warn('[uploadImageToSupabase]', msg);
-      Alert.alert(
-        'Photo Upload Failed',
-        'Could not upload the photo to cloud storage. Please check your internet connection and try again.'
-      );
+      const userMessage = /nosuchbucket|bucket.{0,30}(not found|does not exist)/i.test(msg)
+        ? 'Member photo storage is not configured for this gym yet. Please contact an administrator to finish the storage setup.'
+        : /row-level security|not authorized|permission denied|\b403\b/i.test(msg)
+          ? 'Your account does not have permission to upload member photos. Ask the gym owner or an administrator to review storage access.'
+          : /network|failed to fetch|timeout/i.test(msg)
+            ? 'A network problem interrupted the upload. Check your connection and try again.'
+            : `Photo upload failed: ${msg}`;
+      Alert.alert('Photo Upload Failed', userMessage);
     } finally {
       setUploading(false);
     }
@@ -340,6 +349,10 @@ export function MemberFormModal({
         return;
       }
 
+      // Persist durable public object URLs, never an expiring signed URL copied
+      // from a legacy member record.
+      const storedPhotoUrl = resolveMemberPhotoUrl(trimmedPhoto) || '';
+
       // Base payload — member_id excluded from INSERTs so the DB trigger
       // auto-assigns the next FVE-XX value. For UPDATEs we include it so
       // admins can manually correct an ID if needed.
@@ -359,7 +372,7 @@ export function MemberFormModal({
         address: addressRef.current.trim() || '',
         emergency_contact: emergencyContactRef.current.trim() || '',
         notes: notesRef.current.trim() || '',
-        profile_photo: trimmedPhoto,
+        profile_photo: storedPhotoUrl,
         updated_at: new Date().toISOString(),
       };
 
@@ -381,7 +394,8 @@ export function MemberFormModal({
         // This ordering keeps the previous photo viewable if a database update
         // is rejected and prevents a successful update from retaining an orphan.
         const previousPhoto = member.profile_photo?.trim();
-        if (previousPhoto && previousPhoto !== trimmedPhoto) {
+        const previousPhotoUrl = resolveMemberPhotoUrl(previousPhoto);
+        if (previousPhoto && previousPhotoUrl !== storedPhotoUrl) {
           try {
             await removeMemberPhoto(previousPhoto);
           } catch (cleanupError) {

@@ -81,7 +81,7 @@ import { supabase } from '@/api/supabase';
 import { ThemeColors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { formatDate, calculateAge, getLocalDateStr, formatTime } from '@/utils/date';
-import { resolveMemberPhotoUrl } from '@/utils/imageUpload';
+import { removeMemberPhoto, resolveMemberPhotoUrl } from '@/utils/imageUpload';
 import {
   formatCurrency,
   openWhatsAppLink,
@@ -494,6 +494,9 @@ export function MemberDetailScreen() {
       'Delete',
       async () => {
         try {
+          // Storage objects must be removed through the Storage API before the
+          // member row is deleted. Missing legacy photo objects are harmless.
+          await removeMemberPhoto(member?.profile_photo);
           await cleanupPTNotifications(memberId, member?.full_name);
           const { error } = await supabase
             .from('members')
